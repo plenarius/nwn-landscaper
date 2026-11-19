@@ -28,8 +28,8 @@ The archive holds the engine and the editor of the same release, so you need not
 
 The builds are not signed:
 
-- **macOS** refuses the program the first time. Open System Settings, Privacy & Security, and click **Open Anyway**. On older
-  macOS, right-click the program and choose **Open**. Or run `xattr -dr com.apple.quarantine` on the unpacked folder.
+- **macOS** refuses the program the first time. Open System Settings, Privacy & Security, and click **Open Anyway**. On macOS 14 and
+  older, right-click the program and choose **Open**. Or run `xattr -dr com.apple.quarantine` on the unpacked folder.
 - **Windows** SmartScreen may say it protected your PC. Click **More info**, then **Run anyway**.
 
 To build it from source instead, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) and "Development" below.

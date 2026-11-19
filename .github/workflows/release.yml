@@ -237,8 +237,8 @@ jobs:
             Download the archive for your system, unpack it and start the program: the editor opens in your browser
             (QUICKSTART.txt in the archive). It holds the engine and the editor of this release (nwn-landscaper-web, same tag).
 
-            The builds are not signed. On macOS, the first start is refused: System Settings, Privacy & Security, Open Anyway (or
-            right-click the program, Open; or `xattr -dr com.apple.quarantine` on the folder). On Windows, SmartScreen: More info,
+            The builds are not signed. On macOS, the first start is refused: System Settings, Privacy & Security, Open Anyway (on
+            macOS 14 and older, right-click the program, Open; or `xattr -dr com.apple.quarantine` on the folder). On Windows, SmartScreen: More info,
             Run anyway. Check a download against SHA256SUMS.
 
             Needs a legally obtained Neverwinter Nights: Enhanced Edition install; ships none of its content. The source is
