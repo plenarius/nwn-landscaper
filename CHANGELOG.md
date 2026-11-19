@@ -5,6 +5,23 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## 0.1.1
+
+- **Downloads to unzip and start.** Each release has an archive for Windows (x86-64), macOS (one program for Apple silicon and
+  Intel) and Linux (x86-64), holding the program, the editor of the same release in `web/`, the licences and a QUICKSTART. No
+  Rust, compiler or second repository needed. They are made by `.github/workflows/release.yml` on a version tag, as a draft
+  release, with `SHA256SUMS` and the complete source. The builds are not signed (README, "Install").
+- **Started with no arguments** (a double-click), the program runs `serve` on 127.0.0.1:8765, opens the editor in the default
+  browser and keeps its window open, showing the game and user folder it found and how to stop it. Without a game install it says
+  what to set (`NWN_ROOT`, and how on that system) and waits for Enter instead of closing. If the editor is already running, it
+  opens the browser at it. On Windows it also finds the user folder in OneDrive's `Documents`. Every command, and `serve` with
+  any option, works as before.
+- **`serve` says what to set when it finds no game or user folder**, and why a `NWN_ROOT` that is set isn't the game's folder.
+- **Windows: the data folder is `%LOCALAPPDATA%\landscaper`** (`XDG_DATA_HOME` still wins). Without a `HOME` it was a
+  `.local/share/landscaper` folder under wherever the program was started.
+- **The engine builds on Windows.** `--reload-on-rebuild` and the team server's disk quota used Unix-only calls; on Windows the
+  first starts the new build in the same window, and the second counts a file with two names twice.
+
 ## 0.1.0
 
 The first public release: the editor's engine (`serve`, on your own machine or as a team server), area import and export, the

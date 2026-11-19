@@ -5,8 +5,8 @@ workspace. Both need the same ingredients.
 
 ## What you need
 
-- **Linux.** The Landscaper is built and tested on Linux only; macOS and Windows are untried. The Docker setup below runs on
-  any Linux host.
+- **Linux, Windows or macOS.** The Landscaper is developed and tested on Linux; the release downloads (README, "Install") are
+  checked on all three. The Docker setup below runs on any Linux host.
 - **Neverwinter Nights: Enhanced Edition's files.** The Landscaper reads the game's models, textures, tilesets, tables and its
   lit shaders (it contains none of them). It needs the game itself: the dedicated server's download has no shaders, and export
   stops with a message that says so. The Steam install is found automatically; otherwise set `NWN_ROOT` (or `--root`) to the
@@ -51,6 +51,8 @@ In the editor, the Paint tool can also pick a texture up from an imported area's
 under the click joins the library as a "Tileset" texture. It needs the tileset's haks in your user folder's `hak/` as any import does.
 
 ## On your own machine
+
+The simplest way is a release download (README, "Install"): unpack it and start the program. To build it from source:
 
 ```sh
 git clone https://github.com/plenarius/nwn-landscaper

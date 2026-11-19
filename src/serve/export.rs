@@ -599,6 +599,7 @@ mod tests {
         let before = contents(&dir);
         let rollback = Rollback::holding(paths.clone());
         // The hak is held by a second link, not a copy in memory.
+        #[cfg(unix)]
         assert_eq!(std::os::unix::fs::MetadataExt::nlink(&std::fs::metadata(&paths[3]).unwrap()), 2);
         export_over(&paths);
         drop(rollback);

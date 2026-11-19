@@ -196,6 +196,10 @@ pub fn serve(bind: &str, port: u16, web: &Path, reload_on_rebuild: bool) -> Resu
         );
     } else {
         println!("Landscaper editor: http://{bind}:{port}/   (serving {}; exports in {})", web.display(), exports_dir().display());
+        if OPEN_BROWSER.load(std::sync::atomic::Ordering::Relaxed) {
+            open_browser(&format!("http://{bind}:{port}/"));
+            println!("To stop the Landscaper, close this window or press Ctrl+C.");
+        }
     }
     // The list of existing areas takes seconds to read: have it ready before the first search.
     std::thread::spawn(|| {
@@ -216,14 +220,55 @@ pub fn serve(bind: &str, port: u16, web: &Path, reload_on_rebuild: bool) -> Resu
         if let (Some(exe), Some(built)) = (&exe, built)
             && std::fs::metadata(exe).and_then(|m| m.modified()).is_ok_and(|now| now != built)
         {
-            use std::os::unix::process::CommandExt;
             eprintln!("landscaper was rebuilt: restarting the server on the new build");
             drop(server);
-            let err = std::process::Command::new(exe).args(std::env::args_os().skip(1)).exec();
-            anyhow::bail!("restarting on the new build: {err}");
+            let mut again = std::process::Command::new(exe);
+            again.args(std::env::args_os().skip(1));
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                let err = again.exec();
+                anyhow::bail!("restarting on the new build: {err}");
+            }
+            // No exec elsewhere: the new build runs in this window, and this one ends.
+            #[cfg(not(unix))]
+            {
+                again.spawn().map_err(|e| anyhow::anyhow!("restarting on the new build: {e}"))?;
+                return Ok(());
+            }
         }
     }
     Ok(())
+}
+
+/// Set when the program was started with no arguments (a double-click, main.rs): once it listens, the browser opens at the editor.
+pub static OPEN_BROWSER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Opens `url` in the default browser (`start` on Windows, `open` on macOS, `xdg-open` elsewhere); if that can't be run, says
+/// to open it.
+pub fn open_browser(url: &str) {
+    let (program, first): (&str, &[&str]) = if cfg!(windows) {
+        // `start`'s first quoted argument is a window title: an empty one, so the address is taken as what to open.
+        ("cmd", &["/C", "start", ""])
+    } else if cfg!(target_os = "macos") {
+        ("open", &[])
+    } else {
+        ("xdg-open", &[])
+    };
+    let started = std::process::Command::new(program)
+        .args(first)
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match started {
+        Ok(mut child) => {
+            println!("Opening {url} in your browser.");
+            std::thread::spawn(move || child.wait());
+        }
+        Err(_) => println!("Open {url} in your browser."),
+    }
 }
 
 /// Heavy jobs (a check, an export, an import) take turns: they keep the area they work on in process-wide state and are heavy on the
