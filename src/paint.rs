@@ -17,10 +17,15 @@ use mg_image::Rgba;
 /// Metres one texture repeat covers on the ground (the editor's too).
 pub const TEXTURE_METRES: f32 = 4.0;
 
-/// The Landscaper's data folder: `landscaper` under `XDG_DATA_HOME` (default ~/.local/share).
+/// The Landscaper's data folder: `landscaper` under `XDG_DATA_HOME` (default ~/.local/share; on Windows, which has no `HOME`
+/// unless a shell such as Git Bash sets one, `%LOCALAPPDATA%`, whichever way it is started).
 pub fn data_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share"), PathBuf::from);
+    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let windows = if cfg!(windows) { var("LOCALAPPDATA") } else { None };
+    let base = var("XDG_DATA_HOME")
+        .or(windows)
+        .or_else(|| var("HOME").map(|h| h.join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from(".local/share"));
     base.join("landscaper")
 }
 

@@ -57,8 +57,12 @@ mod workspace;
 use anyhow::{Context, Result};
 use mg_core::ResType;
 
-/// The command line (cli.rs): a mistake there exits with 2 and the usage, a failed command with 1 and what went wrong.
+/// The command line (cli.rs): a mistake there exits with 2 and the usage, a failed command with 1 and what went wrong. With no
+/// arguments at all, as a double-click starts it: the editor on this machine ([`quick_start`]).
 fn main() -> std::process::ExitCode {
+    if std::env::args_os().len() <= 1 {
+        return quick_start();
+    }
     let cli = <cli::Cli as clap::Parser>::parse();
     match run(cli) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -67,6 +71,62 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// Started with no arguments (a double-click on the program): `serve` on 127.0.0.1:8765 with the editor in `web/` beside the
+/// program, the browser opened at it. The window stays open while it serves; when it can't start, it says why and waits for
+/// Enter, so the message can be read before the window closes. Without a game install it stops and says what to set.
+fn quick_start() -> std::process::ExitCode {
+    const ADDRESS: &str = "127.0.0.1:8765";
+    println!("NWN Landscaper {}: the editor on this machine. (`landscaper --help` lists the commands.)\n", env!("CARGO_PKG_VERSION"));
+    let mut args = vec!["landscaper".into(), "serve".into()];
+    if let Some(user) = onedrive_user_folder() {
+        args.extend(["--user".into(), user.into_os_string()]);
+    }
+    let cli = <cli::Cli as clap::Parser>::parse_from(args);
+    config::set_given(config::Given { root: None, user: cli.game.user.clone(), tlk: None, jobs: None });
+    let outcome = if models::game_folders().0.is_none() {
+        say_folders();
+        Err(anyhow::anyhow!("the Landscaper needs the game's files: set NWN_ROOT as above, then start it again"))
+    } else if std::net::TcpListener::bind(ADDRESS).is_err() {
+        // Most likely the Landscaper started earlier and still running in another window: show its editor.
+        println!("Something is already listening on {ADDRESS}: if it is the Landscaper, started before, its editor opens now.");
+        serve::open_browser(&format!("http://{ADDRESS}/"));
+        Ok(())
+    } else {
+        serve::OPEN_BROWSER.store(true, std::sync::atomic::Ordering::Relaxed);
+        run(cli)
+    };
+    if let Err(e) = &outcome {
+        eprintln!("\nerror: {e:#}");
+    }
+    println!("\nPress Enter to close this window.");
+    let _ = std::io::stdin().read_line(&mut String::new());
+    if outcome.is_ok() { std::process::ExitCode::SUCCESS } else { std::process::ExitCode::FAILURE }
+}
+
+/// On Windows, `Documents\Neverwinter Nights` in OneDrive (`%OneDrive%`), where Windows moves the Documents folder when OneDrive
+/// backs it up: when the user folder isn't given (`NWN_HOME`, `NWN_USER_DIRECTORY`) and isn't in the usual place.
+fn onedrive_user_folder() -> Option<PathBuf> {
+    if !cfg!(windows) || mg_resman::GameInstall::detect_user_dir().is_some() {
+        return None;
+    }
+    let folder = PathBuf::from(std::env::var_os("OneDrive")?).join("Documents").join("Neverwinter Nights");
+    folder.is_dir().then_some(folder)
+}
+
+/// What to set when the game or the user folder isn't found: the variable, and how to set it on this system.
+fn not_found_help(what: &str, var: &str, example: &str) -> String {
+    let set = if cfg!(windows) {
+        format!(
+            "In a Command Prompt run\n    setx {var} \"{example}\"\n  then start the Landscaper again (or start it from a              Command Prompt with --{} \"<folder>\").",
+            if var == "NWN_ROOT" { "root" } else { "user" }
+        )
+    } else {
+        let profile = if cfg!(target_os = "macos") { "~/.zshrc" } else { "~/.profile" };
+        format!("Add this line to {profile}, then open a new terminal and start the Landscaper again:\n    export {var}=\"{example}\"")
+    };
+    format!("  {what}: set {var} to it. {set}")
 }
 
 /// The debugging switches that are set, said at start: some change what an export writes (docs/DEBUGGING.md).
@@ -221,8 +281,38 @@ fn serve_command(s: cli::Serve) -> Result<()> {
 fn say_folders() {
     let shown = |p: Option<PathBuf>, none: &str| p.map_or_else(|| none.to_string(), |p| p.display().to_string());
     let (root, user) = models::game_folders();
+    let (no_root, no_user) = (root.is_none(), user.is_none());
     println!("game: {} (--root, NWN_ROOT)", shown(root, "none found"));
+    if no_root {
+        // NWN_ROOT given but not the game: say what is wrong with it.
+        if let Some(given) = std::env::var_os("NWN_ROOT").map(PathBuf::from) {
+            let why = mg_resman::GameInstall::why_not(&given).unwrap_or_default();
+            println!("  NWN_ROOT is {}, which isn't the game's folder: {why}", given.display());
+        }
+        let example = match std::env::consts::OS {
+            "windows" => r"C:\Program Files (x86)\Steam\steamapps\common\Neverwinter Nights",
+            "macos" => "/Users/you/Library/Application Support/Steam/steamapps/common/Neverwinter Nights",
+            _ => "/home/you/.local/share/Steam/steamapps/common/Neverwinter Nights",
+        };
+        println!(
+            "  Looked in Steam's libraries, GOG's and Beamdog's usual folders. The game's folder is the one with data{}nwn_base.key in it.",
+            std::path::MAIN_SEPARATOR
+        );
+        println!("{}", not_found_help("Wherever yours is", "NWN_ROOT", example));
+    }
     println!("user folder: {} (--user, NWN_HOME)", shown(user, "none found"));
+    if no_user {
+        let example = match std::env::consts::OS {
+            "windows" => r"C:\Users\you\Documents\Neverwinter Nights",
+            "macos" => "/Users/you/Documents/Neverwinter Nights",
+            _ => "/home/you/.local/share/Neverwinter Nights",
+        };
+        println!(
+            "  The user folder (with hak, modules and tlk in it) is made when the game first starts; exports go into it. \
+             Start the game once, or if yours is elsewhere:"
+        );
+        println!("{}", not_found_help("The user folder", "NWN_HOME", example));
+    }
     let module = if review::active() {
         "from the review service (LANDSCAPER_REVIEW_URL)".to_string()
     } else {

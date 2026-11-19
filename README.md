@@ -15,14 +15,36 @@ server on your own domain where each builder has a workspace.
 
 Made for [Layonara](https://layonara.com)'s builders. The code is configurable for any module ([docs/CONFIGURATION.md](docs/CONFIGURATION.md)).
 
+## Install
+
+Download the archive for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases): Windows
+(x86-64), macOS (Apple silicon and Intel) or Linux (x86-64). Unpack it anywhere and start the program in it: `landscaper.exe`
+on Windows, `landscaper` on macOS and Linux. A window shows the game and user folder it found, and your browser opens the editor
+at <http://127.0.0.1:8765/>. Close the window to stop it. `QUICKSTART.txt` in the archive says the same, and what to set when it
+can't find the game.
+
+The archive holds the engine and the editor of the same release, so you need nothing else but the game. Check a download against
+`SHA256SUMS` on the release page.
+
+The builds are not signed:
+
+- **macOS** refuses the program the first time. Open System Settings, Privacy & Security, and click **Open Anyway**. On older
+  macOS, right-click the program and choose **Open**. Or run `xattr -dr com.apple.quarantine` on the unpacked folder.
+- **Windows** SmartScreen may say it protected your PC. Click **More info**, then **Run anyway**.
+
+To build it from source instead, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) and "Development" below.
+
 ## You need
 
-- **Linux.** It is built and tested on Linux only; macOS and Windows are untried.
 - **Neverwinter Nights: Enhanced Edition**, the game itself (not only the dedicated server's download, which lacks the shaders the
   Landscaper builds on). The Landscaper reads the game's files and ships none of them.
-- **A user folder whose `hak/` and `modules/` it may write in:** exports go there.
-- **Rust 1.98 or newer**, a C++ compiler and cmake, to build it.
-- **`nwn_gff`** from [neverwinter.nim](https://github.com/niv/neverwinter.nim), and the editor's files.
+- **A user folder whose `hak/` and `modules/` it may write in:** exports go there. The game makes it when it first starts.
+- **`nwn_gff`** from [neverwinter.nim](https://github.com/niv/neverwinter.nim) on your `PATH`, only for **Package for your
+  module…**.
+- **Linux, Windows or macOS.** It is developed and tested on Linux. The release builds are checked on all three systems, but
+  exports on Windows and macOS have had less use.
+- To build it from source: **Rust 1.98 or newer**, a C++ compiler and cmake (for glslang, which nwn-bake builds with), and the
+  editor's files.
 
 [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) lists everything.
 
@@ -159,7 +181,9 @@ the files every repository following STYLE.md shares word for word are the same 
 ### Releases
 
 The engine and the editor (nwn-landscaper-web) change together, so each release tags **both repositories with the same
-`vX.Y.Z`**, the version in this repository's `Cargo.toml`. The self-host image (`deploy/self-host/Dockerfile`) builds the editor
+`vX.Y.Z`**, the version in this repository's `Cargo.toml`. Tag the editor first: the tag here starts
+`.github/workflows/release.yml`, which packs the editor of the same tag with the engine for each system and makes a draft release
+to check and publish by hand. The self-host image (`deploy/self-host/Dockerfile`) builds the editor
 of that tag by default (`WEB_REF`), and `tests/release.rs` fails when its default and `Cargo.toml`'s version disagree: bump both
 in the release's pull request, then tag the two repositories.
 

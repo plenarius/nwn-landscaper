@@ -105,7 +105,6 @@ fn used(root: &Path) -> u64 {
 /// The bytes of the files under `dir` (links not followed; a file with two names, such as a working copy and its hard-linked
 /// `.bak`, counted once), leaving out `uploads/` when `top`.
 fn size_of(dir: &Path, top: bool, seen: &mut HashSet<(u64, u64)>) -> u64 {
-    use std::os::unix::fs::MetadataExt;
     let mut total = 0;
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         if top && e.file_name() == "uploads" {
@@ -114,11 +113,24 @@ fn size_of(dir: &Path, top: bool, seen: &mut HashSet<(u64, u64)>) -> u64 {
         let Ok(m) = e.path().symlink_metadata() else { continue };
         if m.is_dir() {
             total += size_of(&e.path(), false, seen);
-        } else if m.is_file() && seen.insert((m.dev(), m.ino())) {
+        } else if m.is_file() && file_id(&m).is_none_or(|id| seen.insert(id)) {
             total += m.len();
         }
     }
     total
+}
+
+/// A file's device and inode, which its every name shares.
+#[cfg(unix)]
+fn file_id(m: &std::fs::Metadata) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    Some((m.dev(), m.ino()))
+}
+
+/// None where the standard library can't say (Windows): each name of a file is counted. (A team server runs on Linux.)
+#[cfg(not(unix))]
+fn file_id(_: &std::fs::Metadata) -> Option<(u64, u64)> {
+    None
 }
 
 /// Counts `bytes` the current workspace took in the request now ending, until its next walk.
