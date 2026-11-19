@@ -1,0 +1,50 @@
+# REUSE (https://reuse.software/): who owns each file and under which licence (STYLE.md, "Licences and REUSE"). Source code says
+# it in its first two lines; this file covers everything that is not source code.
+#
+# The Landscaper is GPL-3.0-or-later, like nwn-bake; its binaries link Moonglow (GPL-3.0), so they are GPL-3.0 in any case.
+# Decompiled game code and other material taken from the game never goes in this repository (STYLE.md, "Never in these
+# repositories"). The path node table below is not taken from the game: it is coordinates measured on a real game install.
+version = 1
+SPDX-PackageName = "nwn-landscaper"
+SPDX-PackageDownloadLocation = "https://github.com/plenarius/nwn-landscaper"
+
+[[annotations]]
+path = [
+    "**/*.md",
+    "**/*.toml",
+    "**/*.json",
+    "**/*.yml",
+    "**/*.hbs",
+    "**/*.png",
+    "**/.gitignore",
+    "**/.dockerignore",
+    "**/Dockerfile",
+    "**/*.example",
+    ".editorconfig",
+    ".markdownlint.jsonc",
+    ".vale.ini",
+    ".vale/**",
+    "**/Cargo.lock",
+    # Shared word for word with repositories under other licences, so it carries no header.
+    "scripts/check.sh",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (C) 2026 plenarius"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Where each PathNode letter and orientation puts a tile's path nodes and their exit points: coordinates measured by
+# watching a real game server route creatures (research/FINDINGS.md). Measured facts, not a file or code from the game; any
+# rights we might have in the table are waived under CC0-1.0, so it can be used anywhere, the GPL binaries included.
+[[annotations]]
+path = "src/pathnodes.json"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 plenarius"
+SPDX-License-Identifier = "CC0-1.0"
+
+# tiny_http_dh 0.12.4 (the maintained fork of tiny_http), the HTTP server, vendored with a patch of ours
+# (vendor/tiny_http/LANDSCAPER.md). Its authors' licence, which the patch keeps.
+[[annotations]]
+path = "vendor/tiny_http/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) 2014-2019 The tiny-http contributors"
+SPDX-License-Identifier = "MIT OR Apache-2.0"

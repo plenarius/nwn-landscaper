@@ -1,0 +1,33 @@
+{$SITE_ADDRESS} {
+	# Sign-in: one line per person, `caddy hash-password` makes the hash. The user name is what the Landscaper calls them.
+	basic_auth {
+		alice REPLACE_WITH_A_HASH
+		bob REPLACE_WITH_A_HASH
+	}
+	# The Landscaper sends its security headers itself (the editor page's Content-Security-Policy with frame-ancestors
+	# 'none', nosniff, X-Frame-Options); these give Caddy's own answers (the sign-in prompt, an error when the engine is
+	# down) the same protection. `?` only sets a header the answer doesn't already have, so the engine's full policy stays.
+	header {
+		?Content-Security-Policy "frame-ancestors 'none'"
+		?X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+	}
+	reverse_proxy landscaper:8766 {
+		# Caddy passes the browser's headers through unless told otherwise, so remove every header the Landscaper could
+		# read to say who someone is (any preset of LANDSCAPER_AUTH): otherwise a signed-in person could add their own
+		# groups header and make themselves an admin. (Not the two set below: Caddy deletes after it sets, and setting
+		# a header replaces whatever the browser sent.)
+		header_up -X-Forwarded-Groups
+		header_up -X-Forwarded-Preferred-Username
+		header_up -X-Forwarded-Email
+		header_up -X-authentik-username
+		header_up -X-authentik-groups
+		header_up -X-authentik-name
+		header_up -Remote-User
+		header_up -Remote-Groups
+		header_up -Remote-Name
+		# Replaced, never passed through: who signed in, and the secret that proves it was this proxy.
+		header_up X-Forwarded-User {http.auth.user.id}
+		header_up X-Landscaper-Proxy {$LANDSCAPER_PROXY_SECRET}
+	}
+}

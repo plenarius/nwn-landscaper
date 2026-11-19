@@ -1,0 +1,2 @@
+# Landscaper patch: rustfmt's defaults, which tiny_http_dh is formatted with, in place of the repository's: `cargo fmt --all`
+# formats path dependencies too. The patch follows the fork's style.

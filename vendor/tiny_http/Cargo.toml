@@ -1,0 +1,49 @@
+[package]
+name = "tiny_http_dh"
+version = "0.12.4"
+authors = [
+    "pierre.krieger1708@gmail.com",
+    "Corey Farwell <coreyf@rwell.org>",
+    "Danny Heijl <danny.heijl@telenet.be>",
+]
+description = "Low level HTTP server library, maintained fork of tiny-http with CVE fixes and a configurable worker thread pool"
+documentation = "https://docs.rs/tiny_http_dh"
+keywords = ["http", "server", "web"]
+categories = ["network-programming", "web-programming::http-server"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dheijl/tiny-http-dh"
+edition = "2024"
+rust-version = "1.98.1"
+
+[features]
+default = ["log"]
+ssl = ["ssl-openssl"]
+ssl-openssl = ["openssl", "zeroize"]
+ssl-rustls = ["rustls", "rustls-pemfile", "zeroize"]
+ssl-native-tls = ["native-tls", "zeroize"]
+
+[dependencies]
+ascii = "1.1"
+chunked_transfer = "1"
+httpdate = "1.0.3"
+
+log = { version = "0.4.34", optional = true }
+openssl = { version = "0.10", optional = true }
+rustls = { version = "0.23", optional = true }
+rustls-pemfile = { version = "2.2", optional = true }
+zeroize = { version = "1", optional = true }
+native-tls = { version = "0.2", optional = true }
+
+[dev-dependencies]
+rustc-serialize = "0.3"
+sha1 = "0.11"
+fdlimit = "0.3"
+criterion = "0.8"
+
+[[bench]]
+name = "bench"
+harness = false
+
+[package.metadata.docs.rs]
+# Enable just one SSL implementation
+features = ["ssl-openssl"]

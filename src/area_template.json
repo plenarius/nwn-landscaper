@@ -1,0 +1,15 @@
+{
+  "_note": "What a new area starts with when the project gives no template (LANDSCAPER_AREA_TEMPLATE): plain defaults.",
+  "scripts": { "OnEnter": "", "OnExit": "", "OnHeartbeat": "", "OnUserDefined": "" },
+  "pvp": 3,
+  "noRest": false,
+  "weather": { "rain": 0, "snow": 0, "lightning": 0, "wind": 0 },
+  "music": { "day": 0, "night": 0, "battle": 0, "delay": 0 },
+  "ambient": { "day": 0, "night": 0, "dayVol": 127, "nightVol": 127, "env": 0 },
+  "loadScreen": 0,
+  "spot": 0,
+  "listen": 0,
+  "skyBox": 0,
+  "comments": "",
+  "vars": []
+}

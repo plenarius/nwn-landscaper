@@ -1,0 +1,42 @@
+# A team server on your own domain: the Landscaper behind Caddy, which asks people to sign in (basic auth here; swap in
+# oauth2-proxy, Authelia, Authentik... for real single sign-on, see docs/SELF-HOSTING.md) and tells the Landscaper who they are.
+#
+#   cp compose.example.yml compose.yml; cp Caddyfile.example Caddyfile; cp env.example .env   (then edit all three)
+#   docker compose build && docker compose up -d
+services:
+  landscaper:
+    build:
+      context: ../..
+      dockerfile: deploy/self-host/Dockerfile
+      # args: { WEB_REF: main }   # the editor's tag or branch; default: the release of this engine's version
+      #                           # (docs/SELF-HOSTING.md, "As a team server on your domain")
+    restart: unless-stopped
+    environment:
+      LANDSCAPER_AUTH: headers                 # X-Forwarded-User from the proxy
+      LANDSCAPER_ALLOWED_GROUPS: "*"           # everyone who can sign in may build
+      LANDSCAPER_ADMIN_USERS: ${LANDSCAPER_ADMIN_USERS}
+      LANDSCAPER_ADMIN_GROUPS: none             # admins by name only: no groups header can make someone one
+      LANDSCAPER_PUBLIC_HOST: ${SITE_ADDRESS:-localhost}   # the name people reach it by; any other is refused
+      LANDSCAPER_PROXY_SECRET: ${LANDSCAPER_PROXY_SECRET}
+      LANDSCAPER_PROJECT: ${LANDSCAPER_PROJECT:-the module}
+      # LANDSCAPER_MODULE_REPO: /module          # a checkout of your module (see SELF-HOSTING.md), mounted below
+    volumes:
+      - landscaper-data:/data
+      - ${NWN_GAME_DIR}:/nwn/game:ro            # your NWN:EE install (the files in it, not the game running)
+      - ${NWN_HOME_DIR}:/nwn/home:ro            # your haks (hak/) and talk table (tlk/)
+      # - /path/to/your/module:/module:ro
+    expose:
+      - "8766"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      LANDSCAPER_PROXY_SECRET: ${LANDSCAPER_PROXY_SECRET}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+volumes:
+  landscaper-data:
+  caddy-data:

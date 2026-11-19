@@ -1,0 +1,93 @@
+# nwn-bake lives in its own repository (https://github.com/plenarius/nwn-bake) and comes in as a git dependency at a release tag.
+# Moonglow's `rev` below must stay the one that nwn-bake release pins (MOONGLOW.md; `tests/nwn_bake_split.rs` checks).
+[workspace]
+# Vendored crates are dependencies, not members: they keep their own style and lints.
+exclude = ["vendor"]
+
+# The lint set shared by every Rust workspace that follows STYLE.md ("Lints"): the same block is in each workspace's Cargo.toml,
+# so change them together. CI runs `cargo clippy --workspace --all-targets --locked -- -D warnings`. Clippy's default set stays on.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+# Never in a commit.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+# Every `#[allow]` or `#[expect]` says why: `reason = "..."`.
+allow_attributes_without_reason = "warn"
+# Modules are `foo.rs` plus `foo/`, never `foo/mod.rs`.
+mod_module_files = "warn"
+# Two of clippy's style lints this code does not follow: its drawing and baking functions take their parts as arguments, and
+# some of its caches have long types.
+too_many_arguments = "allow"
+type_complexity = "allow"
+# From clippy's pedantic group: few hits, `cargo clippy --fix` or a small edit clears them, and they catch real mistakes. Game
+# files are often upper case (`.MDL`), so an extension is compared without regard to case.
+case_sensitive_file_extension_comparisons = "warn"
+cast_lossless = "warn"
+cloned_instead_of_copied = "warn"
+explicit_iter_loop = "warn"
+ignored_unit_patterns = "warn"
+implicit_clone = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+stable_sort_primitive = "warn"
+uninlined_format_args = "warn"
+
+[package]
+name = "landscaper"
+version = "0.1.0"
+edition = "2024"
+# As nwn-bake, which the Landscaper builds on.
+rust-version = "1.98"
+license = "GPL-3.0-or-later"
+# Not for crates.io: the Moonglow crates come from git (MOONGLOW.md). Also clears cargo-deny's wildcard check for them.
+publish = false
+description = "Paint terrain, get a Neverwinter Nights area with its own generated tileset"
+repository = "https://github.com/plenarius/nwn-landscaper"
+readme = "README.md"
+
+[dependencies]
+# A release of nwn-bake. To work on both at once, point a local, uncommitted
+# `[patch."https://github.com/plenarius/nwn-bake"]` at a checkout (README, "Development").
+nwn-bake = { git = "https://github.com/plenarius/nwn-bake", tag = "v0.6.1" }
+mg-core = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-mdl = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-erf = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-gff = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-set = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-resman = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-rules = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-module = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-tiles = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-area = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+mg-script = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+fastrand = "2"
+anyhow = "1"
+# The command line, as nwn-bake-cli parses its own (the same features).
+clap = { version = "4.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions", "derive"] }
+serde_json = "1"
+# tiny_http_dh, the maintained fork of tiny_http, vendored with a patch of ours: a time limit on every read and write of a
+# connection, and size and time limits on a request's head, which no release has (vendor/tiny_http/LANDSCAPER.md). Without them
+# one client could hold an answer thread for as long as its connection stayed open, or fill the memory with one request line.
+tiny_http = { package = "tiny_http_dh", path = "vendor/tiny_http" }
+png = "0.17"
+mg-image = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+serde = { version = "1.0.229", features = ["derive"] }
+glam = "0.30"
+base64 = "0.23"
+ureq = { version = "2", features = ["json"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
+
+[lints]
+workspace = true
+
+# The area renderer fills millions of pixels a picture: unoptimised, its tests take minutes. nwn-bake is optimised in debug and test
+# builds too (the Landscaper is not), as in nwn-bake's own workspace.
+[profile.dev.package.nwn-bake]
+opt-level = 3

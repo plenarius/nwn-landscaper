@@ -1,0 +1,62 @@
+{
+  "_": "The starter texture library: ground, rock, sand, snow, floors and walls read from the player's own copy of NWN:EE the first time the Landscaper runs with no library. Each `resref` is a texture of the base game; `id` is letters and digits, at most 16 (`ls_` and its first 13, lower case, are the texture's resref in the hak); the editor's defaults are among them (`textures.rs`, EDITOR_DEFAULTS); `surface` is the surfacemat.2da row for footsteps (1 dirt, 3 grass, 4 stone, 5 wood, 13 mud, 19 snow, 20 sand).",
+  "textures": [
+    { "id": "grassMedium", "name": "Medium grass", "category": "Grass", "surface": 3, "resref": "tcm02_grass01" },
+    { "id": "grassBright", "name": "Bright grass", "category": "Grass", "surface": 3, "resref": "ttz01_grass02" },
+    { "id": "grassMeadow", "name": "Meadow grass", "category": "Grass", "surface": 3, "resref": "ttr01_grass02" },
+    { "id": "grassMoss", "name": "Mossy grass", "category": "Grass", "surface": 3, "resref": "tno01_grass" },
+    { "id": "grassForest", "name": "Forest grass", "category": "Grass", "surface": 3, "resref": "ttf01_grass01" },
+    { "id": "grassSwamp", "name": "Swamp grass", "category": "Grass", "surface": 3, "resref": "trm02_grass01" },
+    { "id": "grassDry", "name": "Dry grass", "category": "Grass", "surface": 3, "resref": "tcn01_grass02" },
+
+    { "id": "dirt", "name": "Dirt", "category": "Earth", "surface": 1, "resref": "tcm02_dirt02" },
+    { "id": "dirtDark", "name": "Dark soil", "category": "Earth", "surface": 1, "resref": "tno01_dirt01" },
+    { "id": "dirtBrown", "name": "Brown earth", "category": "Earth", "surface": 1, "resref": "ttr01_dirt03" },
+    { "id": "dirtForest", "name": "Forest floor", "category": "Earth", "surface": 1, "resref": "ttf02_dirt03" },
+    { "id": "mudSwamp", "name": "Mud", "category": "Earth", "surface": 13, "resref": "trm02_dirt03" },
+    { "id": "mudCracked", "name": "Cracked mud", "category": "Earth", "surface": 1, "resref": "ttd01_driedmud01" },
+    { "id": "earthCracked", "name": "Cracked earth", "category": "Earth", "surface": 1, "resref": "ttd01_crkdrock01" },
+    { "id": "gravelPebbles", "name": "Pebbles", "category": "Earth", "surface": 1, "resref": "ttf01_gravel01" },
+    { "id": "gravelGrey", "name": "Grey gravel", "category": "Earth", "surface": 1, "resref": "ttf02_gravel01" },
+    { "id": "gravelMuddy", "name": "Muddy gravel", "category": "Earth", "surface": 1, "resref": "trm02_gravel" },
+
+    { "id": "sandFine", "name": "Sand", "category": "Sand", "surface": 20, "resref": "ttz01_sand01" },
+    { "id": "sandSoft", "name": "Soft sand", "category": "Sand", "surface": 20, "resref": "tcn01_sand" },
+    { "id": "sandDune", "name": "Dune sand", "category": "Sand", "surface": 20, "resref": "ttd01_grass01" },
+    { "id": "sandSilt", "name": "Silt", "category": "Sand", "surface": 20, "resref": "trm02_sand01" },
+
+    { "id": "rock", "name": "Rock", "category": "Rock", "surface": 4, "resref": "tdm01_rock01" },
+    { "id": "rockCliff", "name": "Cliff rock", "category": "Rock", "surface": 4, "resref": "ttf01_cliff01" },
+    { "id": "swampRock", "name": "Swamp rock", "category": "Rock", "surface": 4, "resref": "trm02_cliff01" },
+    { "id": "canyonRock", "name": "Canyon rock", "category": "Rock", "surface": 4, "resref": "ttd01_cliff01" },
+    { "id": "winterRock", "name": "Winter rock", "category": "Rock", "surface": 4, "resref": "tts01_rock00" },
+    { "id": "rockGrey", "name": "Grey rock", "category": "Rock", "surface": 4, "resref": "tts01_stone18" },
+    { "id": "rockRed", "name": "Red rock", "category": "Rock", "surface": 4, "resref": "ttd01_rock00" },
+    { "id": "rockPale", "name": "Pale granite", "category": "Rock", "surface": 4, "resref": "ttf02_stone06" },
+    { "id": "rockMossy", "name": "Mossy rock", "category": "Rock", "surface": 4, "resref": "trm02_rock01" },
+    { "id": "rockCave", "name": "Cave rock", "category": "Rock", "surface": 4, "resref": "ttu01_rock01" },
+    { "id": "rockSlate", "name": "Slate", "category": "Rock", "surface": 4, "resref": "ttu01_rock3" },
+    { "id": "rockBrown", "name": "Brown rock", "category": "Rock", "surface": 4, "resref": "ttf01_rock00" },
+    { "id": "rockFrosted", "name": "Frosted rock", "category": "Rock", "surface": 4, "resref": "tts02_rock00" },
+
+    { "id": "snowFresh", "name": "Fresh snow", "category": "Snow", "surface": 19, "resref": "tts02_grass02" },
+    { "id": "snowPacked", "name": "Packed snow", "category": "Snow", "surface": 19, "resref": "tts02_dirt07" },
+    { "id": "snowDrift", "name": "Snow drift", "category": "Snow", "surface": 19, "resref": "tts01_grass02" },
+    { "id": "iceFloor", "name": "Ice", "category": "Snow", "surface": 19, "resref": "tti01_icefloor" },
+
+    { "id": "floorBrick", "name": "Brick floor", "category": "Floors", "surface": 4, "resref": "tin01_floor" },
+    { "id": "floorFlag", "name": "Flagstones", "category": "Floors", "surface": 4, "resref": "tin01_stone05" },
+    { "id": "floorStone", "name": "Stone floor", "category": "Floors", "surface": 4, "resref": "tni02_floor01" },
+    { "id": "floorCobble", "name": "Cobblestones", "category": "Floors", "surface": 4, "resref": "tcm02_cobble01" },
+    { "id": "floorSlabs", "name": "Floor slabs", "category": "Floors", "surface": 4, "resref": "tcm02_flrslabs01" },
+    { "id": "floorPlank", "name": "Plank floor", "category": "Floors", "surface": 5, "resref": "tin01_plank" },
+    { "id": "woodOld", "name": "Old planks", "category": "Floors", "surface": 5, "resref": "trs02_planks01" },
+
+    { "id": "wallFieldstone", "name": "Fieldstone", "category": "Walls", "surface": 4, "resref": "trm02_wall01" },
+    { "id": "wallMossy", "name": "Mossy stone", "category": "Walls", "surface": 4, "resref": "ttf02_stone04" },
+    { "id": "wallField", "name": "Fieldstone wall", "category": "Walls", "surface": 4, "resref": "tcm02_wall01" },
+    { "id": "wallWeathered", "name": "Weathered wall", "category": "Walls", "surface": 4, "resref": "trs02_wall03" },
+    { "id": "wallDark", "name": "Dark stone wall", "category": "Walls", "surface": 4, "resref": "tni02_stone01" },
+    { "id": "wallWood", "name": "Dark wood boards", "category": "Walls", "surface": 5, "resref": "tcm02_wood01" }
+  ]
+}
