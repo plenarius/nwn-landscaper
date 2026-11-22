@@ -5,6 +5,13 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **Publishing sends only the files the Landscaper made.** An import copies the textures its cliffs and objects use into
+  `<name>.import/tex/` (sometimes an EE material's texture under the plain name), and an export puts them in the area's hak so
+  it looks right on its own. Those are the game's and the module's haks' own textures, so a publish and a package now leave
+  them out: shipped in a hak under the same name, they would replace the originals in every area.
+
 ## 0.1.1
 
 - **Downloads to unzip and start.** Each release has an archive for Windows (x86-64), macOS (one program for Apple silicon and
