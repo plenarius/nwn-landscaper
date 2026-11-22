@@ -10,7 +10,7 @@
 //!   under the resref the module will know it by (an area built from an existing one keeps that
 //!   one's resref and replaces it), with the builder's hidden mark taken out (it is for
 //!   tracing leaks, not for the module);
-//! - the area's tile files (its hak);
+//! - the area's tile files (its hak), without the textures an import copied from the game or the module's haks;
 //! - the shared texture library hak, which the review service sends on only if the module's haks lack it.
 
 use std::collections::HashMap;
@@ -244,10 +244,37 @@ fn pack_area(name: &str) -> Result<Packed> {
         }
         module_files.push((format!("{target}.{ext}.json"), serde_json::to_vec_pretty(&json)?));
     }
-    let tiles = hak_files(&user_dir.join("hak").join(format!("{name}.hak")))?;
+    let tiles = own_files(hak_files(&user_dir.join("hak").join(format!("{name}.hak")))?, &import_textures(name));
     let docs: Vec<Value> = module_files.iter().filter_map(|(_, b)| serde_json::from_slice(b).ok()).collect();
     let blueprints = crate::newbp::used_by(&docs.iter().collect::<Vec<_>>()).into_iter().map(|(n, t)| (n, t.into_bytes())).collect();
     Ok(Packed { name: name.to_string(), target, rework: e.rework, module_files, tiles, blueprints })
+}
+
+/// The texture files imports copied from the game and the module's haks (`<import>/tex/`, lower case): an export puts
+/// them in its hak so it looks right on its own, but they are the game's, so a publish doesn't send them.
+fn import_textures(name: &str) -> std::collections::HashSet<String> {
+    let mut dirs = vec![crate::paint::import_dir(name).join("tex")];
+    for e in std::fs::read_dir(crate::workspace::exports_dir()).into_iter().flatten().flatten() {
+        if e.file_name().to_string_lossy().ends_with(".import") {
+            dirs.push(e.path().join("tex"));
+        }
+    }
+    dirs.iter()
+        .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten())
+        .map(|e| e.file_name().to_string_lossy().to_lowercase())
+        .collect()
+}
+
+/// The hak's files the Landscaper made: its textures that are copies an import made are left out.
+fn own_files(files: Vec<(String, Vec<u8>)>, copied: &std::collections::HashSet<String>) -> Vec<(String, Vec<u8>)> {
+    const TEXTURES: [&str; 3] = [".dds", ".tga", ".txi"];
+    files
+        .into_iter()
+        .filter(|(f, _)| {
+            let f = f.to_lowercase();
+            !(TEXTURES.iter().any(|x| f.ends_with(x)) && copied.contains(&f))
+        })
+        .collect()
 }
 
 /// The shared texture library the exports carry (the review service sends it on only if the module's haks lack it).
@@ -449,6 +476,15 @@ pub fn package_zip(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_imports_copied_textures_stay_out_of_the_publish() {
+        let copied: std::collections::HashSet<String> = ["tcn01_cobb02.dds", "ttr01_runes.txi"].map(String::from).into();
+        let files = ["hlint_mai_a01.mdl", "TCN01_COBB02.dds", "ttr01_runes.txi", "hlint_mai_a01.dds", "hlint_mai.set"]
+            .map(|f| (f.to_string(), vec![1u8]));
+        let kept: Vec<String> = own_files(files.into(), &copied).into_iter().map(|(f, _)| f).collect();
+        assert_eq!(kept, ["hlint_mai_a01.mdl", "hlint_mai_a01.dds", "hlint_mai.set"]);
+    }
 
     #[test]
     fn the_mark_is_taken_out_everywhere() {
