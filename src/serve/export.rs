@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! What leaves the editor: an export (or the editor's Check), publishing an area or a module through the review service, a
-//! package to download instead, a version in Gitea, and a test on the dev server.
+//! package to download instead, a version in Gitea, and a trial on the dev server.
 
 use std::path::Path;
 
@@ -14,9 +14,9 @@ use super::query::{Query, area_name_ok, checked_area_name, short_name_ok};
 use super::{Answer, Ask, fail, job, json_response, read_body, refuse, response_header};
 use crate::workspace::{areas_dir, exports_dir};
 
-/// Answers the routes of exports, publishing and testing; `None` for any other request.
+/// Answers the routes of exports, publishing and trials; `None` for any other request.
 pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
-    let (me, query) = (&cx.me, cx.query);
+    let query = cx.query;
     Some(match (&cx.method, cx.path) {
         (Method::Post, p @ ("/api/export" | "/api/check")) => {
             let check = p == "/api/check";
@@ -103,37 +103,6 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
                 Err(e) => fail(400, &e),
             }
         }
-        // Testing the builder's module on the dev server (one holder at a time; the review service keeps the claim).
-        (Method::Get, "/api/dev-test") => match crate::devtest::status(query.flag("touch")) {
-            Ok(v) => {
-                json_response(200, &serde_json::json!({ "status": v, "me": me.user, "admin": me.admin, "join": crate::config::dev_join() }))
-            }
-            Err(e) => fail(502, &e),
-        },
-        (Method::Get, "/api/dev-test/waypoints") => match crate::devtest::waypoints(&query.text("area")) {
-            Ok(v) => json_response(200, &v),
-            Err(e) => fail(400, &e),
-        },
-        (Method::Post, "/api/dev-test") => {
-            let (module, area, wp) = (query.text("module"), query.text("area"), query.text("waypoint"));
-            match crate::devtest::start(&module, &area, &wp, &query.text("entry"), query.one("takeover")) {
-                Ok(v) => {
-                    crate::audit::log("dev-test", Some(&module), true, &format!("from {area}/{wp}"));
-                    json_response(200, &v)
-                }
-                Err(e) => {
-                    crate::audit::log("dev-test", Some(&module), false, &format!("{e:#}"));
-                    fail(400, &e)
-                }
-            }
-        }
-        (Method::Post, "/api/dev-test/release") => match crate::devtest::release() {
-            Ok(v) => {
-                crate::audit::log("dev-release", None, true, "");
-                json_response(200, &v)
-            }
-            Err(e) => fail(400, &e),
-        },
         // Try on dev: the areas Publish would send, on the dev server with no restart (one trial per builder).
         (Method::Get, "/api/dev-trial") => match crate::devtrial::status(query.flag("touch")) {
             Ok(mut v) => {

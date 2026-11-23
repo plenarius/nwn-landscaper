@@ -189,8 +189,8 @@ start). When the service stops answering:
 ## Exports and testing
 
 A test module is a skeleton: the area, a start point and the hak list, with no scripts or blueprints of the module. Export builds it
-into the person's `nwn/modules` and `nwn/hak`. If the review service provides a test server, the **Test** button loads the
-export there with a temporary way in from an existing area, one tester at a time.
+into the person's `nwn/modules` and `nwn/hak`. If the review service runs a dev server, **Try on dev** in the Publish dialog
+puts the export there with no restart, one trial per builder; new scripts can't be tried there and go through Publish.
 
 ## Publishing
 
