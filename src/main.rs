@@ -18,6 +18,7 @@ mod cli;
 mod config;
 mod devpack;
 mod devtest;
+mod devtrial;
 mod dialog;
 mod generator;
 mod gitea;

@@ -166,6 +166,30 @@ with an error that says so. The module tested is the builder's last export,
 - **`POST /api/v1/dev/test/release`** (*60 s*): `{ "user": "alice", "admin": false }` gives it back; an admin may release anyone's.
   Answer `{ "queued": true }`, or `403` with a `detail`.
 
+## Trying areas on a dev server (optional)
+
+For a service whose dev game server can take a builder's areas and tile files with no restart. The editor's Publish dialog shows
+**Try on dev** when `GET /api/v1/dev/trial` answers (and not when it answers `503` with `"available": false`: trials are off). One
+trial per builder; a new one replaces their last. Refusals are a `detail` sentence, which the editor shows as it is.
+
+- **`POST /api/v1/dev/trial`** (*15 min*): the `publish-module` form below, without `dry_run`, for the area or its whole module
+  (always with `library_files`: without the shared texture library the floors show magenta). The answer, shown to the builder:
+
+  ```json
+  { "user": "alice", "revs": { "bay1": 4 }, "reconnect": true,
+    "way_in": "Connect to dev, then type ;forge for your areas, ...", "commands": { "bay1": ";forge bay1" },
+    "areas": [{ "akey": "bay1", "new": true, "rev": 4, "tiles_changed": true, "dev": { "applied": true, "message": "" } }],
+    "errors": [{ "akey": "cave2", "detail": "..." }], "skipped": [], "dropped": [], "warnings": [], "expires_in": 3600 }
+  ```
+
+  `reconnect` is true when dev's files changed: everyone on dev with the older files is disconnected about 10 seconds later.
+  `skipped` are areas unchanged since the last trial, `dropped` the last trial's areas this one no longer has (back to live).
+- **`GET /api/v1/dev/trial?user=<user>&touch=<true|false>`** (*60 s*): every trial, `{ "enabled": true, "trials": { "alice":
+  { "akeys": ["bay1"], "expires_in": 3400, ... } } }`; the editor shows only the builder's own. `touch=true` counts as activity
+  (a trial nobody touches for an hour is released); the editor sends it only when the builder asks to keep it longer.
+- **`POST /api/v1/dev/trial/release`** (*60 s*): `{ "user": "alice" }` puts the areas back to live on dev and takes the files
+  off. Answer `{ "released": true, ... }`.
+
 ## Publishing
 
 `POST`, `multipart/form-data`, 15 minutes. With `dry_run` true the service only checks what it was sent and says what the pull
