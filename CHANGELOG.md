@@ -5,6 +5,13 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## 0.2.0
+
+- **Try on dev.** A team server whose review service runs a dev game server can put an area, or its whole module, on dev with
+  no restart (`/api/dev-trial`): it sends what Publish sends, checked the same way, always with the shared texture library. The
+  builder walks in with `;forge <area>`, keeps the trial longer or releases it. docs/REVIEW-SERVICE.md, "Trying areas on a dev
+  server".
+
 ## 0.1.2
 
 - **Publishing sends only the files the Landscaper made.** An import copies the textures its cliffs and objects use into

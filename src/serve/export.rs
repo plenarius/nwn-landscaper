@@ -134,6 +134,35 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             }
             Err(e) => fail(400, &e),
         },
+        // Try on dev: the areas Publish would send, on the dev server with no restart (one trial per builder).
+        (Method::Get, "/api/dev-trial") => match crate::devtrial::status(query.flag("touch")) {
+            Ok(mut v) => {
+                v["join"] = crate::config::dev_join().into();
+                json_response(200, &v)
+            }
+            Err(e) => fail(502, &e),
+        },
+        (Method::Post, "/api/dev-trial") => {
+            let name = query.text("name");
+            match trial_request(&name, query.one("whole"), &query.text("note")) {
+                Ok(v) => {
+                    let areas: Vec<&str> = v["revs"].as_object().into_iter().flatten().map(|(a, _)| a.as_str()).collect();
+                    crate::audit::log("dev-trial", Some(&name), true, &areas.join(", "));
+                    json_response(200, &v)
+                }
+                Err(e) => {
+                    crate::audit::log("dev-trial", Some(&name), false, &format!("{e:#}"));
+                    fail(400, &e)
+                }
+            }
+        }
+        (Method::Post, "/api/dev-trial/release") => match crate::devtrial::release() {
+            Ok(v) => {
+                crate::audit::log("dev-trial-release", None, true, "");
+                json_response(200, &v)
+            }
+            Err(e) => fail(400, &e),
+        },
         (Method::Post, "/api/publish-module") => {
             let module = query.text("module");
             let dry = query.one("dry");
@@ -477,7 +506,15 @@ fn refuse_errors(findings: &[crate::validate::Finding], dry: bool) -> Result<()>
     Ok(())
 }
 
-/// The areas a package or publish covers: `name`, or with `whole` every area exported into its module; each checked
+/// Tries `name` (or with `whole` its module) on dev: the areas a publish would send, checked as a publish is.
+fn trial_request(name: &str, whole: bool, note: &str) -> Result<serde_json::Value> {
+    let (names, findings) = package_areas(name, whole, false)?;
+    let mut v = crate::devtrial::start(&names, note)?;
+    v["findings"] = serde_json::to_value(&findings)?;
+    Ok(v)
+}
+
+/// The areas a package, a publish or a trial on dev covers: `name`, or with `whole` every area exported into its module; each checked
 /// (name guard, assignment, the pre-publish findings). Errors stop a package (not its check, `dry`).
 fn package_areas(name: &str, whole: bool, dry: bool) -> Result<(Vec<String>, Vec<crate::validate::Finding>)> {
     checked_area_name(name)?;

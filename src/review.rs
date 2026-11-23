@@ -263,17 +263,38 @@ pub fn call(method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
     };
     match r {
         Ok(r) => Ok(r.into_json()?),
-        Err(ureq::Error::Status(code, r)) => {
-            let detail = r.into_json::<Value>().ok().map(|v| match &v["detail"] {
-                Value::String(s) => s.clone(),
-                Value::Null => String::new(),
-                other => other.to_string(),
-            });
-            anyhow::bail!("{}", detail.filter(|d| !d.is_empty()).unwrap_or_else(|| format!("the service said {code}")))
-        }
+        Err(ureq::Error::Status(code, r)) => Err(Refused::of(code, r.into_json::<Value>().unwrap_or(Value::Null)).into()),
         Err(e) => anyhow::bail!("the service didn't answer: {}", crate::remote::why(&e)),
     }
 }
+
+/// The review service's refusal: shown, it is its `detail` sentence; `body` is the whole answer.
+#[derive(Debug)]
+pub struct Refused {
+    pub status: u16,
+    pub detail: String,
+    pub body: Value,
+}
+
+impl Refused {
+    /// A refusal from its status and answer: a `detail` that isn't text is shown as JSON.
+    pub fn of(status: u16, body: Value) -> Self {
+        let detail = match &body["detail"] {
+            Value::String(s) => s.clone(),
+            Value::Null => String::new(),
+            other => other.to_string(),
+        };
+        Refused { status, detail, body }
+    }
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.detail.is_empty() { write!(f, "the service said {}", self.status) } else { f.write_str(&self.detail) }
+    }
+}
+
+impl std::error::Error for Refused {}
 
 /// What the module has that an area can refer to (scripts, dialogs, waypoint and door tags): kept ten minutes. None on a
 /// machine of your own, and when the review service doesn't answer and never did (the checks that need it are skipped).
@@ -371,6 +392,14 @@ mod tests {
         });
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert!(started.elapsed() < Duration::from_millis(1500), "{:?}: in turn, not at once", started.elapsed());
+    }
+
+    #[test]
+    fn a_refusal_shows_the_services_sentence() {
+        let r = Refused::of(409, serde_json::json!({ "detail": "bay1 is held by bob", "problems": ["x"] }));
+        assert_eq!((r.status, r.to_string(), r.body["problems"][0].as_str()), (409, "bay1 is held by bob".to_string(), Some("x")));
+        assert_eq!(Refused::of(502, Value::Null).to_string(), "the service said 502");
+        assert_eq!(Refused::of(422, serde_json::json!({ "detail": [{ "loc": "user" }] })).to_string(), r#"[{"loc":"user"}]"#);
     }
 
     #[test]

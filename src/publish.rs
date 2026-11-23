@@ -283,10 +283,14 @@ fn library() -> Option<Vec<(String, Vec<u8>)>> {
     hak_files(&user_dir.join("hak").join(format!("{}.hak", crate::shared::HAK))).ok()
 }
 
-fn send(path: &str, fields: &[(&str, String)], files: &[(String, String, Vec<u8>)]) -> Result<Value> {
+/// Fields and files for the review service, as one multipart form.
+type Form = (Vec<(&'static str, String)>, Vec<(String, String, Vec<u8>)>);
+
+/// Posts a multipart form to the review service; a refusal is a [`crate::review::Refused`].
+pub(crate) fn post_form(path: &str, (fields, files): &Form, service: &str) -> Result<Value> {
     let (url, key) = crate::review::config().context("publishing isn't set up on this server (the review service)")?;
     let borrowed: Vec<(&str, &str, Vec<u8>)> = files.iter().map(|(f, n, d)| (f.as_str(), n.as_str(), d.clone())).collect();
-    let (ctype, body) = multipart(fields, &borrowed);
+    let (ctype, body) = multipart(&fields.iter().map(|(k, v)| (*k, v.clone())).collect::<Vec<_>>(), &borrowed);
     let r = ureq::post(&format!("{url}{path}"))
         .set("Authorization", &format!("Bearer {key}"))
         .set("Content-Type", &ctype)
@@ -294,12 +298,16 @@ fn send(path: &str, fields: &[(&str, String)], files: &[(String, String, Vec<u8>
         .send_bytes(&body);
     match r {
         Ok(r) => Ok(r.into_json()?),
-        Err(ureq::Error::Status(code, r)) => {
-            let detail = r.into_json::<Value>().ok().and_then(|v| v["detail"].as_str().map(str::to_string)).unwrap_or_default();
-            anyhow::bail!("the publishing service said {code}: {detail}")
-        }
-        Err(e) => anyhow::bail!("the publishing service didn't answer: {}", crate::remote::why(&e)),
+        Err(ureq::Error::Status(code, r)) => Err(crate::review::Refused::of(code, r.into_json().unwrap_or(Value::Null)).into()),
+        Err(e) => anyhow::bail!("{service} didn't answer: {}", crate::remote::why(&e)),
     }
+}
+
+fn send(path: &str, form: &Form) -> Result<Value> {
+    post_form(path, form, "the publishing service").map_err(|e| match e.downcast_ref::<crate::review::Refused>() {
+        Some(r) => anyhow::anyhow!("the publishing service said {}: {}", r.status, r.detail),
+        None => e,
+    })
 }
 
 /// Packs `name`'s last export and sends it to the review service. With `dry_run`, the review service only checks
@@ -307,7 +315,7 @@ fn send(path: &str, fields: &[(&str, String)], files: &[(String, String, Vec<u8>
 pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
     crate::review::config().context("publishing isn't set up on this server (the review service)")?;
     let a = pack_area(name)?;
-    let fields = [
+    let fields = vec![
         ("user", crate::workspace::acting_user()),
         ("name", name.to_string()),
         ("area", a.target.clone()),
@@ -325,11 +333,18 @@ pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
     if !a.blueprints.is_empty() {
         files.push(("blueprint_files".to_string(), "blueprints.zip".to_string(), zip_of(&a.blueprints)?));
     }
-    send("/api/v1/areas/publish", &fields, &files)
+    send("/api/v1/areas/publish", &(fields, files))
 }
 
 /// Several areas of one module as one pair of PRs.
 pub fn publish_module(names: &[String], note: &str, dry_run: bool) -> Result<Value> {
+    let (mut fields, files) = module_form(names, note)?;
+    fields.push(("dry_run", dry_run.to_string()));
+    send("/api/v1/areas/publish-module", &(fields, files))
+}
+
+/// `names`' last exports as `publish-module`'s form, without `dry_run` (Try on dev sends the same).
+pub(crate) fn module_form(names: &[String], note: &str) -> Result<Form> {
     crate::review::config().context("publishing isn't set up on this server (the review service)")?;
     anyhow::ensure!(!names.is_empty(), "no areas to publish");
     let mut meta = Vec::new();
@@ -348,13 +363,12 @@ pub fn publish_module(names: &[String], note: &str, dry_run: bool) -> Result<Val
     if !blueprints.is_empty() {
         files.push(("blueprint_files".to_string(), "blueprints.zip".to_string(), zip_of(&blueprints.into_iter().collect::<Vec<_>>())?));
     }
-    let fields = [
+    let fields = vec![
         ("user", crate::workspace::acting_user()),
         ("note", note.chars().take(300).collect()),
-        ("dry_run", dry_run.to_string()),
         ("areas", serde_json::to_string(&meta)?),
     ];
-    send("/api/v1/areas/publish-module", &fields, &files)
+    Ok((fields, files))
 }
 
 /// One area of `publish-module`'s `areas` list: its `kind` is the group its files go in, as in a package ([`area_folder`]).
