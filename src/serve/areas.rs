@@ -85,6 +85,11 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             Err(e) => fail(404, &e),
         },
         (Method::Get, "/api/doors") => json_response(200, &module_doors(&query.text("module"))),
+        // An existing area's waypoints, for a transition to lead to (the review service has them).
+        (Method::Get, "/api/waypoints") => match area_waypoints(&query.text("area")) {
+            Ok(v) => json_response(200, &v),
+            Err(e) => fail(400, &e),
+        },
         _ => return None,
     })
 }
@@ -581,4 +586,30 @@ fn module_doors(module: &str) -> serde_json::Value {
         }
     }
     serde_json::json!({ "doors": out })
+}
+
+/// An existing area's waypoints (tags and places) from the review service, for a transition to lead to.
+fn area_waypoints(area: &str) -> Result<serde_json::Value> {
+    anyhow::ensure!(resref_ok(area), "which area?");
+    crate::review::call("GET", &format!("/api/v1/areas/{}/waypoints", area.to_ascii_lowercase()), None)
+}
+
+/// An existing area's resref as the service's path may carry it: letters, digits, `_ . -`, up to 64, not starting with `.`.
+fn resref_ok(n: &str) -> bool {
+    (1..=64).contains(&n.len()) && !n.starts_with('.') && n.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resrefs_that_may_be_passed_on() {
+        for ok in ["bay1", "WP_gate", "a-b.c"] {
+            assert!(resref_ok(ok), "{ok}");
+        }
+        for bad in ["", ".x", "a b", "a/b", "a;b", &"x".repeat(65)] {
+            assert!(!resref_ok(bad), "{bad}");
+        }
+    }
 }

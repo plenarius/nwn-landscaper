@@ -160,11 +160,9 @@ conversations. A team can limit who may import which of the module's areas (assi
   a workspace holds (100 areas and 5 GB besides its uploads), how slowly a request may arrive, and searches;
   [TEAM-SERVER.md](TEAM-SERVER.md) has the limits and how it answers requests from other sites (the security headers it sends,
   which a proxy in front must not replace).
-- The **Test** button (a builder tries an area on the team's dev server) needs a review service that runs the dev server's
-  claim and deploy, so it is hidden without one. The pieces on the Landscaper's side are `landscaper dev-pack`, which writes the
-  test module (named by `LANDSCAPER_DEV_MODULE`), and the line telling a builder how to join (`LANDSCAPER_DEV_JOIN`).
 - **Try on dev** in the Publish dialog (an area on the dev server with no restart) shows only when the review service answers
-  its trial calls (REVIEW-SERVICE.md, "Trying areas on a dev server"); the join line is the same `LANDSCAPER_DEV_JOIN`.
+  its trial calls (REVIEW-SERVICE.md, "Trying areas on a dev server"); the line telling a builder how to join is
+  `LANDSCAPER_DEV_JOIN`. New scripts can't be tried on dev: they go through Publish.
 - Areas, blueprints and scripts are read from the module checkout's layout and a package uses it too (CONFIGURATION.md).
   Packages are checked in both presets, `nasher` (the default) and `folders` (`tests/package_layouts.rs`); a hand-set layout
   was checked for reading and importing, not for building a package.

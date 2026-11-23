@@ -135,8 +135,8 @@ landscaper marker 3f9a0c12b7de
 
 ### dev-pack
 
-Only with a review service that runs a dev server ([docs/REVIEW-SERVICE.md](docs/REVIEW-SERVICE.md)): the dev server's test
-module, made from the production module and a builder's export, entered from a waypoint of an existing area.
+A test module for a dev server, made from the production module and a builder's export, entered from a waypoint of an existing
+area; how it reaches the dev server is up to you. The editor doesn't use it: its Try on dev goes through the review service.
 
 ```sh
 landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/

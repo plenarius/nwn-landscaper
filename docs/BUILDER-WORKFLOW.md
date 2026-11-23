@@ -115,8 +115,9 @@ A transition needs both ends, and the existing end is a rework of an existing ar
 
 ## Testing
 
-Open the exported module in the toolset or the game. With a review service that provides a test server, the **Test** button loads
-your last export there with a temporary way in from an existing area; one person at a time has it.
+Open the exported module in the toolset or the game. With a review service that runs a dev server, **Try on dev** in the
+Publish dialog puts the area, or its whole module, on dev with no restart; walk in with `;forge <area>`. New scripts can't be
+tried on dev: they go through Publish.
 
 ## Handing over
 

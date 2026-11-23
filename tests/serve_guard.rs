@@ -295,7 +295,6 @@ fn routes() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         p("POST", "/api/assignments?user=bob&area={}"),
         p("POST", "/api/assignments/revoke?user={}&area={}"),
         p("POST", "/api/view-as?user={}"),
-        p("POST", "/api/dev-test?module={}&area={}&waypoint={}"),
         p("GET", "/api/area?name={}"),
         p("DELETE", "/api/area?name={}&base=none"),
         p("GET", "/api/originals?name={}"),
@@ -312,7 +311,7 @@ fn routes() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         p("GET", "/api/links?module={}"),
         p("GET", "/api/model/{}"),
         p("GET", "/api/texture/{}"),
-        p("GET", "/api/dev-test/waypoints?area={}"),
+        p("GET", "/api/waypoints?area={}"),
         p("GET", "/textures/{}"),
         p("GET", "/{}"),
     ]

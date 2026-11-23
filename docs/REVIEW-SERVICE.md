@@ -21,7 +21,7 @@ The service is used only on a team server (`--team`) with both set.
 - **Authentication:** every call sends `Authorization: Bearer <LANDSCAPER_REVIEW_KEY>`.
 - **Answers** are JSON (`Content-Type: application/json`) unless a call below says otherwise.
 - **Errors:** any status other than 2xx is a failure. When the body is JSON with a `detail` string, the Landscaper shows that text
-  to the builder (for example `{"detail": "the dev server is held by alice"}`), so write it for them. `404` on a single area,
+  to the builder (for example `{"detail": "new scripts can't be tried on dev"}`), so write it for them. `404` on a single area,
   blueprint or script means "there is none"; `429` on an area means the builder fetched too many today.
 - **Names** in a path are lower case: an area, blueprint or script resref is letters, digits and `_`, at most 16 characters.
 - **Who asks:** the team server checks who the builder is and what they may do (assignments, admin) before it calls. The service
@@ -91,7 +91,7 @@ counts as empty.
 
 ### `GET /api/v1/areas/<resref>/waypoints` (*60 s*)
 
-An existing area's waypoints, to choose where a test enters from. The editor shows them as they come.
+An existing area's waypoints, for a transition to lead to (*Pick a waypoint of an existing area*). The editor shows them as they come.
 
 ```json
 { "area": "elmwood", "waypoints": [ { "tag": "WP_Gate", "x": 12.5, "y": 40.0 } ] }
@@ -136,41 +136,12 @@ Pictures of the module's own creatures and items, for a service that can draw th
   shows.
 - **`GET /api/v1/icons/<key>.png`:** that icon as a PNG. `|` and `^` in the key are sent as `%7C` and `%5E`.
 
-## Testing on a dev server (optional)
-
-For a service that runs a dev game server builders can test on, one at a time. The editor shows the **Test** button on any team
-server with a review service, and these calls are made only when a builder uses it; a service without a dev server answers them
-with an error that says so. The module tested is the builder's last export,
-`LANDSCAPER_DEV_MODULE.mod` as `landscaper dev-pack` writes it; how it reaches the dev server is the service's business.
-
-- **`GET /api/v1/dev/test?user=<user>&touch=<true|false>`** (*60 s*): who holds the dev server. `touch=true` from the holder
-  counts as activity (the service may release a claim nobody uses).
-
-  ```json
-  { "claim": { "user": "alice", "module": "Mymodule_dev", "area": "elmwood", "waypoint": "WP_Gate", "entry": "",
-               "expires_in": 5400 },
-    "busy": ["deploying"] }
-  ```
-
-  `claim` is `null` when nobody holds it; `expires_in` is seconds. `busy` is what the service is doing to the dev server (shown to
-  the builder, joined with commas), empty or `null` when nothing.
-- **`POST /api/v1/dev/test`** (*60 s*): put the builder's module on the dev server.
-
-  ```json
-  { "user": "alice", "module": "Mymodule_dev", "area": "elmwood", "waypoint": "WP_Gate", "entry": "bay1", "takeover": false }
-  ```
-
-  The way in is from `waypoint` in the existing `area`, leading to the builder's area `entry` (empty: the first). `takeover` is
-  `true` only for an admin taking it from someone. Answer `{ "queued": true, "claim": { ... } }`, or `409` with a `detail` when
-  someone else holds it.
-- **`POST /api/v1/dev/test/release`** (*60 s*): `{ "user": "alice", "admin": false }` gives it back; an admin may release anyone's.
-  Answer `{ "queued": true }`, or `403` with a `detail`.
-
 ## Trying areas on a dev server (optional)
 
 For a service whose dev game server can take a builder's areas and tile files with no restart. The editor's Publish dialog shows
 **Try on dev** when `GET /api/v1/dev/trial` answers (and not when it answers `503` with `"available": false`: trials are off). One
-trial per builder; a new one replaces their last. Refusals are a `detail` sentence, which the editor shows as it is.
+trial per builder; a new one replaces their last. New scripts and `.2da` files need a restart, so a service may refuse them
+here: they go through Publish. Refusals are a `detail` sentence, which the editor shows as it is.
 
 - **`POST /api/v1/dev/trial`** (*15 min*): the `publish-module` form below, without `dry_run`, for the area or its whole module
   (always with `library_files`: without the shared texture library the floors show magenta). The answer, shown to the builder:
