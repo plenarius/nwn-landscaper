@@ -5,7 +5,7 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.2.1
 
 - **The dev server's full test is gone** from the team server: `/api/dev-test` (status, start and release) and the review
   service's `/api/v1/dev/test` calls it made. Try on dev replaces it; new scripts can't be tried on dev and go through Publish.
