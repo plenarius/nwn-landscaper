@@ -5,8 +5,11 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.3.0
 
+- **Released with the editor's 0.3.0**: four sample landscapes in New area (a canyon, a snowy mountain pass, a dune desert, a
+  valley with a lake), Import heightmap, and the underlay, which needs this engine's `/api/underlay`. The self-host image
+  builds that editor (`WEB_REF`).
 - **Underlays.** `/api/underlay?name=<area>` keeps the editor's underlay, a picture laid under an area to trace over (a
   battlemat, a scanned map), as `areas/<name>.underlay` beside the working copy: `PUT` (PNG, JPEG, WebP, GIF or BMP, up to
   16 MB, told by its first bytes; anything else is refused with 415), `GET` (answered as the type its bytes are) and `DELETE`.

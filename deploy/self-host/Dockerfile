@@ -11,7 +11,7 @@ FROM rust:1-bookworm AS build
 ARG WEB_REPO=https://github.com/plenarius/nwn-landscaper-web.git
 # The editor of the same release as this engine: both repositories are tagged vX.Y.Z together, and this is `v` and the version
 # in Cargo.toml (tests/release.rs fails when they disagree). `main` builds the editor's latest, which may not match.
-ARG WEB_REF=v0.2.4
+ARG WEB_REF=v0.3.0
 ARG NWN_NIM=2.3.2
 ARG NWN_NIM_SHA256=f6c896f2821315acc70d2dffd2b8f86f17aa4fc2a549412864c1eab37aadcb19
 RUN apt-get update && apt-get install -y --no-install-recommends cmake git ca-certificates curl unzip && rm -rf /var/lib/apt/lists/*
