@@ -66,12 +66,45 @@ pub struct Scene {
     /// Footprint triangles by 2 m cell.
     cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>>,
     /// The objects' tops on a 0.25 m grid (area metres), for shadows.
-    tops: std::collections::HashMap<(i32, i32), f32>,
+    tops: Tops,
     serial: u64,
 }
 
 const CELL: f32 = 2.0;
-const TOP_CELL: f32 = 0.25;
+/// The tops' grid (m).
+pub const TOP_CELL: f32 = 0.25;
+
+/// The tops' cells, from a cell beyond the area's south-west corner to one beyond its north-east one (no others are marked), as one
+/// array: the shadow maps ask hundreds of millions of times. NaN: nothing there.
+struct Tops {
+    w: i32,
+    h: i32,
+    cells: Vec<f32>,
+}
+
+impl Tops {
+    fn new([aw, ah]: [f32; 2]) -> Tops {
+        let (w, h) = ((aw / TOP_CELL).floor() as i32 + 3, (ah / TOP_CELL).floor() as i32 + 3);
+        Tops { w, h, cells: vec![f32::NAN; (w * h) as usize] }
+    }
+
+    fn index(&self, (cx, cy): (i32, i32)) -> Option<usize> {
+        let (i, j) = (cx + 1, cy + 1);
+        ((0..self.w).contains(&i) && (0..self.h).contains(&j)).then(|| (j * self.w + i) as usize)
+    }
+
+    /// Raises cell `c` to `z` (as a map entry starting at `f32::MIN`).
+    fn mark(&mut self, c: (i32, i32), z: f32) {
+        if let Some(k) = self.index(c) {
+            let e = &mut self.cells[k];
+            *e = if e.is_nan() { f32::MIN.max(z) } else { e.max(z) };
+        }
+    }
+
+    fn get(&self, c: (i32, i32)) -> Option<f32> {
+        self.index(c).map(|k| self.cells[k]).filter(|v| !v.is_nan())
+    }
+}
 
 static SCENE: RwLock<Option<Arc<Scene>>> = RwLock::new(None);
 
@@ -113,7 +146,7 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2]) -> Result<Scene> {
     let game = models::game()?;
     let mut objects = Vec::new();
     let mut cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>> = Default::default();
-    let mut tops: std::collections::HashMap<(i32, i32), f32> = Default::default();
+    let mut tops = Tops::new([aw, ah]);
     for o in list {
         let p = place(o, &*models::flat(game, &o.model)?);
         // Decoration (not solid) doesn't block walking.
@@ -133,8 +166,7 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2]) -> Result<Scene> {
                 if !(-TOP_CELL..=aw + TOP_CELL).contains(&x) || !(-TOP_CELL..=ah + TOP_CELL).contains(&y) {
                     return;
                 }
-                let e = tops.entry(((x / TOP_CELL).floor() as i32, (y / TOP_CELL).floor() as i32)).or_insert(f32::MIN);
-                *e = e.max(z);
+                tops.mark(((x / TOP_CELL).floor() as i32, (y / TOP_CELL).floor() as i32), z);
             };
             for k in 0..3 {
                 let (a, b) = (t[k], t[(k + 1) % 3]);
@@ -183,7 +215,7 @@ impl Scene {
 
     /// The highest object surface over (x, y), if any.
     pub fn top(&self, x: f32, y: f32) -> Option<f32> {
-        self.tops.get(&((x / TOP_CELL).floor() as i32, (y / TOP_CELL).floor() as i32)).copied()
+        self.tops.get(((x / TOP_CELL).floor() as i32, (y / TOP_CELL).floor() as i32))
     }
 }
 
@@ -264,6 +296,25 @@ pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tops_grid_keeps_the_highest_mark_of_each_cell_within_a_cell_of_the_area() {
+        let mut tops = Tops::new([20.0, 10.0]);
+        assert_eq!(tops.get((3, 4)), None);
+        tops.mark((3, 4), 1.5);
+        tops.mark((3, 4), 0.5);
+        assert_eq!(tops.get((3, 4)), Some(1.5));
+        // A cell beyond each corner is on the grid; further is not, and isn't marked.
+        for c in [(-1, -1), (81, 41)] {
+            tops.mark(c, -2.0);
+            assert_eq!(tops.get(c), Some(-2.0));
+        }
+        tops.mark((82, 0), 1.0);
+        assert_eq!((tops.get((82, 0)), tops.get((-2, 0))), (None, None));
+        // A NaN height marks the cell as a map entry starting at f32::MIN would.
+        tops.mark((5, 5), f32::NAN);
+        assert_eq!(tops.get((5, 5)), Some(f32::MIN));
+    }
 
     #[test]
     fn a_triangle_across_a_tile_edge_is_split_between_the_tiles() {

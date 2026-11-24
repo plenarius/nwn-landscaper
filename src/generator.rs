@@ -32,8 +32,8 @@ use self::mdl::{Grid, aabb_body, grid, normal_z, num, trimesh, trimesh_full, tri
 use self::painter::{
     MINIMAP, Painter, SHADOW_MAP, bake_size, entrance_rock, minimap, shadow_map, shadow_mtr, shadow_name, shadow_strength,
 };
-use self::plan::{CROSSING_LIMIT, choose_path_nodes, in_parallel, sim_area_of, tile_crossings_for, tile_mesh, walkmesh_raw};
-pub(crate) use self::plan::{Walk, area_plan, in_parallel_on, walkmesh};
+use self::plan::{CROSSING_LIMIT, choose_path_nodes, plan_digest, sim_area_of, simulate_all, tile_crossings_for, tile_mesh, walkmesh_raw};
+pub(crate) use self::plan::{Walk, area_plan, in_parallel, in_parallel_on, walkmesh};
 pub(crate) use self::terrain::{CLIFF_OVERRIDE, FLAT_OVERRIDE, RUGGED_OVERRIDE, blocked, height};
 use self::terrain::{TRANSITION, flat, in_void, rugged, tile_level};
 use self::tile::{crlf, set_file, surfaced, tile_model, tile_wok};

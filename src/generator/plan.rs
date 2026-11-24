@@ -167,7 +167,7 @@ pub(super) fn as_export<R>(f: impl FnOnce() -> R) -> R {
 
 /// `f` of each item, in order, worked on `--jobs` threads: by default every core in an export ([`as_export`]), half the cores
 /// otherwise (a check).
-pub(super) fn in_parallel<T: Sync + Copy, R: Send>(items: &[T], f: impl Fn(T) -> R + Sync) -> Vec<R> {
+pub(crate) fn in_parallel<T: Sync + Copy, R: Send>(items: &[T], f: impl Fn(T) -> R + Sync) -> Vec<R> {
     let threads = if EXPORTING.get() { crate::config::export_threads() } else { crate::config::threads() };
     in_parallel_on(threads, items, f)
 }
@@ -211,17 +211,73 @@ pub(super) fn sim_area_of(walks: &[Walk], nodes: &[(char, u8)]) -> sim::Area {
     sim::Area::new(tiles_x() as i32, tiles_y() as i32, tiles, TRANSITION)
 }
 
+/// A digest of a plan as the simulator sees it ([`sim_area_of`]'s inputs).
+pub(super) fn plan_digest(walks: &[Walk], nodes: &[(char, u8)]) -> [u8; 20] {
+    use sha1::Digest;
+    let mut h = sha1::Sha1::new();
+    h.update((tiles_x() as u64).to_le_bytes());
+    h.update((tiles_y() as u64).to_le_bytes());
+    for (i, (w, (letter, orient))) in walks.iter().zip(nodes).enumerate() {
+        h.update(tile_level(i % tiles_x(), i / tiles_x()).to_le_bytes());
+        h.update((*letter as u32).to_le_bytes());
+        h.update([*orient]);
+        h.update((w.verts.len() as u64).to_le_bytes());
+        for v in w.verts.iter().flatten() {
+            h.update(v.to_le_bytes());
+        }
+        h.update((w.faces.len() as u64).to_le_bytes());
+        for (f, m) in &w.faces {
+            for k in f {
+                h.update(k.to_le_bytes());
+            }
+            h.update([u8::from(*m != MAT_NONWALK)]);
+        }
+    }
+    h.finalize().into()
+}
+
+/// Simulated routes by their ends (the bits of `from` and `to`).
+type Routes = std::collections::HashMap<[u32; 4], sim::SimResult>;
+
+/// The simulated routes of the last plans, by [`plan_digest`], oldest first: an area exported (or checked) again with the same
+/// walkmeshes (only its paint, light, settings or objects that don't block changed) has the same routes.
+static SIMULATED: std::sync::Mutex<Vec<([u8; 20], Routes)>> = std::sync::Mutex::new(Vec::new());
+
+/// How many plans' routes [`SIMULATED`] keeps.
+const SIMULATED_PLANS: usize = 6;
+
+/// The oracle creature's route between each pair of points (`sim::Query::new`) in `area`, the simulator's view of the plan whose
+/// digest is `plan`, on the cores; the last ones where the plan was the same.
+pub(super) fn simulate_all(area: &sim::Area, plan: [u8; 20], pairs: &[((f32, f32), (f32, f32))]) -> Vec<sim::SimResult> {
+    let key = |(a, b): ((f32, f32), (f32, f32))| [a.0.to_bits(), a.1.to_bits(), b.0.to_bits(), b.1.to_bits()];
+    let kept = || SIMULATED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (_, mut known) = {
+        let mut kept = kept();
+        kept.iter().position(|(d, _)| *d == plan).map_or_else(|| (plan, Routes::new()), |i| kept.remove(i))
+    };
+    let fresh: Vec<_> = pairs.iter().copied().filter(|&p| !known.contains_key(&key(p))).collect();
+    let made = in_parallel(&fresh, |(from, to)| sim::area::simulate(area, &sim::Query::new(from, to), false));
+    known.extend(fresh.into_iter().map(key).zip(made));
+    let out = pairs.iter().map(|&p| known[&key(p)].clone()).collect();
+    let mut kept = kept();
+    if kept.len() >= SIMULATED_PLANS {
+        kept.remove(0);
+    }
+    kept.push((plan, known));
+    out
+}
+
 /// In-tile crossings between exits of one node, with their simulated cost: (units, tile, from, to), area coordinates, worst first.
 /// In-tile crossings of the given tiles (see `untangle`).
 pub(super) fn tile_crossings_for(walks: &[Walk], nodes: &[(char, u8)], tiles: &[usize]) -> Vec<(i64, usize, (f32, f32), (f32, f32))> {
     let area = sim_area_of(walks, nodes);
     let layouts = pathnode::layouts();
     let n = tiles_x();
-    // Each tile's crossings on its own: spread over the cores.
-    let one = |t: usize| -> Vec<(i64, usize, (f32, f32), (f32, f32))> {
-        let mut rows = Vec::new();
+    // Every crossing on its own, spread over the cores (a few tiles hold most of the work).
+    let mut crossings: Vec<(usize, (f32, f32), (f32, f32))> = Vec::new();
+    for &t in tiles {
         let (tx, ty) = ((t % n) as f32 * TILE, (t / n) as f32 * TILE);
-        let Some(l) = layouts.iter().find(|l| (l.letter, l.orientation) == nodes[t]) else { return rows };
+        let Some(l) = layouts.iter().find(|l| (l.letter, l.orientation) == nodes[t]) else { continue };
         for node in &l.nodes {
             for &a in node {
                 for &b in node {
@@ -230,17 +286,16 @@ pub(super) fn tile_crossings_for(walks: &[Walk], nodes: &[(char, u8)], tiles: &[
                     }
                     let inset = |p: (f32, f32)| (p.0.clamp(0.4, 9.6) + tx, p.1.clamp(0.4, 9.6) + ty);
                     let (from, to) = (inset(a), inset(b));
-                    if !area.on_walkmesh(from.0, from.1) || !area.on_walkmesh(to.0, to.1) {
-                        continue;
+                    if area.on_walkmesh(from.0, from.1) && area.on_walkmesh(to.0, to.1) {
+                        crossings.push((t, from, to));
                     }
-                    let r = sim::area::simulate(&area, &sim::Query::new(from, to), false);
-                    rows.push((r.stats.intra_used, t, from, to));
                 }
             }
         }
-        rows
-    };
-    let mut rows: Vec<_> = in_parallel(tiles, one).into_iter().flatten().collect();
+    }
+    let pairs: Vec<_> = crossings.iter().map(|&(_, from, to)| (from, to)).collect();
+    let routes = simulate_all(&area, plan_digest(walks, nodes), &pairs);
+    let mut rows: Vec<_> = crossings.into_iter().zip(routes).map(|((t, from, to), r)| (r.stats.intra_used, t, from, to)).collect();
     rows.sort_by_key(|r| std::cmp::Reverse(r.0));
     rows
 }

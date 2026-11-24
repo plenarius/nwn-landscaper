@@ -119,12 +119,17 @@ impl Texture {
         out
     }
 
-    /// Colour at area point (x, y) on level ground.
-    pub fn ground(&self, x: f32, y: f32) -> [f32; 3] {
-        let Some(t) = &self.tiles else { return self.sample(x / TEXTURE_METRES, y / TEXTURE_METRES) };
+    /// An import's picture drawn at area point (x, y), and its tile; None for a library texture.
+    pub fn picture_at(&self, x: f32, y: f32) -> Option<(&Rgba, usize, usize)> {
+        let t = self.tiles.as_ref()?;
         let rows = t.pictures.len() / t.width.max(1);
         let (tx, ty) = (((x / 10.0) as usize).min(t.width - 1), ((y / 10.0) as usize).min(rows.max(1) - 1));
-        let p = &t.pictures[ty * t.width + tx];
+        Some((&t.pictures[ty * t.width + tx], tx, ty))
+    }
+
+    /// Colour at area point (x, y) on level ground.
+    pub fn ground(&self, x: f32, y: f32) -> [f32; 3] {
+        let Some((p, tx, ty)) = self.picture_at(x, y) else { return self.sample(x / TEXTURE_METRES, y / TEXTURE_METRES) };
         let (w, h) = (p.width as usize, p.height as usize);
         let fx = ((x - tx as f32 * 10.0) / 10.0 * w as f32 - 0.5).clamp(0.0, w as f32 - 1.0);
         let fy = ((y - ty as f32 * 10.0) / 10.0 * h as f32 - 0.5).clamp(0.0, h as f32 - 1.0);
@@ -177,7 +182,7 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
 /// An import's pictures as a texture (its mean colour over them all).
 fn load_import(name: &str) -> Result<Texture> {
     let dir = import_dir(name);
-    let mut pictures = Vec::new();
+    let mut paths = Vec::new();
     let (mut width, mut sum, mut count) = (0, [0f64; 3], 0f64);
     for ty in 0.. {
         if !dir.join(format!("00{ty:02}.png")).exists() {
@@ -191,15 +196,28 @@ fn load_import(name: &str) -> Result<Texture> {
                 }
                 break;
             }
-            let img = read_png(&p)?;
-            for px in img.data.as_chunks::<4>().0 {
-                for k in 0..3 {
-                    sum[k] += f64::from(px[k]);
-                }
-            }
-            count += f64::from(img.width * img.height) * 255.0;
-            pictures.push(img);
+            paths.push(p);
         }
+    }
+    // Read side by side, each with its channels' sums (whole numbers, so adding them up after is exact).
+    let read = crate::generator::in_parallel(&paths.iter().collect::<Vec<_>>(), |p| -> Result<(Rgba, [u64; 3])> {
+        let img = read_png(p)?;
+        let mut sums = [0u64; 3];
+        for px in img.data.as_chunks::<4>().0 {
+            for k in 0..3 {
+                sums[k] += u64::from(px[k]);
+            }
+        }
+        Ok((img, sums))
+    });
+    let mut pictures = Vec::with_capacity(read.len());
+    for r in read {
+        let (img, sums) = r?;
+        for k in 0..3 {
+            sum[k] += sums[k] as f64;
+        }
+        count += f64::from(img.width * img.height) * 255.0;
+        pictures.push(img);
     }
     anyhow::ensure!(width > 0 && !pictures.is_empty(), "no imported pictures in {}", dir.display());
     let mean = [(sum[0] / count) as f32, (sum[1] / count) as f32, (sum[2] / count) as f32];

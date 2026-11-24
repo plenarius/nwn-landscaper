@@ -5,6 +5,14 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **Export is faster, and an export again much faster.** Each tile's files (its baked texture, shadow map, model, walkmesh and
+  minimap) are made on every core at once, the in-tile crossings check spreads single crossings instead of whole tiles, and an
+  import's pictures load side by side. `landscaper serve` keeps the last exports' baked textures, shadow maps and simulated routes by
+  what they are made from: exported again, only the tiles whose paint or ground changed are baked again, and the route checks
+  run again only when the walkmeshes changed. What an export writes is the same, byte for byte.
+
 ## 0.2.2
 
 - **A trusted service can list and fetch a builder's exports.** With `LANDSCAPER_SERVICE_KEY` set, a team server answers
