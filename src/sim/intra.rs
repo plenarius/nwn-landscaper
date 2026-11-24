@@ -95,6 +95,8 @@ struct Search<'m> {
     lines: std::cell::Cell<u64>,
     /// Abandon the search past this many line tests (the call cap).
     line_limit: u64,
+    /// Abandon the search past this many work units ([`crate::sim::Query::intra_cap`]).
+    work_limit: i64,
 }
 
 impl Search<'_> {
@@ -123,6 +125,9 @@ impl Search<'_> {
     fn dfs(&mut self, depth: usize, g: f32, tri: i32, x: f32, y: f32) -> i32 {
         if self.lines.get() > self.line_limit {
             // Out of time: the request's call cap ends it.
+            return ACTION_IN_PROGRESS;
+        }
+        if self.used > self.work_limit {
             return ACTION_IN_PROGRESS;
         }
         self.used += 12;
@@ -472,6 +477,7 @@ impl<'a> Planner<'a> {
             debug: std::env::var_os("LS_SIM_DEBUG").is_some(),
             lines: std::cell::Cell::new(0),
             line_limit: self.line_cap.saturating_sub(self.stats.intra_lines),
+            work_limit: self.intra_cap.saturating_sub(self.stats.intra_used),
         };
         self.stats.intra_calls += 1;
         if self.pf.route_len == 1 {

@@ -12,6 +12,10 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   import's pictures load side by side. `landscaper serve` keeps the last exports' baked textures, shadow maps and simulated routes by
   what they are made from: exported again, only the tiles whose paint or ground changed are baked again, and the route checks
   run again only when the walkmeshes changed. What an export writes is the same, byte for byte.
+- **Export's check for winding tiles is faster.** Each way across a tile stops being searched once it is over the limit
+  (200,000 units of work), so the step takes about a second where one bad tile made it 8 (a 13x12 area). The warning says
+  "over 200,000" instead of the exact cost (the report's `units` is now `over`, the limit), and its marker is on one of the
+  tile's ways over the limit, not always the worst. What an export writes is the same, byte for byte.
 
 ## 0.2.2
 

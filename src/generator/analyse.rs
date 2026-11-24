@@ -48,6 +48,29 @@ pub(super) fn start_point() -> [f32; 3] {
     [cx, cy, height(cx, cy)]
 }
 
+/// The export warning's words for a tile with `count` crossings over [`CROSSING_LIMIT`].
+fn crossing_why(count: usize) -> String {
+    let which = if count == 1 { "one way across it costs".to_string() } else { format!("{count} ways across it each cost") };
+    format!(
+        "the walkable ground inside this tile is too winding for NWN's in-tile search (a U-shaped or narrow passage): {which} the \
+         search over {} units of work, more than it allows; straighten or widen it",
+        thousands(CROSSING_LIMIT)
+    )
+}
+
+/// `n` with commas between thousands.
+fn thousands(n: i64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// Where planning closed a passage (see `export`): places where ground joined before path nodes were fitted is apart after. Either the
 /// ground between was made unwalkable (a patch bordering two now-separate pieces), or both sides are still walkable but no longer
 /// joined across a tile edge. One point a place (cuts within 3 m merged).
@@ -256,7 +279,7 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         })
     } else {
         let ends: Vec<_> = pairs.iter().map(|p| (p.from, p.to)).collect();
-        simulate_all(&area, plan_digest(&plan.0, &plan.1), &ends)
+        simulate_all(&area, plan_digest(&plan.0, &plan.1), &ends, i64::MAX)
     };
     for (p, r) in pairs.iter().zip(routes) {
         total += 1;
@@ -270,24 +293,19 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         }
     }
     lap("routes");
-    // One warning per tile with expensive crossings: its worst one and how many.
+    // One warning per tile with crossings over the limit: one of them and how many. Each search stops at the limit.
     let all: Vec<usize> = (0..tiles_x() * tiles_y()).collect();
-    let mut per_tile: std::collections::BTreeMap<usize, (i64, (f32, f32), (f32, f32), usize)> = Default::default();
-    for (units, t, from, to) in tile_crossings_for(&plan.0, &plan.1, &all) {
+    let mut per_tile: std::collections::BTreeMap<usize, ((f32, f32), (f32, f32), usize)> = Default::default();
+    for (units, t, from, to) in tile_crossings_for(&plan.0, &plan.1, &all, CROSSING_LIMIT) {
         if units > CROSSING_LIMIT {
-            let e = per_tile.entry(t).or_insert((units, from, to, 0));
-            if units > e.0 {
-                *e = (units, from, to, e.3);
-            }
-            e.3 += 1;
+            per_tile.entry(t).or_insert((from, to, 0)).2 += 1;
         }
     }
-    for (t, (units, from, to, count)) in per_tile {
+    for (t, (from, to, count)) in per_tile {
         warnings.push(serde_json::json!({
             "kind": "expensive_crossing", "tile": [t % tiles_x(), t / tiles_x()],
-            "from": [from.0, from.1], "to": [to.0, to.1], "units": units, "crossings": count,
-            "why": "the walkable ground inside this tile is too winding for NWN's in-tile search (a U-shaped or narrow passage); \
-                    straighten or widen it",
+            "from": [from.0, from.1], "to": [to.0, to.1], "over": CROSSING_LIMIT, "crossings": count,
+            "why": crossing_why(count),
         }));
     }
     lap("crossings");
@@ -329,4 +347,18 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         out.join("report.json").display()
     );
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{crossing_why, thousands};
+
+    #[test]
+    fn the_crossing_warning_names_the_limit() {
+        assert_eq!(thousands(200_000), "200,000");
+        assert_eq!(thousands(1_234_567), "1,234,567");
+        assert_eq!(thousands(999), "999");
+        assert!(crossing_why(1).contains(": one way across it costs the search over 200,000 units of work, more than"));
+        assert!(crossing_why(3).contains(": 3 ways across it each cost the search over 200,000 units of work, more than"));
+    }
 }
