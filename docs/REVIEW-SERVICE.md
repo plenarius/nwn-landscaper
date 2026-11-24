@@ -167,6 +167,12 @@ here: they go through Publish. Refusals are a `detail` sentence, which the edito
 requests would hold; the editor shows that before the builder confirms, then sends the same with `dry_run` false. The service opens
 the pull requests; the Landscaper never merges anything. Each zip holds files at the paths they go to.
 
+A dry run names the tile and library files instead of sending them: `hak_manifest` (`tiles.json`) and `library_manifest`
+(`library.json`) in place of `hak_files` and `library_files`, each a JSON object `{ "<file>": ["<git blob id>", <size>] }`, so
+the service can compare them with the files the module's haks already have. A service that wants the files themselves answers
+422 to a form without `hak_files` (FastAPI's own refusal does), and the team server sends the check again with the zips. A real
+publish always sends the zips.
+
 ### `POST /api/v1/areas/publish`
 
 One area. Fields:
@@ -187,10 +193,11 @@ One area. Fields:
 ### `POST /api/v1/areas/publish-module`
 
 Several areas as one set of pull requests. Fields: `user`, `note`, `dry_run`, `areas` (a JSON list of
-`{ "name", "area", "new", "kind" }`), then for each area `module_<name>` and `hak_<name>` (zips as above), and the optional
-`library_files` and `blueprint_files`. `kind` is the group (the folder inside the areas folder) the area's files go in, as in a
-package: the folder the area is already in when the team server has a module checkout, else `LANDSCAPER_AREA_FOLDER` (`core` in
-the `folders` layout, empty, for none, in nasher's). A service that knows where a reworked area is should keep it there.
+`{ "name", "area", "new", "kind" }`), then for each area `module_<name>` and `hak_<name>` (zips as above; on a dry run
+`hakmanifest_<name>` instead of `hak_<name>`), and the optional `library_files` (or `library_manifest`) and `blueprint_files`.
+`kind` is the group (the folder inside the areas folder) the area's files go in, as in a package: the folder the area is already
+in when the team server has a module checkout, else `LANDSCAPER_AREA_FOLDER` (`core` in the `folders` layout, empty, for none,
+in nasher's). A service that knows where a reworked area is should keep it there.
 
 ### The answer
 

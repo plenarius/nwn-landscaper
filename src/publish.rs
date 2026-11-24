@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use mg_core::ResType;
@@ -71,7 +72,8 @@ fn strip_mark(v: &mut Value) {
 }
 
 fn zip_of(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
-    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::with_capacity(files.iter().map(|(_, d)| d.len()).sum::<usize>() / 2)));
+    // Deflate for all: an area's DDS still shrinks to about 2/3, and a pack is made once (in the background after a check).
     let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     for (name, data) in files {
         z.start_file(name, opts)?;
@@ -87,21 +89,113 @@ fn hak_files(path: &Path) -> Result<Vec<(String, Vec<u8>)>> {
     erf.entries.iter().map(|e| Ok((e.filename(), erf.data(e)?.into_owned()))).collect()
 }
 
+/// The git blob id of `data`, as GitHub's trees list it (the review service compares a dry run's files with nwn-haks by it).
+fn blob_sha(data: &[u8]) -> String {
+    use sha1::Digest;
+    let mut h = sha1::Sha1::new();
+    h.update(format!("blob {}\0", data.len()).as_bytes());
+    h.update(data);
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A hak's files as a publish sends them: read once, its zip and its list (names, blob ids, sizes) made when first asked for.
+pub(crate) struct Pack {
+    files: Vec<(String, Vec<u8>)>,
+    zip: std::sync::Mutex<Option<Arc<Vec<u8>>>>,
+    manifest: std::sync::OnceLock<Vec<u8>>,
+}
+
+impl Pack {
+    fn new(files: Vec<(String, Vec<u8>)>) -> Self {
+        Pack { files, zip: Default::default(), manifest: Default::default() }
+    }
+
+    /// The files as a zip (packed once).
+    fn zip(&self) -> Result<Arc<Vec<u8>>> {
+        let mut z = self.zip.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(z) = &*z {
+            return Ok(z.clone());
+        }
+        let made = Arc::new(zip_of(&self.files)?);
+        *z = Some(made.clone());
+        Ok(made)
+    }
+
+    /// The files as a dry run names them: JSON `{file: [git blob id, size]}`.
+    fn manifest(&self) -> Vec<u8> {
+        self.manifest
+            .get_or_init(|| {
+                let m: serde_json::Map<String, Value> =
+                    self.files.iter().map(|(n, d)| (n.clone(), json!([blob_sha(d), d.len()]))).collect();
+                serde_json::to_vec(&m).unwrap_or_default()
+            })
+            .clone()
+    }
+
+    fn bytes(&self) -> usize {
+        self.files.iter().map(|(_, d)| d.len()).sum::<usize>()
+            + self.zip.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().map_or(0, |z| z.len())
+    }
+}
+
+/// What a hak's [`Pack`] was made from: the file as it was, and anything else that chose its files.
+#[derive(PartialEq, Eq, Clone)]
+struct PackKey {
+    path: std::path::PathBuf,
+    modified: Option<std::time::SystemTime>,
+    len: u64,
+    other: u64,
+}
+
+/// Bytes of packs kept (the last ones used); an area's are about twice its hak.
+const KEPT_BYTES: usize = 768 << 20;
+
+/// `path`'s files as `make` chooses them, from the cache while the hak (and `other`) is unchanged: a check, the pull requests and a
+/// try on dev of the same export pack it once.
+fn packed(path: &Path, other: u64, make: impl FnOnce(Vec<(String, Vec<u8>)>) -> Vec<(String, Vec<u8>)>) -> Result<Arc<Pack>> {
+    static KEPT: std::sync::Mutex<Vec<(PackKey, Arc<Pack>)>> = std::sync::Mutex::new(Vec::new());
+    let meta = std::fs::metadata(path).with_context(|| format!("no {}", path.display()))?;
+    let key = PackKey { path: path.to_path_buf(), modified: meta.modified().ok(), len: meta.len(), other };
+    let lock = || KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    {
+        let mut kept = lock();
+        if let Some(i) = kept.iter().position(|(k, _)| *k == key) {
+            let hit = kept.remove(i);
+            let pack = hit.1.clone();
+            kept.push(hit);
+            return Ok(pack);
+        }
+    }
+    let pack = Arc::new(Pack::new(make(hak_files(path)?)));
+    let mut kept = lock();
+    kept.retain(|(k, _)| k.path != key.path);
+    kept.push((key, pack.clone()));
+    while kept.len() > 1 && kept.iter().map(|(_, p)| p.bytes()).sum::<usize>() > KEPT_BYTES {
+        kept.remove(0);
+    }
+    Ok(pack)
+}
+
 /// A multipart/form-data body: text fields, then files (field, file name, bytes).
-fn multipart(fields: &[(&str, String)], files: &[(&str, &str, Vec<u8>)]) -> (String, Vec<u8>) {
+fn multipart(fields: &[(&str, String)], files: &[(&str, &str, &[u8])]) -> (String, Vec<u8>) {
     let boundary = format!("----ls{:016x}", fastrand::u64(..));
-    let mut body = Vec::new();
+    let mut body = Vec::with_capacity(files.iter().map(|(_, _, d)| d.len() + 200).sum::<usize>() + 1024);
     for (k, v) in fields {
         body.extend(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
     }
     for (k, name, data) in files {
         body.extend(
             format!(
-                "--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"; filename=\"{name}\"\r\nContent-Type: application/zip\r\n\r\n"
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"; filename=\"{name}\"\r\nContent-Type: {}\r\n\r\n",
+                if Path::new(name).extension().is_some_and(|x| x.eq_ignore_ascii_case("json")) {
+                    "application/json"
+                } else {
+                    "application/zip"
+                }
             )
             .as_bytes(),
         );
-        body.extend(data);
+        body.extend_from_slice(data);
         body.extend(b"\r\n");
     }
     body.extend(format!("--{boundary}--\r\n").as_bytes());
@@ -114,7 +208,7 @@ struct Packed {
     target: String,
     rework: bool,
     module_files: Vec<(String, Vec<u8>)>,
-    tiles: Vec<(String, Vec<u8>)>,
+    tiles: Arc<Pack>,
     /// The builder's new blueprints this area uses (`<resref>.<ext>.json`).
     blueprints: Vec<(String, Vec<u8>)>,
 }
@@ -244,7 +338,16 @@ fn pack_area(name: &str) -> Result<Packed> {
         }
         module_files.push((format!("{target}.{ext}.json"), serde_json::to_vec_pretty(&json)?));
     }
-    let tiles = own_files(hak_files(&user_dir.join("hak").join(format!("{name}.hak")))?, &import_textures(name));
+    let copied = import_textures(name);
+    let other = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut sorted: Vec<&String> = copied.iter().collect();
+        sorted.sort();
+        sorted.hash(&mut h);
+        h.finish()
+    };
+    let tiles = packed(&user_dir.join("hak").join(format!("{name}.hak")), other, |files| own_files(files, &copied))?;
     let docs: Vec<Value> = module_files.iter().filter_map(|(_, b)| serde_json::from_slice(b).ok()).collect();
     let blueprints = crate::newbp::used_by(&docs.iter().collect::<Vec<_>>()).into_iter().map(|(n, t)| (n, t.into_bytes())).collect();
     Ok(Packed { name: name.to_string(), target, rework: e.rework, module_files, tiles, blueprints })
@@ -278,18 +381,18 @@ fn own_files(files: Vec<(String, Vec<u8>)>, copied: &std::collections::HashSet<S
 }
 
 /// The shared texture library the exports carry (the review service sends it on only if the module's haks lack it).
-fn library() -> Option<Vec<(String, Vec<u8>)>> {
+fn library() -> Option<Arc<Pack>> {
     let user_dir = crate::workspace::nwn_user_dir()?;
-    hak_files(&user_dir.join("hak").join(format!("{}.hak", crate::shared::HAK))).ok()
+    packed(&user_dir.join("hak").join(format!("{}.hak", crate::shared::HAK)), 0, |f| f).ok()
 }
 
 /// Fields and files for the review service, as one multipart form.
-type Form = (Vec<(&'static str, String)>, Vec<(String, String, Vec<u8>)>);
+type Form = (Vec<(&'static str, String)>, Vec<(String, String, Arc<Vec<u8>>)>);
 
 /// Posts a multipart form to the review service; a refusal is a [`crate::review::Refused`].
 pub(crate) fn post_form(path: &str, (fields, files): &Form, service: &str) -> Result<Value> {
     let (url, key) = crate::review::config().context("publishing isn't set up on this server (the review service)")?;
-    let borrowed: Vec<(&str, &str, Vec<u8>)> = files.iter().map(|(f, n, d)| (f.as_str(), n.as_str(), d.clone())).collect();
+    let borrowed: Vec<(&str, &str, &[u8])> = files.iter().map(|(f, n, d)| (f.as_str(), n.as_str(), d.as_slice())).collect();
     let (ctype, body) = multipart(&fields.iter().map(|(k, v)| (*k, v.clone())).collect::<Vec<_>>(), &borrowed);
     let r = ureq::post(&format!("{url}{path}"))
         .set("Authorization", &format!("Bearer {key}"))
@@ -304,17 +407,59 @@ pub(crate) fn post_form(path: &str, (fields, files): &Form, service: &str) -> Re
 }
 
 fn send(path: &str, form: &Form) -> Result<Value> {
-    post_form(path, form, "the publishing service").map_err(|e| match e.downcast_ref::<crate::review::Refused>() {
+    send_result(post_form(path, form, "the publishing service"))
+}
+
+/// Whether a dry run's refusal is an older review service's that wants the tile files themselves, not their list.
+fn wants_the_files(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<crate::review::Refused>()
+        .is_some_and(|r| r.status == 422 && (r.body["detail"].is_array() || r.detail.contains("tile files are missing")))
+}
+
+/// Sends a check: the form naming the tile files (`listed`), or to an older review service the one with the files (`full`).
+/// A check that passes packs the zips in the background, for the pull requests or a try on dev that usually follow.
+fn send_check(path: &str, listed: &Form, full: impl FnOnce() -> Result<Form>, packs: Vec<Arc<Pack>>) -> Result<Value> {
+    let r = match post_form(path, listed, "the publishing service") {
+        Err(e) if wants_the_files(&e) => send(path, &full()?),
+        r => send_result(r),
+    };
+    if r.is_ok() {
+        std::thread::spawn(move || packs.iter().for_each(|p| drop(p.zip())));
+    }
+    r
+}
+
+fn send_result(r: Result<Value>) -> Result<Value> {
+    r.map_err(|e| match e.downcast_ref::<crate::review::Refused>() {
         Some(r) => anyhow::anyhow!("the publishing service said {}: {}", r.status, r.detail),
         None => e,
     })
 }
 
+/// A file of a form.
+fn part(field: &str, file: &str, data: Vec<u8>) -> (String, String, Arc<Vec<u8>>) {
+    part_of(field, file, Arc::new(data))
+}
+
+/// A hak's part of a form (`<stem>.zip`): its zip, or for a check its list of files (`<stem>.json`).
+fn tiles_part(field: &str, listed_field: &str, stem: &str, pack: &Pack, listed: bool) -> Result<(String, String, Arc<Vec<u8>>)> {
+    Ok(if listed {
+        part(listed_field, &format!("{stem}.json"), pack.manifest())
+    } else {
+        part_of(field, &format!("{stem}.zip"), pack.zip()?)
+    })
+}
+
+fn part_of(field: &str, file: &str, data: Arc<Vec<u8>>) -> (String, String, Arc<Vec<u8>>) {
+    (field.to_string(), file.to_string(), data)
+}
+
 /// Packs `name`'s last export and sends it to the review service. With `dry_run`, the review service only checks
-/// it and says what the PRs would hold.
+/// it and says what the PRs would hold (sent the tile files' names and blob ids, not the files).
 pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
     crate::review::config().context("publishing isn't set up on this server (the review service)")?;
     let a = pack_area(name)?;
+    let lib = library();
     let fields = vec![
         ("user", crate::workspace::acting_user()),
         ("name", name.to_string()),
@@ -323,52 +468,74 @@ pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
         ("note", note.chars().take(300).collect()),
         ("dry_run", dry_run.to_string()),
     ];
-    let mut files = vec![
-        ("module_files".to_string(), "module.zip".to_string(), zip_of(&a.module_files)?),
-        ("hak_files".to_string(), "tiles.zip".to_string(), zip_of(&a.tiles)?),
-    ];
-    if let Some(lib) = library() {
-        files.push(("library_files".to_string(), "library.zip".to_string(), zip_of(&lib)?));
+    let form = |listed: bool| -> Result<Form> {
+        let mut files = vec![
+            part("module_files", "module.zip", zip_of(&a.module_files)?),
+            tiles_part("hak_files", "hak_manifest", "tiles", &a.tiles, listed)?,
+        ];
+        if let Some(lib) = &lib {
+            files.push(tiles_part("library_files", "library_manifest", "library", lib, listed)?);
+        }
+        if !a.blueprints.is_empty() {
+            files.push(part("blueprint_files", "blueprints.zip", zip_of(&a.blueprints)?));
+        }
+        Ok((fields.clone(), files))
+    };
+    let path = "/api/v1/areas/publish";
+    if !dry_run {
+        return send(path, &form(false)?);
     }
-    if !a.blueprints.is_empty() {
-        files.push(("blueprint_files".to_string(), "blueprints.zip".to_string(), zip_of(&a.blueprints)?));
-    }
-    send("/api/v1/areas/publish", &(fields, files))
+    send_check(path, &form(true)?, || form(false), std::iter::once(a.tiles.clone()).chain(lib.clone()).collect())
 }
 
 /// Several areas of one module as one pair of PRs.
 pub fn publish_module(names: &[String], note: &str, dry_run: bool) -> Result<Value> {
-    let (mut fields, files) = module_form(names, note)?;
-    fields.push(("dry_run", dry_run.to_string()));
-    send("/api/v1/areas/publish-module", &(fields, files))
+    let path = "/api/v1/areas/publish-module";
+    let dry = |mut f: Form| {
+        f.0.push(("dry_run", dry_run.to_string()));
+        f
+    };
+    if !dry_run {
+        return send(path, &dry(module_form(names, note)?));
+    }
+    let (listed, packs) = module_form_of(names, note, true)?;
+    send_check(path, &dry(listed), || Ok(dry(module_form(names, note)?)), packs)
 }
 
 /// `names`' last exports as `publish-module`'s form, without `dry_run` (Try on dev sends the same).
 pub(crate) fn module_form(names: &[String], note: &str) -> Result<Form> {
+    Ok(module_form_of(names, note, false)?.0)
+}
+
+/// [`module_form`], or (`listed`, a check) naming the tile files instead of sending them; and the packs it is made of.
+fn module_form_of(names: &[String], note: &str, listed: bool) -> Result<(Form, Vec<Arc<Pack>>)> {
     crate::review::config().context("publishing isn't set up on this server (the review service)")?;
     anyhow::ensure!(!names.is_empty(), "no areas to publish");
     let mut meta = Vec::new();
     let mut files = Vec::new();
+    let mut packs = Vec::new();
     let mut blueprints: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
     for n in names {
         let a = pack_area(n).with_context(|| n.clone())?;
         blueprints.extend(a.blueprints.iter().cloned());
         meta.push(module_entry(&a, &area_folder(&a.target)));
-        files.push((format!("module_{}", a.name), "module.zip".to_string(), zip_of(&a.module_files)?));
-        files.push((format!("hak_{}", a.name), "tiles.zip".to_string(), zip_of(&a.tiles)?));
+        files.push(part(&format!("module_{}", a.name), "module.zip", zip_of(&a.module_files)?));
+        files.push(tiles_part(&format!("hak_{}", a.name), &format!("hakmanifest_{}", a.name), "tiles", &a.tiles, listed)?);
+        packs.push(a.tiles.clone());
     }
     if let Some(lib) = library() {
-        files.push(("library_files".to_string(), "library.zip".to_string(), zip_of(&lib)?));
+        files.push(tiles_part("library_files", "library_manifest", "library", &lib, listed)?);
+        packs.push(lib);
     }
     if !blueprints.is_empty() {
-        files.push(("blueprint_files".to_string(), "blueprints.zip".to_string(), zip_of(&blueprints.into_iter().collect::<Vec<_>>())?));
+        files.push(part("blueprint_files", "blueprints.zip", zip_of(&blueprints.into_iter().collect::<Vec<_>>())?));
     }
     let fields = vec![
         ("user", crate::workspace::acting_user()),
         ("note", note.chars().take(300).collect()),
         ("areas", serde_json::to_string(&meta)?),
     ];
-    Ok((fields, files))
+    Ok(((fields, files), packs))
 }
 
 /// One area of `publish-module`'s `areas` list: its `kind` is the group its files go in, as in a package ([`area_folder`]).
@@ -413,10 +580,10 @@ pub fn package(names: &[String]) -> Result<(Vec<(String, Vec<u8>)>, Value)> {
         for (f, b) in &a.module_files {
             files.insert(crate::config::rel(&[&layout.areas, &folder, f]), b.clone());
         }
-        for (f, b) in &a.tiles {
+        for (f, b) in &a.tiles.files {
             files.insert(format!("haks/{}/{f}", a.name), b.clone());
         }
-        tile_files += a.tiles.len();
+        tile_files += a.tiles.files.len();
         blueprints.extend(a.blueprints.iter().cloned());
         manifest += &format!(
             "- **{}** ({}): `{}/`, tile files in `haks/{}/` (put them in a hak that your module lists)\n",
@@ -431,8 +598,8 @@ pub fn package(names: &[String]) -> Result<(Vec<(String, Vec<u8>)>, Value)> {
         }
     }
     if let Some(lib) = library() {
-        for (f, b) in lib {
-            files.insert(format!("haks/{}/{f}", crate::shared::HAK), b);
+        for (f, b) in &lib.files {
+            files.insert(format!("haks/{}/{f}", crate::shared::HAK), b.clone());
         }
         manifest +=
             &format!("- the shared texture library every Landscaper area uses: `haks/{}/` (one hak for all areas)\n", crate::shared::HAK);
@@ -533,7 +700,7 @@ mod tests {
             target: target.into(),
             rework,
             module_files: Vec::new(),
-            tiles: Vec::new(),
+            tiles: Arc::new(Pack::new(Vec::new())),
             blueprints: Vec::new(),
         };
         let kind = |l: &crate::config::Layout, target: &str| area_folder_in(l, &areas, target);
@@ -558,8 +725,60 @@ mod tests {
     }
 
     #[test]
+    fn a_blob_id_is_gits() {
+        // `printf hello | git hash-object --stdin`
+        assert_eq!(blob_sha(b"hello"), "b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0");
+        assert_eq!(blob_sha(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391");
+    }
+
+    #[test]
+    fn a_hak_is_packed_once_until_it_changes() {
+        let dir = std::env::temp_dir().join(format!("ls-publish-pack-{}-{}", std::process::id(), fastrand::u32(..)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let hak = dir.join("area.hak");
+        let write = |text: &[u8]| {
+            let mut w = mg_erf::ErfWriter::new(*b"HAK ");
+            w.add(mg_core::ResRef::from_str("area").unwrap(), ResType::SET, text).unwrap();
+            w.add(mg_core::ResRef::from_str("area_a01").unwrap(), ResType::DDS, b"dds").unwrap();
+            std::fs::write(&hak, w.to_bytes().unwrap()).unwrap();
+        };
+        write(b"one");
+        let made = std::sync::atomic::AtomicUsize::new(0);
+        let pack = |other| {
+            packed(&hak, other, |f| {
+                made.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                f
+            })
+            .unwrap()
+        };
+        let (a, b) = (pack(1), pack(1));
+        assert!(Arc::ptr_eq(&a, &b) && made.load(std::sync::atomic::Ordering::SeqCst) == 1);
+        assert!(Arc::ptr_eq(&a.zip().unwrap(), &b.zip().unwrap()));
+        let m: Value = serde_json::from_slice(&a.manifest()).unwrap();
+        assert_eq!(m["area.set"], json!([blob_sha(b"one"), 3]));
+        assert_eq!(m["area_a01.dds"], json!([blob_sha(b"dds"), 3]));
+        // Other files chosen, or the hak exported again: packed again.
+        assert!(!Arc::ptr_eq(&a, &pack(2)));
+        write(b"three");
+        let c = pack(2);
+        assert!(!Arc::ptr_eq(&a, &c) && made.load(std::sync::atomic::Ordering::SeqCst) == 3);
+        assert_eq!(serde_json::from_slice::<Value>(&c.manifest()).unwrap()["area.set"], json!([blob_sha(b"three"), 5]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_older_review_service_is_sent_the_files() {
+        let refused = |status, detail: Value| anyhow::Error::from(crate::review::Refused::of(status, json!({ "detail": detail })));
+        // FastAPI's own refusal of a form without hak_files, and publish-module's.
+        assert!(wants_the_files(&refused(422, json!([{ "loc": ["body", "hak_files"], "msg": "Field required" }]))));
+        assert!(wants_the_files(&refused(422, json!("bay1: the area files or the tile files are missing"))));
+        assert!(!wants_the_files(&refused(422, json!("bay1.mdl already exists in nwn-haks (tilesets/x) with different content"))));
+        assert!(!wants_the_files(&refused(502, json!("can't list nwn-haks"))));
+    }
+
+    #[test]
     fn multipart_has_every_field_and_file() {
-        let (ctype, body) = multipart(&[("a", "1".into())], &[("f", "x.zip", vec![1, 2, 3])]);
+        let (ctype, body) = multipart(&[("a", "1".into())], &[("f", "x.zip", &[1, 2, 3])]);
         let boundary = ctype.split("boundary=").nth(1).unwrap();
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("name=\"a\"\r\n\r\n1\r\n") && text.contains("filename=\"x.zip\""));

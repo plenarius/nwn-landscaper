@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Try on dev through `landscaper serve` against a stand-in review service: `NWN_ROOT=<the game> cargo test --test dev_trial -- --ignored`.
+//! Try on dev, and Publish's check, through `landscaper serve` against a stand-in review service:
+//! `NWN_ROOT=<the game> cargo test --test dev_trial -- --ignored`.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -214,6 +215,71 @@ fn a_trial_sends_the_publish_form_with_the_texture_library() {
     let (status, a) = request(&s, "POST", "/api/dev-trial/release", b"");
     assert!(status.contains(" 400"), "release: {status}\n{a}");
     assert_eq!(a["error"], "releasing the trial: local has no trial on dev.");
+    drop(s);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Publish's answers: the first is an older service's refusal of a form without `hak_files` (FastAPI's own), the rest a plan.
+fn publish_answer(method: &str, path: &str) -> (u16, serde_json::Value) {
+    static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    if (method, path) != ("POST", "/api/v1/areas/publish") {
+        return (404, serde_json::json!({ "detail": "not here" }));
+    }
+    if CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+        return (422, serde_json::json!({ "detail": [{ "loc": ["body", "hak_files"], "msg": "Field required", "type": "missing" }] }));
+    }
+    (
+        200,
+        serde_json::json!({ "plan": { "area": "pck", "name": "pck", "new": true, "kind": "core", "areas": [], "module_files": [],
+                                      "hak_files": 3, "hak_folders": [], "library": true, "warnings": [], "review": "" }, "pr_urls": null }),
+    )
+}
+
+#[test]
+#[ignore = "needs the game's files: NWN_ROOT=<the game> cargo test --test dev_trial -- --ignored"]
+fn a_check_names_the_tile_files_and_an_older_service_gets_them() {
+    let root: PathBuf = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("publish_check-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let (review, seen) = service(publish_answer);
+    let s = start(&root, review);
+    let n = 3 * 16 + 1;
+    let mut body: Vec<u8> = (0..n * n).flat_map(|_| 1.0f32.to_le_bytes()).collect();
+    body.extend(vec![0u8; n * n]);
+    body.extend(br#"{"palette":["grassMedium"]}"#);
+    let (status, a) = request(&s, "POST", "/api/export?name=pck&tiles=3", &body);
+    assert!(status.contains(" 200"), "export: {status}\n{a}");
+    let sent = |i: usize| {
+        let all: Vec<_> = seen.lock().unwrap().iter().filter(|(m, p, _)| m == "POST" && p == "/api/v1/areas/publish").cloned().collect();
+        parts(&all[i].2)
+    };
+    let names = |form: &[(String, Vec<u8>)]| form.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
+
+    // An older service refuses the list of files; the check is sent again with the files.
+    let (status, a) = request(&s, "POST", "/api/publish?name=pck&dry=1&note=", b"");
+    assert!(status.contains(" 200"), "check: {status}\n{a}");
+    assert_eq!(a["plan"]["hak_files"], 3);
+    let (listed, full) = (sent(0), sent(1));
+    assert!(names(&listed).contains(&"hak_manifest".into()) && names(&listed).contains(&"library_manifest".into()), "{:?}", names(&listed));
+    assert!(!names(&listed).contains(&"hak_files".into()));
+    assert!(names(&full).contains(&"hak_files".into()) && names(&full).contains(&"library_files".into()), "{:?}", names(&full));
+    let manifest: serde_json::Value = serde_json::from_slice(&listed.iter().find(|(n, _)| n == "hak_manifest").unwrap().1).unwrap();
+    let zipped = zip_names(&full.iter().find(|(n, _)| n == "hak_files").unwrap().1);
+    let mut listed_names: Vec<&String> = manifest.as_object().unwrap().keys().collect();
+    listed_names.sort();
+    let mut zipped_sorted: Vec<&String> = zipped.iter().collect();
+    zipped_sorted.sort();
+    assert_eq!(listed_names, zipped_sorted, "the list names the files the zip holds");
+    assert!(manifest.as_object().unwrap().values().all(|v| v[0].as_str().is_some_and(|h| h.len() == 40) && v[1].is_u64()));
+
+    // A service that takes the list: only the list; and the pull requests send the files.
+    let (status, _) = request(&s, "POST", "/api/publish?name=pck&dry=1&note=", b"");
+    assert!(status.contains(" 200"));
+    assert!(names(&sent(2)).contains(&"hak_manifest".into()) && !names(&sent(2)).contains(&"hak_files".into()));
+    let (status, a) = request(&s, "POST", "/api/publish?name=pck&dry=0&note=go", b"");
+    assert!(status.contains(" 200"), "publish: {status}\n{a}");
+    let publish = sent(3);
+    assert!(names(&publish).contains(&"hak_files".into()) && !names(&publish).contains(&"hak_manifest".into()));
+    assert_eq!(zip_names(&publish.iter().find(|(n, _)| n == "hak_files").unwrap().1), zipped, "the same pack");
     drop(s);
     let _ = std::fs::remove_dir_all(&root);
 }

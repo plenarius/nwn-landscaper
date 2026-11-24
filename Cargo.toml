@@ -83,6 +83,8 @@ glam = "0.30"
 base64 = "0.23"
 ureq = { version = "2", features = ["json"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
+# A dry publish names the tile files by their git blob id (SHA-1).
+sha1 = "0.10"
 
 [lints]
 workspace = true
