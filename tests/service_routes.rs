@@ -14,6 +14,13 @@ use std::time::{Duration, Instant};
 
 use sha2::Digest;
 
+/// What a Windows program can't start without, kept through `env_clear` (Winsock fails without `SystemRoot`; temporary files
+/// would go to the Windows folder without `TEMP`). Nothing elsewhere.
+fn windows_basics() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    let wanted = ["SystemRoot", "SystemDrive", "TEMP", "TMP"];
+    std::env::vars_os().filter(|(k, _)| cfg!(windows) && wanted.iter().any(|w| k.eq_ignore_ascii_case(w))).collect()
+}
+
 const KEY: &str = "test-service-key-0123456789abcdef";
 
 struct Server {
@@ -52,6 +59,7 @@ fn command(root: &Path, env: &[(&str, &str)]) -> Command {
         .arg(root.join("web"))
         .env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .envs(windows_basics())
         .env("HOME", root.join("home"))
         .env("XDG_DATA_HOME", root.join("xdg"))
         .env("NWN_ROOT", game)

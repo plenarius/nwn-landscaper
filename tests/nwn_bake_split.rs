@@ -147,8 +147,15 @@ fn shared_files_match_nwn_bake() {
     names.extend(ours);
     let mut differ = Vec::new();
     for n in &names {
-        let a = std::fs::read(root().join(n)).unwrap_or_else(|e| panic!("{}: {e}", n.display()));
-        let b = std::fs::read(bake.join(n)).unwrap_or_else(|e| panic!("nwn-bake's {}: {e}", n.display()));
+        // (Line ends left out: a Windows checkout may have turned them into CRLF.)
+        let read = |p: PathBuf| {
+            std::fs::read(&p).map(|mut b| {
+                b.retain(|&c| c != b'\r');
+                b
+            })
+        };
+        let a = read(root().join(n)).unwrap_or_else(|e| panic!("{}: {e}", n.display()));
+        let b = read(bake.join(n)).unwrap_or_else(|e| panic!("nwn-bake's {}: {e}", n.display()));
         if a != b {
             differ.push(n.display().to_string());
         }
