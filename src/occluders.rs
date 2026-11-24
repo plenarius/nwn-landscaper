@@ -356,17 +356,26 @@ impl Occluders {
         solid
     }
 
-    /// Whether the ground at `o` is shut in by solid surfaces: under one and walled all round, so no one sees it (the ground under
-    /// an imported cliff's top, or inside a boulder). Ground under a tree or an overhang is open to the side.
-    pub fn shut_in(&self, o: [f32; 3]) -> bool {
-        const FAR: f32 = 40.0;
+    /// Whether the ground at `o` is shut in: under a solid surface and walled all round by solid surfaces or the ground (`height`
+    /// at x, y), so no one sees it (the ground under an imported cliff's top, or inside a boulder). Ground under a tree or an
+    /// overhang is open to the side.
+    pub fn shut_in(&self, o: [f32; 3], height: &dyn Fn(f32, f32) -> f32) -> bool {
+        const FAR: f32 = 60.0;
         let o = [o[0], o[1], o[2] + 0.05];
-        // (Eight ways round, a little upwards: the ground itself doesn't count.)
-        let (rise, flat) = (0.34f32.sin(), 0.34f32.cos());
+        // Into the ground before `FAR`, half a metre at a time.
+        let underground = |d: [f32; 3]| {
+            (1..=(FAR / 0.5) as usize).any(|k| {
+                let t = k as f32 * 0.5;
+                height(o[0] + d[0] * t, o[1] + d[1] * t) > o[2] + d[2] * t
+            })
+        };
+        // (Eight ways round, half way up: the top of a wide cliff is reached.)
+        let r = std::f32::consts::FRAC_1_SQRT_2;
         self.blocked(o, [0.0, 0.0, 1.0], FAR)
             && (0..8).all(|k| {
                 let a = k as f32 * std::f32::consts::FRAC_PI_4;
-                self.blocked(o, [flat * a.cos(), flat * a.sin(), rise], FAR)
+                let d = [r * a.cos(), r * a.sin(), r];
+                self.blocked(o, d, FAR) || underground(d)
             })
     }
 }
@@ -418,9 +427,13 @@ mod tests {
         }
         ps.extend(quad([10.0, 0.0, 3.0], [14.0, 0.0, 3.0], [14.0, 4.0, 3.0], [10.0, 4.0, 3.0]));
         let o = Occluders::build(&[placed(ps)]).expect("triangles");
-        assert!(o.shut_in([2.0, 2.0, 0.0]));
-        assert!(!o.shut_in([6.0, 2.0, 0.0]));
-        assert!(!o.shut_in([12.0, 2.0, 0.0]));
+        let flat = |_: f32, _: f32| 0.0;
+        assert!(o.shut_in([2.0, 2.0, 0.0], &flat));
+        assert!(!o.shut_in([6.0, 2.0, 0.0], &flat));
+        assert!(!o.shut_in([12.0, 2.0, 0.0], &flat));
+        // The roof alone, with the ground rising as a wall round it: shut in too.
+        let walled = |x: f32, y: f32| if (9.0..15.0).contains(&x) && (-1.0..5.0).contains(&y) { 0.0 } else { 20.0 };
+        assert!(o.shut_in([12.0, 2.0, 0.0], &walled));
     }
 
     #[test]
