@@ -8,13 +8,17 @@
 use anyhow::{Context, Result, ensure};
 use nwn_bake::area::SceneOptions;
 use nwn_bake::iso::region::Region;
-use nwn_bake::iso::{Background, IsoOptions, Look, Picture, View};
+use nwn_bake::iso::{Background, GAME_SUN, IsoOptions, Look, Picture, View};
 use nwn_bake::module::AreaFiles;
 
 use super::{MINIMAP, TILE};
 
 /// Pixels of the top view a minimap pixel takes along each side (each drawn as nwn-bake's 2 by 2 supersamples).
 const OVERSAMPLE: u32 = 2;
+
+/// Shadows half as long as the game's sun casts them: a wall's shadow still marks it on the minimap, a 10 m tower's (4.3 m) stays
+/// off the next tile.
+const SHADOW_LENGTH: f32 = 0.5;
 
 /// The area `area` (`are`, `git`) drawn from above, north up, at [`OVERSAMPLE`] pixels a minimap pixel, with the game opened over
 /// `haks` (the module's hak list: the area's own hak, then the shared one).
@@ -32,8 +36,9 @@ pub(super) fn top_view(haks: &[String], area: &str, are: mg_gff::Gff, git: Optio
     let o = IsoOptions {
         views: vec![View::Top],
         scale: (MINIMAP * OVERSAMPLE) as f32 / TILE,
-        // (No padding: the picture is the area, cut exactly at its edges.)
-        look: Look { padding: 0.0, ..Look::default() },
+        // (No padding: the picture is the area, cut exactly at its edges. The game's sun, so shadows fall south-west as in the game
+        // and on the terrain's own baked shadows.)
+        look: Look { padding: 0.0, sun: Some(GAME_SUN), shadow_length: SHADOW_LENGTH, ..Look::default() },
         region: Some(Region::new([0.0, 0.0], size)?),
         background: Background::Transparent,
         ..IsoOptions::default()
