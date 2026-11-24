@@ -85,6 +85,8 @@ ureq = { version = "2", features = ["json"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 # A dry publish names the tile files by their git blob id (SHA-1).
 sha1 = "0.10"
+# An export's id and the hashes a trusted service checks its downloads by (docs/REVIEW-SERVICE.md, "Fetching exports").
+sha2 = "0.10"
 
 [lints]
 workspace = true

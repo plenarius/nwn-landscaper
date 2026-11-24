@@ -321,10 +321,12 @@ pub fn findings(name: &str) -> Result<Vec<crate::validate::Finding>> {
     Ok(out)
 }
 
-/// `name`'s last export from the module it installed, as the files the review service takes.
-fn pack_area(name: &str) -> Result<Packed> {
-    let e = exported(name)?;
-    let (m, res, target, user_dir) = (&e.module, e.res, e.target.clone(), &e.user_dir);
+/// An export's area files as nwn_gff JSON (`<target>.<ext>.json`, mark taken out) and the new blueprints they use.
+type AreaFiles = (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>);
+
+/// [`AreaFiles`] of the export `e`.
+fn area_files(e: &Exported) -> Result<AreaFiles> {
+    let (m, res, target) = (&e.module, e.res, &e.target);
     let mut module_files = Vec::new();
     for (t, ext) in [(ResType::ARE, "are"), (ResType::GIT, "git"), (ResType::GIC, "gic")] {
         let Some(Ok(g)) = m.gff(&ResKey { resref: res, restype: t }) else {
@@ -338,6 +340,16 @@ fn pack_area(name: &str) -> Result<Packed> {
         }
         module_files.push((format!("{target}.{ext}.json"), serde_json::to_vec_pretty(&json)?));
     }
+    let docs: Vec<Value> = module_files.iter().filter_map(|(_, b)| serde_json::from_slice(b).ok()).collect();
+    let blueprints = crate::newbp::used_by(&docs.iter().collect::<Vec<_>>()).into_iter().map(|(n, t)| (n, t.into_bytes())).collect();
+    Ok((module_files, blueprints))
+}
+
+/// `name`'s last export from the module it installed, as the files the review service takes.
+fn pack_area(name: &str) -> Result<Packed> {
+    let e = exported(name)?;
+    let (module_files, blueprints) = area_files(&e)?;
+    let (target, user_dir) = (e.target.clone(), &e.user_dir);
     let copied = import_textures(name);
     let other = {
         use std::hash::{Hash, Hasher};
@@ -348,9 +360,28 @@ fn pack_area(name: &str) -> Result<Packed> {
         h.finish()
     };
     let tiles = packed(&user_dir.join("hak").join(format!("{name}.hak")), other, |files| own_files(files, &copied))?;
-    let docs: Vec<Value> = module_files.iter().filter_map(|(_, b)| serde_json::from_slice(b).ok()).collect();
-    let blueprints = crate::newbp::used_by(&docs.iter().collect::<Vec<_>>()).into_iter().map(|(n, t)| (n, t.into_bytes())).collect();
     Ok(Packed { name: name.to_string(), target, rework: e.rework, module_files, tiles, blueprints })
+}
+
+/// `name`'s last export as a trusted service fetches it: its area files and new blueprints as JSON, without packing the tiles.
+pub fn service_export(name: &str) -> Result<Value> {
+    let e = exported(name)?;
+    let (module_files, blueprints) = area_files(&e)?;
+    let mut docs = json!({ "are": null, "git": null, "gic": null });
+    for (file, bytes) in &module_files {
+        if let Some(ext) = file.strip_suffix(".json").and_then(|f| f.rsplit('.').next()) {
+            docs[ext] = serde_json::from_slice(bytes)?;
+        }
+    }
+    // (Scripts are text; everything else the area uses is nwn_gff JSON.)
+    let blueprints: serde_json::Map<String, Value> = blueprints
+        .iter()
+        .map(|(file, bytes)| match file.strip_suffix(".json") {
+            Some(stem) => Ok((stem.to_string(), serde_json::from_slice(bytes)?)),
+            None => Ok((file.clone(), String::from_utf8_lossy(bytes).into_owned().into())),
+        })
+        .collect::<Result<_>>()?;
+    Ok(json!({ "name": name, "area": e.target, "new": !e.rework, "docs": docs, "blueprints": blueprints }))
 }
 
 /// The texture files imports copied from the game and the module's haks (`<import>/tex/`, lower case): an export puts
@@ -465,6 +496,7 @@ pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
         ("name", name.to_string()),
         ("area", a.target.clone()),
         ("new", (!a.rework).to_string()),
+        ("export", crate::export_id::export_id(name)?),
         ("note", note.chars().take(300).collect()),
         ("dry_run", dry_run.to_string()),
     ];
@@ -518,7 +550,9 @@ fn module_form_of(names: &[String], note: &str, listed: bool) -> Result<(Form, V
     for n in names {
         let a = pack_area(n).with_context(|| n.clone())?;
         blueprints.extend(a.blueprints.iter().cloned());
-        meta.push(module_entry(&a, &area_folder(&a.target)));
+        let mut entry = module_entry(&a, &area_folder(&a.target));
+        entry["export"] = crate::export_id::export_id(n)?.into();
+        meta.push(entry);
         files.push(part(&format!("module_{}", a.name), "module.zip", zip_of(&a.module_files)?));
         files.push(tiles_part(&format!("hak_{}", a.name), &format!("hakmanifest_{}", a.name), "tiles", &a.tiles, listed)?);
         packs.push(a.tiles.clone());

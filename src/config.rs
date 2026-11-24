@@ -86,6 +86,17 @@ fn review_service_from(get: &dyn Fn(&str) -> Option<String>) -> Option<(String, 
     Some((url.trim().trim_end_matches('/').to_string(), key))
 }
 
+/// The setting with the key a trusted service sends to the read-only `/api/service/*` routes (docs/REVIEW-SERVICE.md,
+/// "Fetching exports").
+pub const SERVICE_KEY: &str = "LANDSCAPER_SERVICE_KEY";
+/// The shortest [`SERVICE_KEY`] a team server takes.
+pub const MIN_SERVICE_KEY_LEN: usize = 24;
+
+/// [`SERVICE_KEY`], if set: the service routes answer 404 without it.
+pub fn service_key() -> Option<String> {
+    var(SERVICE_KEY).map(|k| k.trim().to_string())
+}
+
 fn var(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
@@ -379,10 +390,19 @@ pub fn setting_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
             out.push(format!("{url} is set but {secret} is empty (an env file with `{secret}=${{{secret}}}` left unresolved gives that)"));
         }
     }
-    for k in [REVIEW_URL, REVIEW_KEY, "LANDSCAPER_GITEA_URL", "LANDSCAPER_GITEA_TOKEN", "LANDSCAPER_PROXY_SECRET"] {
+    for k in [REVIEW_URL, REVIEW_KEY, "LANDSCAPER_GITEA_URL", "LANDSCAPER_GITEA_TOKEN", "LANDSCAPER_PROXY_SECRET", SERVICE_KEY] {
         if get(k).is_some_and(|v| v.trim_start().starts_with("${")) {
             out.push(format!("{k} is an unresolved ${{...}} placeholder, not a value"));
         }
+    }
+    if let Some(k) = set(SERVICE_KEY).map(|k| k.trim().to_string())
+        && !k.starts_with("${")
+        && k.chars().count() < MIN_SERVICE_KEY_LEN
+    {
+        out.push(format!(
+            "{SERVICE_KEY} is {} characters: use at least {MIN_SERVICE_KEY_LEN} (e.g. `openssl rand -hex 24`)",
+            k.chars().count()
+        ));
     }
     out.extend(layout_problem(get));
     out
@@ -463,6 +483,12 @@ mod tests {
         let p = setting_problems(&env(&[("LANDSCAPER_REVIEW_URL", "http://x"), ("LANDSCAPER_REVIEW_KEY", "${LANDSCAPER_REVIEW_KEY}")]));
         assert_eq!(p.len(), 1, "{p:?}");
         assert!(p[0].contains("placeholder"));
+        // The service key: short is refused, a placeholder said once, 24 characters or more taken.
+        let p = setting_problems(&env(&[(SERVICE_KEY, "short")]));
+        assert!(p.len() == 1 && p[0].contains("at least 24"), "{p:?}");
+        let p = setting_problems(&env(&[(SERVICE_KEY, "${LANDSCAPER_SERVICE_KEY}")]));
+        assert!(p.len() == 1 && p[0].contains("placeholder"), "{p:?}");
+        assert!(setting_problems(&env(&[(SERVICE_KEY, "kkkkkkkkkkkkkkkkkkkkkkkk")])).is_empty());
     }
 
     use super::*;

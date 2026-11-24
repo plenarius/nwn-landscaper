@@ -862,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "landscaper"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -886,6 +886,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1",
+ "sha2",
  "tiny_http_dh",
  "ureq",
  "zip",

@@ -19,6 +19,7 @@ mod config;
 mod devpack;
 mod devtrial;
 mod dialog;
+mod export_id;
 mod generator;
 mod gitea;
 mod heightmap;

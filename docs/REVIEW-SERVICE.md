@@ -183,6 +183,7 @@ One area. Fields:
 | `name` | The area's name in the editor |
 | `area` | The resref the module will know it by: an existing area's for a rework, otherwise a new one |
 | `new` | `true` for a new area, `false` for a rework of `area` |
+| `export` | The export's id (see [Fetching exports](#fetching-exports)): the same as the service routes list for it |
 | `note` | The builder's note for the reviewers, at most 300 characters |
 | `dry_run` | `true` or `false` |
 | `module_files` (`module.zip`) | The area's `.are.json`, `.git.json` and `.gic.json` in the module's source layout (CONFIGURATION.md, `LANDSCAPER_LAYOUT`), without the builder's hidden mark |
@@ -193,7 +194,7 @@ One area. Fields:
 ### `POST /api/v1/areas/publish-module`
 
 Several areas as one set of pull requests. Fields: `user`, `note`, `dry_run`, `areas` (a JSON list of
-`{ "name", "area", "new", "kind" }`), then for each area `module_<name>` and `hak_<name>` (zips as above; on a dry run
+`{ "name", "area", "new", "kind", "export" }`), then for each area `module_<name>` and `hak_<name>` (zips as above; on a dry run
 `hakmanifest_<name>` instead of `hak_<name>`), and the optional `library_files` (or `library_manifest`) and `blueprint_files`.
 `kind` is the group (the folder inside the areas folder) the area's files go in, as in a package: the folder the area is already
 in when the team server has a module checkout, else `LANDSCAPER_AREA_FOLDER` (`core` in the `folders` layout, empty, for none,
@@ -213,3 +214,70 @@ Both answer with what the pull requests hold (`plan`) and, when they were opened
 `module_files` is a list of paths and `hak_files` a count; `warnings` are shown to the builder; `review` is optional Markdown of
 what the pull request will say. `pr_urls` is `null` on a dry run; its two keys are the module's pull request and the haks' (a
 service with one repository can give the same address twice).
+
+## Fetching exports
+
+The other way round, and optional: a team server can let a trusted service (the review service, or another of the team's own)
+list a builder's exports and fetch one, for example to bring a builder's area into another editor. These are routes on the
+team server that the service calls, read-only, GET only.
+
+| Variable | What |
+|---|---|
+| `LANDSCAPER_SERVICE_KEY` | The key the service sends. At least 24 characters (e.g. `openssl rand -hex 24`); a team server stops at start on a shorter one. Unset: the routes answer 404 |
+
+- **Authentication:** every call sends `Authorization: Bearer <LANDSCAPER_SERVICE_KEY>`, compared in constant time; a missing or
+  wrong key is answered 401 and recorded in the refusal log. The key opens these routes only. It isn't the proxy secret and signs
+  no one in to the editor's API.
+- **Reach:** the routes don't go through the sign-in proxy, so the service must reach the team server's port without it. Give it
+  a way that only it has (a private network, a port published on an internal address only); don't route `/api/service/` through
+  the public proxy. The request gate (`Host`, `X-Landscaper`, `Origin`) doesn't apply to them: it guards against browsers, which
+  can't send the key.
+- **Who:** `user` is the builder, as the sign-in proxy names them (lower case; letters, digits and `. _ -`), and must have a
+  workspace (else 404). The routes act as that builder: an export is listed and fetched only when Publish would take it (its name,
+  and the assignment of the area it reworks). A builder is an admin here only when `LANDSCAPER_ADMIN_USERS` names them, as no
+  groups are sent. The service decides which builder asks; it should take the name from its own sign-in, never from its caller.
+- **Log:** each call is in the activity log as `service-export`, by the builder, with the area and the route.
+- **Names:** `name` is an area's name in the editor (lower case letters, digits and `_`, at most 9); a bad one is answered 400.
+- **The export id** is the hex SHA-256 of the export's header file (`exports/<name>.json`, its bytes as on disk) followed by the
+  hex SHA-256 of its hak, as text. Every export changes it, and Publish sends it as `export`, so the service can tell whether the
+  tiles it fetched are the ones published.
+- **Downloads** are streamed with a `Content-Length`, `Cache-Control: private, no-store` and an `ETag` that is the file's
+  SHA-256 in quotes; `If-None-Match` with it answers 304 with no body. At most 8 downloads run at once; more are answered 503.
+
+### `GET /api/service/exports?user=<user>`
+
+The builder's exports that can be fetched, by name.
+
+```json
+[ { "name": "elmwood", "area": "elmwood", "new": false, "module": "elmwood", "exported_at": 1795000000,
+    "export": "<the export id>", "hak": { "bytes": 7340032, "sha256": "<hex>" },
+    "library": { "bytes": 10485760, "sha256": "<hex>" } } ]
+```
+
+`area` is the resref the module will know it by (an existing area's for a rework, as `new` says), `module` the module the export
+went into, `exported_at` when its hak was written (Unix seconds). `hak` is `nwn/hak/<name>.hak`; `library` is the workspace's
+shared texture library hak (the same in every entry), or `null` when there is none.
+
+### `GET /api/service/export?user=<user>&name=<name>`
+
+One export's area files, as Publish packs them (nwn_gff JSON, the builder's hidden mark taken out, a rework under the resref it
+replaces), with the new blueprints and scripts the area uses and what the pre-publish check finds.
+
+```json
+{ "name": "elmwood", "area": "elmwood", "new": false, "export": "<the export id>",
+  "docs": { "are": { }, "git": { }, "gic": { } },
+  "blueprints": { "my_chest.utp": { }, "my_script.nss": "void main() {}" },
+  "findings": [ { "level": "warning", "what": "...", "msg": "..." } ] }
+```
+
+`gic` may be `null`. A blueprint's key is its file name without `.json` and its value nwn_gff JSON; a script's value is its
+text. 404 when there is no such export, 403 when Publish would refuse it (the `error` says why), 422 when it can't be read
+(export it again).
+
+### `GET /api/service/hak?user=<user>&name=<name>`
+
+The export's hak (`application/octet-stream`), checked as `export` is.
+
+### `GET /api/service/library?user=<user>`
+
+The workspace's shared texture library hak, the same way; 404 when there is none.
