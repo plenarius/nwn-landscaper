@@ -16,6 +16,7 @@ mod import;
 mod previews;
 mod query;
 mod scripts;
+mod service;
 mod team;
 
 use std::path::Path;
@@ -281,6 +282,34 @@ fn job() -> std::sync::MutexGuard<'static, ()> {
 /// What every route answers with.
 type Answer = Response<std::io::Cursor<Vec<u8>>>;
 
+/// An answer as it is sent: in memory, or streamed (a hak for the service routes, which can be 80 MB).
+enum Reply {
+    Data(Answer),
+    Stream(tiny_http::ResponseBox),
+}
+
+impl From<Answer> for Reply {
+    fn from(a: Answer) -> Self {
+        Reply::Data(a)
+    }
+}
+
+impl Reply {
+    fn status(&self) -> u16 {
+        match self {
+            Reply::Data(a) => a.status_code().0,
+            Reply::Stream(s) => s.status_code().0,
+        }
+    }
+
+    fn with_headers(self, headers: Vec<Header>) -> Reply {
+        match self {
+            Reply::Data(a) => Reply::Data(headers.into_iter().fold(a, Response::with_header)),
+            Reply::Stream(s) => Reply::Stream(headers.into_iter().fold(s, Response::with_header)),
+        }
+    }
+}
+
 /// Answers `server`'s requests on `threads` threads, each taking the next request when it is done with one; the rest wait
 /// in the server's queue. Returns when the server stops.
 fn answer_on_threads(server: &Server, threads: usize, answer: impl Fn(tiny_http::Request) + Sync) {
@@ -299,16 +328,19 @@ fn answer_on_threads(server: &Server, threads: usize, answer: impl Fn(tiny_http:
 /// answers 500 and the server goes on with the next request; the panic's message and place are in the server's log
 /// (Rust's panic hook prints them). Who is asking is forgotten before and after, so it never carries over to the next
 /// request on this thread.
-fn guarded(mut req: tiny_http::Request, make: impl FnOnce(&mut tiny_http::Request) -> Answer) {
+fn guarded<R: Into<Reply>>(mut req: tiny_http::Request, make: impl FnOnce(&mut tiny_http::Request) -> R) {
     crate::workspace::begin_request();
     crate::audit::set_address(String::new());
-    let made = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| make(&mut req)));
+    let made = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| make(&mut req).into()));
     crate::workspace::begin_request();
     let response = made.unwrap_or_else(|_| {
         eprintln!("{} {}: answered 500 after a panic (above)", req.method(), req.url());
-        json_response(500, &serde_json::json!({ "error": "the server hit a bug answering this; the server's log has the details" }))
+        json_response(500, &serde_json::json!({ "error": "the server hit a bug answering this; the server's log has the details" })).into()
     });
-    let _ = req.respond(response);
+    let _ = match response {
+        Reply::Data(a) => req.respond(a),
+        Reply::Stream(s) => req.respond(s),
+    };
 }
 
 /// The most a request body may hold, by what it carries. What the editor sends, with room to spare: an area is at most
@@ -477,9 +509,10 @@ const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 8] =
 
 /// Answers one request (on one of the pool's threads on a team server), with the security headers every answer carries
 /// ([`security_headers`]).
-fn answer(req: &mut tiny_http::Request, web: &Path, gate: &Gate) -> Answer {
-    let made = answer_request(req, web, gate);
-    security_headers(&page_policy(web)).into_iter().fold(made, Response::with_header)
+fn answer(req: &mut tiny_http::Request, web: &Path, gate: &Gate) -> Reply {
+    // (The service routes go before the gate: it guards against browsers, which can't send the service key.)
+    let made = service::route(req).unwrap_or_else(|| answer_request(req, web, gate).into());
+    made.with_headers(security_headers(&page_policy(web)))
 }
 
 /// The headers every answer carries:

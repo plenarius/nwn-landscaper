@@ -241,7 +241,7 @@ pub fn identify_with(cfg: &crate::config::AuthConfig, header: impl Fn(&str) -> O
 /// Whether `sent` is `secret`, in time that doesn't depend on where they differ (an early `!=` would let someone who can
 /// time the answers find the secret one byte at a time). Only the length shows, and [`proxy_secret_problem`] keeps that
 /// at 16 or more.
-fn same_secret(sent: &str, secret: &str) -> bool {
+pub fn same_secret(sent: &str, secret: &str) -> bool {
     let (a, b) = (sent.as_bytes(), secret.as_bytes());
     let diff = a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y));
     std::hint::black_box(diff) == 0 && a.len() == b.len()

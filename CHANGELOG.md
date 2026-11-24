@@ -5,8 +5,14 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.2.2
 
+- **A trusted service can list and fetch a builder's exports.** With `LANDSCAPER_SERVICE_KEY` set, a team server answers
+  read-only `/api/service/*` routes: a builder's exports, one export's area files and new blueprints (as Publish packs them), its
+  tile hak and the texture library, streamed with an `ETag`. Each is checked as Publish checks it (the name, the assignment) for
+  the builder named, and recorded in the activity log. docs/REVIEW-SERVICE.md, "Fetching exports".
+- **Publish sends the export's id** (`export`, and in each area of `publish-module`): a hash of the export's header and its hak,
+  the same id the service routes list, so a service can tell whether the tiles it fetched are the ones published.
 - **Publish's check is much faster.** It sends the review service the tile and library files' names, git blob ids and sizes
   instead of the files (a review service that wants the files gets them, as before), and a hak's files are read and packed once
   per export: the check, the pull requests and Try on dev reuse them, and a check that passes packs the zips in the background

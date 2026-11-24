@@ -425,7 +425,7 @@ fn guard_area(name: &str, header: &serde_json::Value) -> Result<()> {
 
 /// The last export of `name`, once the name, the production name and the assignment checks pass: the one gate that a publish,
 /// a package and a module publish all go through, so they can't drift apart.
-fn guarded_export(name: &str) -> Result<serde_json::Value> {
+pub(super) fn guarded_export(name: &str) -> Result<serde_json::Value> {
     anyhow::ensure!(area_name_ok(name), "bad area name {name:?}");
     guard_new_name(name)?;
     let header = exported(name)?;
