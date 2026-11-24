@@ -13,7 +13,7 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   for what usually follows. docs/REVIEW-SERVICE.md, "Publishing".
 
 - **The minimap shows what is built on the area.** An export draws its area straight down with nwn-bake, from the hak and module
-  it has just written (the tiles, the placeables and doors, their own textures), and cuts the picture into each tile's minimap:
+  it has written (the tiles, the placeables and doors, their own textures), and cuts the picture into each tile's minimap:
   houses, walls, towers and platforms are on it now, not only the ground and water. Where nothing is drawn (a cave's rock) the
   terrain's minimap shows, as it does if the drawing fails. `LS_MINIMAP=terrain` keeps the terrain's alone.
 

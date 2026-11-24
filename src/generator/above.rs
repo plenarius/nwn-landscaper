@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The minimaps from above: the exported area drawn straight down by nwn-bake from its own files (the tiles in the hak just
-//! written, the placeables and doors of its `.git`, their real textures), cut into each tile's [`MINIMAP`] pixels a side. Where
+//! The minimaps from above: the exported area drawn straight down by nwn-bake from its own files (the tiles in the hak it
+//! wrote, the placeables and doors of its `.git`, their real textures), cut into each tile's [`MINIMAP`] pixels a side. Where
 //! nwn-bake draws nothing (a cave's void) the terrain's own minimap ([`super::minimap`]) shows through.
 
 use anyhow::{Context, Result, ensure};
