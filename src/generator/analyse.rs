@@ -6,8 +6,8 @@
 use anyhow::Result;
 
 use super::{
-    CROSSING_LIMIT, TILE, WALKABLE_NZ, area_plan, blocked, generate, hak_name, height, in_parallel, sim_area_of, tile_crossings_for,
-    tile_mesh, tiles_x, tiles_y, walkmesh_raw,
+    CROSSING_LIMIT, TILE, WALKABLE_NZ, area_plan, blocked, generate, hak_name, height, in_parallel, plan_digest, sim_area_of, simulate_all,
+    tile_crossings_for, tile_mesh, tiles_x, tiles_y, walkmesh_raw,
 };
 use crate::{heightmap, objects, oracle, seams, sim};
 
@@ -247,17 +247,17 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         })
         .filter(|p| conn.component(p.from.0, p.from.1).is_some() && conn.component(p.to.0, p.to.1).is_some())
         .collect();
-    let trace = std::env::var_os("LS_DEBUG_ROUTES").is_some();
-    let routes = in_parallel(&pairs.iter().collect::<Vec<_>>(), |p| {
-        if trace {
+    let routes = if std::env::var_os("LS_DEBUG_ROUTES").is_some() {
+        in_parallel(&pairs.iter().collect::<Vec<_>>(), |p| {
             eprintln!("route ({:.2},{:.2}) -> ({:.2},{:.2})", p.from.0, p.from.1, p.to.0, p.to.1);
-        }
-        let r = sim::area::simulate(&area, &sim::Query::new(p.from, p.to), false);
-        if trace {
+            let r = sim::area::simulate(&area, &sim::Query::new(p.from, p.to), false);
             eprintln!("done  ({:.2},{:.2}) -> ({:.2},{:.2})", p.from.0, p.from.1, p.to.0, p.to.1);
-        }
-        r
-    });
+            r
+        })
+    } else {
+        let ends: Vec<_> = pairs.iter().map(|p| (p.from, p.to)).collect();
+        simulate_all(&area, plan_digest(&plan.0, &plan.1), &ends)
+    };
     for (p, r) in pairs.iter().zip(routes) {
         total += 1;
         if ((r.end.0 - p.to.0).powi(2) + (r.end.1 - p.to.1).powi(2)).sqrt() < 1.5 {

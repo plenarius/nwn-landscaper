@@ -3,8 +3,6 @@
 
 //! `generate`: builds the hak and the module (tiles, tileset, area, start point) from the current terrain.
 
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
 use mg_core::{ResRef, ResType};
 use mg_erf::ErfWriter;
@@ -93,6 +91,22 @@ fn onload_script(walks: &[TestWalk]) -> String {
     )
 }
 
+/// One tile's part of the hak, made on its own thread.
+struct TileFiles {
+    name: String,
+    /// Its walkmesh's faces.
+    faces: usize,
+    /// The model's text, kept for LS_DUMP only.
+    text: Option<String>,
+    mtrs: Vec<(String, String)>,
+    shadow: Option<mg_image::Rgba>,
+    shadow_dds: Option<Vec<u8>>,
+    baked: Option<Vec<u8>>,
+    mini: mg_image::Rgba,
+    compiled: mg_mdl::compile::Compiled,
+    wok: Vec<u8>,
+}
+
 /// The whole area's minimap from each tile's (row by row from the south), for a look at it outside the game.
 fn whole_of(minimaps: &[mg_image::Rgba]) -> mg_image::Rgba {
     let mut whole = mg_image::Rgba::new(MINIMAP * tiles_x() as u32, MINIMAP * tiles_y() as u32);
@@ -119,11 +133,19 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let game = models::open_game(nwn_bake::game::Haks::None, nwn_bake::game::Tlk::None)?;
     let mut owned: Vec<(ResRef, ResType, Vec<u8>)> = Vec::new();
 
+    let lap = |what: &str| {
+        if std::env::var_os("LS_TIMING").is_some() {
+            eprintln!("  {what} at {:.1}s", gen_start.elapsed().as_secs_f32());
+        }
+    };
+    lap("game opened");
     textures::ensure_starter();
     let painter = Painter::load()?;
+    lap("textures loaded");
     let strength = shadow_strength();
     // The library textures, the entrance black and the shadow shaders are in the shared hak.
     shared::ensure(&workspace::nwn_user_dir().context("no user dir")?.join("hak"))?;
+    lap("shared hak");
     let (mut walk_faces, mut render_bytes, mut most, mut baked) = (0, 0, 0, 0);
     // Each tile's minimap from the terrain alone, row by row from the south: what the hak has until the area is drawn from above.
     let mut terrain_minimaps = Vec::with_capacity(tiles_x() * tiles_y());
@@ -132,103 +154,94 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let timing = std::env::var_os("LS_TIMING").is_some();
     // LS_DUMP: each baked texture as a PNG and each model's text beside the export, to look at.
     let dump = std::env::var_os("LS_DUMP").is_some();
-    // The baked ground textures and the shadow maps take most of an export; each tile's are its own, so they are made side by
-    // side before the tiles are put together (the result is the same as one after another).
+    // Each tile's files are its own, so every tile is made side by side and the hak is put together in tile order after (the result
+    // is the same as one after another).
     let tiles: Vec<(usize, usize)> = (0..tiles_y()).flat_map(|ty| (0..tiles_x()).map(move |tx| (tx, ty))).collect();
-    let mut baked_dds: HashMap<(usize, usize), Vec<u8>> = match &painter {
-        Some(p) => {
-            let baked_tiles: Vec<(usize, usize)> = tiles.iter().copied().filter(|&(tx, ty)| p.baked(tx, ty)).collect();
-            let bake_start = std::time::Instant::now();
-            let made = in_parallel(&baked_tiles, |(tx, ty)| paint::dds(&p.bake(tx, ty, bake_size())));
-            if timing {
-                eprintln!("  baked {} tiles in {:.1}s", baked_tiles.len(), bake_start.elapsed().as_secs_f32());
-            }
-            baked_tiles.into_iter().zip(made).collect()
-        }
-        None => HashMap::new(),
-    };
-    // Row by row from the south, as `tiles`; none without shadows.
-    let mut shadow_maps = if strength > 0.0 {
-        let shadow_start = std::time::Instant::now();
-        let maps = in_parallel(&tiles, |(tx, ty)| shadow_map(tx, ty, strength));
-        if timing {
-            eprintln!("  shadow maps in {:.1}s", shadow_start.elapsed().as_secs_f32());
-        }
-        maps
-    } else {
-        Vec::new()
-    }
-    .into_iter();
-    let mut ph = [0f32; 6];
-    let mut mark = std::time::Instant::now();
+    // (The plan first: worked out once, for every tile.)
+    super::area_plan();
+    lap("planned");
     let pre_loop = gen_start.elapsed().as_secs_f32();
-    macro_rules! phase {
-        ($i:expr) => {
-            ph[$i] += mark.elapsed().as_secs_f32();
+    let no_surfaces = std::env::var_os("LS_NO_SURFACES").is_some();
+    // Thread time of each step, summed over the tiles (LS_TIMING).
+    let ph: [std::sync::atomic::AtomicU64; 6] = Default::default();
+    let made = in_parallel(&tiles, |(tx, ty)| -> Result<TileFiles> {
+        let mut mark = std::time::Instant::now();
+        let mut phase = |i: usize| {
+            ph[i].fetch_add(mark.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
             mark = std::time::Instant::now();
         };
-    }
-    for ty in 0..tiles_y() {
-        for tx in 0..tiles_x() {
-            let name = tile_name(tx, ty);
-            let w = walkmesh(tx, ty);
-            walk_faces += w.faces.len();
-            most = most.max(w.faces.len());
-            // The game's surfaces from here on (the plan knows walkable or not).
-            // LS_NO_SURFACES: grass and non-walkable only (experiments).
-            let w = if std::env::var_os("LS_NO_SURFACES").is_some() { w } else { surfaced(&w, tx, ty, painter.as_ref()) };
-            phase!(0);
-            let mut mtrs = Vec::new();
-            let text = tile_model(&name, tx, ty, &w, painter.as_ref(), strength > 0.0, &mut mtrs);
-            phase!(1);
-            if let Some(map) = shadow_maps.next() {
-                let row = (SHADOW_MAP * tiles_x() as u32 * 4) as usize;
-                for y in 0..SHADOW_MAP as usize {
-                    let at = (ty * SHADOW_MAP as usize + y) * row + tx * SHADOW_MAP as usize * 4;
-                    shadows.data[at..at + SHADOW_MAP as usize * 4]
-                        .copy_from_slice(&map.data[y * SHADOW_MAP as usize * 4..][..SHADOW_MAP as usize * 4]);
-                }
-                owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::DDS, paint::dds(&map)));
-                owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));
-                for (mat, text) in mtrs {
-                    owned.push((ResRef::from_str(&mat)?, ResType::MTR, text.into_bytes()));
-                }
+        let baked = match &painter {
+            Some(p) if p.baked(tx, ty) => Some(p.baked_dds(tx, ty, bake_size())),
+            _ => None,
+        };
+        phase(3);
+        let shadow = (strength > 0.0).then(|| shadow_map(tx, ty, strength));
+        let shadow_dds = shadow.as_ref().map(paint::dds);
+        phase(2);
+        let name = tile_name(tx, ty);
+        let raw = walkmesh(tx, ty);
+        let faces = raw.faces.len();
+        // The game's surfaces from here on (the plan knows walkable or not).
+        // LS_NO_SURFACES: grass and non-walkable only (experiments).
+        let w = if no_surfaces { raw } else { surfaced(&raw, tx, ty, painter.as_ref()) };
+        phase(0);
+        let mut mtrs = Vec::new();
+        let text = tile_model(&name, tx, ty, &w, painter.as_ref(), strength > 0.0, &mut mtrs);
+        phase(1);
+        let mini = minimap(tx, ty, painter.as_ref());
+        phase(4);
+        let compiled = mg_mdl::compile::compile(text.as_bytes(), &Default::default()).with_context(|| format!("compiling {name}"))?;
+        let wok = crlf(&tile_wok(&name, &w));
+        phase(5);
+        let text = dump.then_some(text);
+        Ok(TileFiles { name, faces, text, mtrs, shadow, shadow_dds, baked, mini, compiled, wok })
+    });
+    let ph = ph.map(|n| n.into_inner() as f32 / 1e9);
+    for ((tx, ty), tile) in tiles.iter().copied().zip(made) {
+        let TileFiles { name, faces, text, mtrs, shadow, shadow_dds, baked: baked_dds, mini, compiled, wok } = tile?;
+        walk_faces += faces;
+        most = most.max(faces);
+        if let (Some(map), Some(dds)) = (shadow, shadow_dds) {
+            let row = (SHADOW_MAP * tiles_x() as u32 * 4) as usize;
+            for y in 0..SHADOW_MAP as usize {
+                let at = (ty * SHADOW_MAP as usize + y) * row + tx * SHADOW_MAP as usize * 4;
+                shadows.data[at..at + SHADOW_MAP as usize * 4]
+                    .copy_from_slice(&map.data[y * SHADOW_MAP as usize * 4..][..SHADOW_MAP as usize * 4]);
             }
-            phase!(2);
-            if let Some(dds) = baked_dds.remove(&(tx, ty)) {
-                if dump {
-                    // As the game will decode it.
-                    paint::write_png(&out_dir.join(format!("{}.png", baked_name(tx, ty))), &mg_image::read(ResType::DDS, &dds)?.to_rgba())?;
-                }
-                owned.push((ResRef::from_str(&baked_name(tx, ty))?, ResType::DDS, dds));
-                // Clamped, so the edges don't pick up the opposite side's pixels.
-                owned.push((ResRef::from_str(&baked_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));
-                baked += 1;
+            owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::DDS, dds));
+            owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));
+            for (mat, text) in mtrs {
+                owned.push((ResRef::from_str(&mat)?, ResType::MTR, text.into_bytes()));
             }
-            phase!(3);
-            let mini = minimap(tx, ty, painter.as_ref());
-            owned.push((ResRef::from_str(&minimap_name(tx, ty))?, ResType::TGA, mg_image::write_tga(&mini)));
-            terrain_minimaps.push(mini);
-            phase!(4);
-            let compiled = mg_mdl::compile::compile(text.as_bytes(), &Default::default()).with_context(|| format!("compiling {name}"))?;
-            // (The tile model has no aabb list of its own: Moonglow building one from its faces is expected, not news.)
-            for (line, note) in compiled.notes.iter().filter(|(_, n)| !n.ends_with("no aabb list, a tree was made of its faces")) {
-                eprintln!("  {name}:{line}: {note}");
-            }
-            render_bytes += compiled.binary.len();
-            if dump {
-                std::fs::write(out_dir.join(format!("{name}.mdl.txt")), &text)?;
-            }
-            owned.push((ResRef::from_str(&name)?, ResType::MDL, compiled.binary));
-            owned.push((ResRef::from_str(&name)?, ResType::WOK, crlf(&tile_wok(&name, &w))));
-            phase!(5);
         }
+        if let Some(dds) = baked_dds {
+            if dump {
+                // As the game will decode it.
+                paint::write_png(&out_dir.join(format!("{}.png", baked_name(tx, ty))), &mg_image::read(ResType::DDS, &dds)?.to_rgba())?;
+            }
+            owned.push((ResRef::from_str(&baked_name(tx, ty))?, ResType::DDS, dds));
+            // Clamped, so the edges don't pick up the opposite side's pixels.
+            owned.push((ResRef::from_str(&baked_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));
+            baked += 1;
+        }
+        owned.push((ResRef::from_str(&minimap_name(tx, ty))?, ResType::TGA, mg_image::write_tga(&mini)));
+        terrain_minimaps.push(mini);
+        // (The tile model has no aabb list of its own: Moonglow building one from its faces is expected, not news.)
+        for (line, note) in compiled.notes.iter().filter(|(_, n)| !n.ends_with("no aabb list, a tree was made of its faces")) {
+            eprintln!("  {name}:{line}: {note}");
+        }
+        render_bytes += compiled.binary.len();
+        if let Some(text) = text {
+            std::fs::write(out_dir.join(format!("{name}.mdl.txt")), text)?;
+        }
+        owned.push((ResRef::from_str(&name)?, ResType::MDL, compiled.binary));
+        owned.push((ResRef::from_str(&name)?, ResType::WOK, wok));
     }
     if timing {
         let t = gen_start.elapsed().as_secs_f32();
         eprintln!(
-            "  generate per tile: walkmesh+surfaces {:.1}s, tile model {:.1}s, shadow map {:.1}s, baked texture {:.1}s, minimap {:.1}s, \
-             compile+wok {:.1}s (before the loop {pre_loop:.1}s; so far {t:.1}s)",
+            "  generate per tile (thread time): walkmesh+surfaces {:.1}s, tile model {:.1}s, shadow map {:.1}s, baked texture {:.1}s, \
+             minimap {:.1}s, compile+wok {:.1}s (before the tiles {pre_loop:.1}s; so far {t:.1}s)",
             ph[0], ph[1], ph[2], ph[3], ph[4], ph[5]
         );
     }

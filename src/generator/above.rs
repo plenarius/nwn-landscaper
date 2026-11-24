@@ -23,7 +23,9 @@ const SHADOW_LENGTH: f32 = 0.5;
 /// The area `area` (`are`, `git`) drawn from above, north up, at [`OVERSAMPLE`] pixels a minimap pixel, with the game opened over
 /// `haks` (the module's hak list: the area's own hak, then the shared one).
 pub(super) fn top_view(haks: &[String], area: &str, are: mg_gff::Gff, git: Option<mg_gff::Gff>) -> Result<Picture> {
+    let t0 = std::time::Instant::now();
     let game = crate::models::open_game(nwn_bake::game::Haks::List(haks.to_vec()), nwn_bake::game::Tlk::None)?;
+    let t_open = t0.elapsed().as_secs_f32();
     // (An import's own haks may be missing here: what they hold is then left out, as in the toolset.)
     let ours = &haks[..haks.len().min(2)];
     ensure!(!game.missing_haks().iter().any(|h| ours.contains(h)), "haks not found: {}", game.missing_haks().join(", "));
@@ -33,6 +35,9 @@ pub(super) fn top_view(haks: &[String], area: &str, are: mg_gff::Gff, git: Optio
     let files = AreaFiles { resref: area.to_ascii_lowercase(), are, git };
     let scene = nwn_bake::area::scene(&game, &files, &SceneOptions { objects: true, threads: crate::config::export_threads() })?;
     let size = scene.size();
+    if std::env::var_os("LS_TIMING").is_some() {
+        eprintln!("  minimap: game opened {t_open:.1}s, scene {:.1}s", t0.elapsed().as_secs_f32() - t_open);
+    }
     let o = IsoOptions {
         views: vec![View::Top],
         scale: (MINIMAP * OVERSAMPLE) as f32 / TILE,
