@@ -5,6 +5,13 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **Publish's check is much faster.** It sends the review service the tile and library files' names, git blob ids and sizes
+  instead of the files (a review service that wants the files gets them, as before), and a hak's files are read and packed once
+  per export: the check, the pull requests and Try on dev reuse them, and a check that passes packs the zips in the background
+  for what usually follows. docs/REVIEW-SERVICE.md, "Publishing".
+
 ## 0.2.1
 
 - **The dev server's full test is gone** from the team server: `/api/dev-test` (status, start and release) and the review

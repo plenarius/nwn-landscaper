@@ -19,7 +19,7 @@ fn me() -> Result<String> {
 }
 
 /// Whether a form carries the shared texture library: without it the trial's floors show magenta on dev.
-fn has_library(fields_files: &(Vec<(&'static str, String)>, Vec<(String, String, Vec<u8>)>)) -> bool {
+fn has_library(fields_files: &(Vec<(&'static str, String)>, Vec<(String, String, std::sync::Arc<Vec<u8>>)>)) -> bool {
     fields_files.1.iter().any(|(field, _, data)| field == "library_files" && !data.is_empty())
 }
 
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn a_trial_needs_the_texture_library() {
-        let zip = |f: &str, d: &[u8]| (f.to_string(), "x.zip".to_string(), d.to_vec());
+        let zip = |f: &str, d: &[u8]| (f.to_string(), "x.zip".to_string(), std::sync::Arc::new(d.to_vec()));
         assert!(!has_library(&(vec![], vec![zip("module_bay1", b"z"), zip("hak_bay1", b"z")])));
         assert!(!has_library(&(vec![], vec![zip("library_files", b"")])));
         assert!(has_library(&(vec![], vec![zip("hak_bay1", b"z"), zip("library_files", b"z")])));
