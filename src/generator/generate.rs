@@ -93,6 +93,20 @@ fn onload_script(walks: &[TestWalk]) -> String {
     )
 }
 
+/// The whole area's minimap from each tile's (row by row from the south), for a look at it outside the game.
+fn whole_of(minimaps: &[mg_image::Rgba]) -> mg_image::Rgba {
+    let mut whole = mg_image::Rgba::new(MINIMAP * tiles_x() as u32, MINIMAP * tiles_y() as u32);
+    let (side, row) = (MINIMAP as usize * 4, (MINIMAP * tiles_x() as u32 * 4) as usize);
+    for (i, mini) in minimaps.iter().enumerate() {
+        let (tx, ty) = (i % tiles_x(), i / tiles_x());
+        for y in 0..MINIMAP as usize {
+            let at = (ty * MINIMAP as usize + y) * row + tx * side;
+            whole.data[at..at + side].copy_from_slice(&mini.data[y * side..][..side]);
+        }
+    }
+    whole
+}
+
 /// Generates the loaded area's tileset, hak and module into `out_dir`, on the export's threads. `test` is the module's test
 /// script (`test_path`): None, the built-in walks; `Some("")`, none (an export to build on, not for `mg test`).
 pub(crate) fn generate(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
@@ -103,7 +117,6 @@ pub(crate) fn generate(out_dir: &std::path::Path, test: Option<&str>) -> Result<
 fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let gen_start = std::time::Instant::now();
     let game = models::open_game(nwn_bake::game::Haks::None, nwn_bake::game::Tlk::None)?;
-    let mut hak = ErfWriter::new(*b"HAK ");
     let mut owned: Vec<(ResRef, ResType, Vec<u8>)> = Vec::new();
 
     textures::ensure_starter();
@@ -112,8 +125,8 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     // The library textures, the entrance black and the shadow shaders are in the shared hak.
     shared::ensure(&workspace::nwn_user_dir().context("no user dir")?.join("hak"))?;
     let (mut walk_faces, mut render_bytes, mut most, mut baked) = (0, 0, 0, 0);
-    // The whole area's minimap, for a look at it outside the game.
-    let mut whole = mg_image::Rgba::new(MINIMAP * tiles_x() as u32, MINIMAP * tiles_y() as u32);
+    // Each tile's minimap from the terrain alone, row by row from the south: what the hak has until the area is drawn from above.
+    let mut terrain_minimaps = Vec::with_capacity(tiles_x() * tiles_y());
     // And its baked shadows.
     let mut shadows = mg_image::Rgba::new(SHADOW_MAP * tiles_x() as u32, SHADOW_MAP * tiles_y() as u32);
     let timing = std::env::var_os("LS_TIMING").is_some();
@@ -194,12 +207,8 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             }
             phase!(3);
             let mini = minimap(tx, ty, painter.as_ref());
-            let row = (MINIMAP * tiles_x() as u32 * 4) as usize;
-            for y in 0..MINIMAP as usize {
-                let at = (ty * MINIMAP as usize + y) * row + tx * MINIMAP as usize * 4;
-                whole.data[at..at + MINIMAP as usize * 4].copy_from_slice(&mini.data[y * MINIMAP as usize * 4..][..MINIMAP as usize * 4]);
-            }
             owned.push((ResRef::from_str(&minimap_name(tx, ty))?, ResType::TGA, mg_image::write_tga(&mini)));
+            terrain_minimaps.push(mini);
             phase!(4);
             let compiled = mg_mdl::compile::compile(text.as_bytes(), &Default::default()).with_context(|| format!("compiling {name}"))?;
             // (The tile model has no aabb list of its own: Moonglow building one from its faces is expected, not news.)
@@ -223,7 +232,6 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             ph[0], ph[1], ph[2], ph[3], ph[4], ph[5]
         );
     }
-    paint::write_png(&out_dir.join("minimap.png"), &whole)?;
     if strength > 0.0 {
         paint::write_png(&out_dir.join("shadows.png"), &shadows)?;
     }
@@ -278,11 +286,15 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let nodes = choose_path_nodes();
     let set = set_file(&nodes);
     owned.push((ResRef::from_str(&tileset_name())?, ResType::SET, crlf(&set)));
-    for (r, t, d) in &owned {
-        hak.add(*r, *t, d.as_slice())?;
-    }
     let hak_path = workspace::nwn_user_dir().context("no user dir")?.join("hak").join(format!("{}.hak", hak_name()));
-    crate::atomic::write(&hak_path, &hak.to_bytes()?)?;
+    let write_hak = |owned: &[(ResRef, ResType, Vec<u8>)]| -> Result<()> {
+        let mut hak = ErfWriter::new(*b"HAK ");
+        for (r, t, d) in owned {
+            hak.add(*r, *t, d.as_slice())?;
+        }
+        crate::atomic::write(&hak_path, &hak.to_bytes()?)
+    };
+    write_hak(&owned)?;
     if timing {
         eprintln!("  hak written at {:.1}s", gen_start.elapsed().as_secs_f32());
     }
@@ -335,6 +347,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             t.set("Tile_Height", Value::Int(p.height));
         }
         m.set_gff(key, &are)?;
+        paint::write_png(&out_dir.join("minimap.png"), &whole_of(&terrain_minimaps))?;
         m.set_start(area, [6.0, 4.0, 0.0], std::f32::consts::FRAC_PI_2)?;
         // Only a walk across the water (the test area's walks don't fit these tiles).
         let water: [TestWalk; 1] = [("water", [6.0, 28.0, 34.0, 28.0])];
@@ -448,6 +461,35 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     }
     m.set_info(&info)?;
     m.set_start(area, start_point(), std::f32::consts::FRAC_PI_2)?;
+    // The minimaps drawn from above by nwn-bake, buildings and all, once the hak and the area are there (LS_MINIMAP=terrain: the
+    // terrain's alone). If it fails, the terrain's stay.
+    let minimaps = if std::env::var("LS_MINIMAP").is_ok_and(|v| v == "terrain") {
+        terrain_minimaps
+    } else {
+        let start = std::time::Instant::now();
+        let git = m.gff(&ResKey { resref: area, restype: ResType::GIT }).transpose()?;
+        match super::above::top_view(&list, &area.to_string(), m.gff(&are_key).context("no area")??, git) {
+            Ok(top) => {
+                let maps = super::above::slice(&top, [tiles_x(), tiles_y()], &terrain_minimaps);
+                for (i, mini) in maps.iter().enumerate() {
+                    let name = ResRef::from_str(&minimap_name(i % tiles_x(), i / tiles_x()))?;
+                    if let Some(e) = owned.iter_mut().find(|(r, t, _)| *r == name && *t == ResType::TGA) {
+                        e.2 = mg_image::write_tga(mini);
+                    }
+                }
+                write_hak(&owned)?;
+                if timing {
+                    eprintln!("  minimaps from above in {:.1}s (drawing {:.1}s)", start.elapsed().as_secs_f32(), top.time.as_secs_f32());
+                }
+                maps
+            }
+            Err(e) => {
+                eprintln!("  the minimaps are the terrain's alone: drawing the area from above failed: {e:#}");
+                terrain_minimaps
+            }
+        }
+    };
+    paint::write_png(&out_dir.join("minimap.png"), &whole_of(&minimaps))?;
     // Some(""): no test script (an export for building, not for mg test).
     if test != Some("") {
         m.set(

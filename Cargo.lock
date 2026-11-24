@@ -1369,8 +1369,8 @@ dependencies = [
 
 [[package]]
 name = "nwn-bake"
-version = "0.6.1"
-source = "git+https://github.com/plenarius/nwn-bake?tag=v0.6.1#f0e57291609d53849476aceef9bcc26fec9aa4c5"
+version = "0.7.0"
+source = "git+https://github.com/plenarius/nwn-bake?tag=v0.7.0#7e4d5e3dad86d4fb8eb0c2f2f93947f428f9510a"
 dependencies = [
  "anyhow",
  "glam",

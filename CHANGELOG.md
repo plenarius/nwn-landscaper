@@ -11,6 +11,13 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   instead of the files (a review service that wants the files gets them, as before), and a hak's files are read and packed once
   per export: the check, the pull requests and Try on dev reuse them, and a check that passes packs the zips in the background
   for what usually follows. docs/REVIEW-SERVICE.md, "Publishing".
+- **The minimap shows what is built on the area.** An export draws its area straight down with nwn-bake, from the hak and module
+  it has written (the tiles, the placeables and doors, their own textures), and cuts the picture into each tile's minimap:
+  houses, walls, towers and platforms are on it now, not only the ground and water. Where nothing is drawn (a cave's rock) the
+  terrain's minimap shows, as it does if the drawing fails. `LS_MINIMAP=terrain` keeps the terrain's alone.
+  It is lit by the game's sun, from the north-east as the terrain's baked shadows are, so shadows fall south-west; they are
+  drawn half as long, so a wall's or a house's shadow marks it and a 10 m tower's (4.3 m) stays off the next tile. Needs
+  nwn-bake 0.7.0 (`--sun`, `--shadow-length`).
 
 ## 0.2.1
 

@@ -46,6 +46,7 @@ A switch is on when it is set to anything (`LS_TIMING=1`); one that takes a valu
 | `LS_BAKE` | Pixels a side of each tile's baked texture (a power of two; default 512) | *differs* |
 | `LS_SHADOW` | How dark baked shadows are, 0 to 1, over the editor's setting | *differs* |
 | `LS_SHADOW_DEBUG` | `half` or `corner`: test patterns in the shadow maps, to see how the game lays them | *differs* |
+| `LS_MINIMAP` | `terrain`: the minimaps from the terrain alone, not the area drawn from above with what stands on it | *differs* |
 | `LS_REUSE` | Every tile uses one of the game's models and minimaps (ttr01_o01_01): to test the tileset alone | *differs* |
 | `LS_NO_EDGE` | No scenery beyond the area's edge | *differs* |
 | `LS_NO_ORIGINAL` | An imported area without the original's identity, scripts and objects: to test pathing alone | *differs* |
