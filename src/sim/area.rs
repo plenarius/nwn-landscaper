@@ -118,6 +118,8 @@ pub struct Planner<'a> {
     pub calls_cap: i32,
     /// The tile route's line-test allowance: past it the request is out of calls.
     pub line_cap: u64,
+    /// The request's in-tile work allowance ([`Query::intra_cap`]).
+    pub intra_cap: i64,
 }
 
 /// A path request.
@@ -139,13 +141,15 @@ pub struct Query {
     pub npc: bool,
     /// The creature is created at `from` first (creating it moves it to a safe location), as in the oracle runs.
     pub spawn: bool,
+    /// Stop the in-tile searches once their work passes this many units (a check that only needs to know a crossing is too costly).
+    pub intra_cap: i64,
 }
 
 impl Query {
     /// A request from `from` to `to` by the oracle's creature, so simulated routes compare with the recorded ones.
     pub fn new(from: (f32, f32), to: (f32, f32)) -> Query {
         // Radius and height of the oracle's creature (nw_dog).
-        Query { from, to, rad: 0.4, hgt: 1.0, range: 0.0, no_partial: false, npc: true, spawn: true }
+        Query { from, to, rad: 0.4, hgt: 1.0, range: 0.0, no_partial: false, npc: true, spawn: true, intra_cap: i64::MAX }
     }
 }
 
@@ -217,6 +221,7 @@ impl<'a> Planner<'a> {
             call_us: 1000.0,
             calls_cap: 100,
             line_cap: u64::MAX,
+            intra_cap: q.intra_cap,
         }
     }
 
@@ -612,4 +617,47 @@ pub fn simulate(area: &Area, q: &Query, trace: bool) -> SimResult {
         }
     }
     p.plan_request()
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::{Query, simulate};
+    use crate::sim::{Area, TileInput};
+
+    /// One tile, 1 m squares, walkable but for a wall across x 4..6 from the south edge to y 8: a U.
+    pub(crate) fn u_tile() -> Area {
+        let n = 10;
+        let mut verts = Vec::new();
+        for j in 0..=n {
+            for i in 0..=n {
+                verts.push([i as f32 - 5.0, j as f32 - 5.0, 0.0]);
+            }
+        }
+        let v = |i: u32, j: u32| j * (n + 1) + i;
+        let mut faces = Vec::new();
+        for j in 0..n {
+            for i in 0..n {
+                let walk = !((4..6).contains(&i) && j < 8);
+                faces.push(([v(i, j), v(i + 1, j), v(i + 1, j + 1)], walk));
+                faces.push(([v(i, j), v(i + 1, j + 1), v(i, j + 1)], walk));
+            }
+        }
+        Area::new(1, 1, vec![TileInput { verts, faces, letter: 'A', pn_orient: 0, orient: 0, level: 0 }], 0.0)
+    }
+
+    #[test]
+    fn a_capped_search_stops_just_past_the_cap() {
+        let area = u_tile();
+        let q = Query::new((2.0, 1.0), (8.0, 1.0));
+        let full = simulate(&area, &q, false);
+        let used = full.stats.intra_used;
+        assert!(used > 400_000, "the U costs {used}");
+        // A cap it never reaches changes nothing.
+        let same = simulate(&area, &Query { intra_cap: used, ..q }, false);
+        assert_eq!((same.stats.intra_used, same.end), (used, full.end));
+        // A lower one: the search stops once over it.
+        let cap = 200_000;
+        let capped = simulate(&area, &Query { intra_cap: cap, ..q }, false).stats.intra_used;
+        assert!(capped > cap && capped < used, "{capped} for cap {cap} of {used}");
+    }
 }

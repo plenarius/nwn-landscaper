@@ -236,8 +236,8 @@ pub(super) fn plan_digest(walks: &[Walk], nodes: &[(char, u8)]) -> [u8; 20] {
     h.finalize().into()
 }
 
-/// Simulated routes by their ends (the bits of `from` and `to`).
-type Routes = std::collections::HashMap<[u32; 4], sim::SimResult>;
+/// Simulated routes by their ends (the bits of `from` and `to`) and in-tile cap: a capped result never stands in for a full one.
+type Routes = std::collections::HashMap<([u32; 4], i64), sim::SimResult>;
 
 /// The simulated routes of the last plans, by [`plan_digest`], oldest first: an area exported (or checked) again with the same
 /// walkmeshes (only its paint, light, settings or objects that don't block changed) has the same routes.
@@ -246,17 +246,18 @@ static SIMULATED: std::sync::Mutex<Vec<([u8; 20], Routes)>> = std::sync::Mutex::
 /// How many plans' routes [`SIMULATED`] keeps.
 const SIMULATED_PLANS: usize = 6;
 
-/// The oracle creature's route between each pair of points (`sim::Query::new`) in `area`, the simulator's view of the plan whose
-/// digest is `plan`, on the cores; the last ones where the plan was the same.
-pub(super) fn simulate_all(area: &sim::Area, plan: [u8; 20], pairs: &[((f32, f32), (f32, f32))]) -> Vec<sim::SimResult> {
-    let key = |(a, b): ((f32, f32), (f32, f32))| [a.0.to_bits(), a.1.to_bits(), b.0.to_bits(), b.1.to_bits()];
+/// The oracle creature's route between each pair of points (`sim::Query::new`, in-tile searches stopped past `cap`) in `area`, the
+/// simulator's view of the plan whose digest is `plan`, on the cores; the last ones where the plan and cap were the same.
+pub(super) fn simulate_all(area: &sim::Area, plan: [u8; 20], pairs: &[((f32, f32), (f32, f32))], cap: i64) -> Vec<sim::SimResult> {
+    let key = |(a, b): ((f32, f32), (f32, f32))| ([a.0.to_bits(), a.1.to_bits(), b.0.to_bits(), b.1.to_bits()], cap);
     let kept = || SIMULATED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let (_, mut known) = {
         let mut kept = kept();
         kept.iter().position(|(d, _)| *d == plan).map_or_else(|| (plan, Routes::new()), |i| kept.remove(i))
     };
     let fresh: Vec<_> = pairs.iter().copied().filter(|&p| !known.contains_key(&key(p))).collect();
-    let made = in_parallel(&fresh, |(from, to)| sim::area::simulate(area, &sim::Query::new(from, to), false));
+    let made =
+        in_parallel(&fresh, |(from, to)| sim::area::simulate(area, &sim::Query { intra_cap: cap, ..sim::Query::new(from, to) }, false));
     known.extend(fresh.into_iter().map(key).zip(made));
     let out = pairs.iter().map(|&p| known[&key(p)].clone()).collect();
     let mut kept = kept();
@@ -268,8 +269,13 @@ pub(super) fn simulate_all(area: &sim::Area, plan: [u8; 20], pairs: &[((f32, f32
 }
 
 /// In-tile crossings between exits of one node, with their simulated cost: (units, tile, from, to), area coordinates, worst first.
-/// In-tile crossings of the given tiles (see `untangle`).
-pub(super) fn tile_crossings_for(walks: &[Walk], nodes: &[(char, u8)], tiles: &[usize]) -> Vec<(i64, usize, (f32, f32), (f32, f32))> {
+/// In-tile crossings of the given tiles (see `untangle`); each one's search stops once it costs more than `cap`.
+pub(super) fn tile_crossings_for(
+    walks: &[Walk],
+    nodes: &[(char, u8)],
+    tiles: &[usize],
+    cap: i64,
+) -> Vec<(i64, usize, (f32, f32), (f32, f32))> {
     let area = sim_area_of(walks, nodes);
     let layouts = pathnode::layouts();
     let n = tiles_x();
@@ -294,7 +300,7 @@ pub(super) fn tile_crossings_for(walks: &[Walk], nodes: &[(char, u8)], tiles: &[
         }
     }
     let pairs: Vec<_> = crossings.iter().map(|&(_, from, to)| (from, to)).collect();
-    let routes = simulate_all(&area, plan_digest(walks, nodes), &pairs);
+    let routes = simulate_all(&area, plan_digest(walks, nodes), &pairs, cap);
     let mut rows: Vec<_> = crossings.into_iter().zip(routes).map(|((t, from, to), r)| (r.stats.intra_used, t, from, to)).collect();
     rows.sort_by_key(|r| std::cmp::Reverse(r.0));
     rows
@@ -316,7 +322,8 @@ fn untangle(walks: &mut Vec<Walk>, mut nodes: Vec<(char, u8)>) -> Vec<(char, u8)
     let mut cache: Vec<Vec<(i64, usize, (f32, f32), (f32, f32))>> = vec![Vec::new(); tiles];
     let mut stale: Vec<usize> = (0..tiles).collect();
     for _ in 0..60 {
-        let fresh = tile_crossings_for(walks, &nodes, &stale);
+        // Uncapped: the worst crossing is cut first.
+        let fresh = tile_crossings_for(walks, &nodes, &stale, i64::MAX);
         for &t in &stale {
             cache[t].clear();
         }
@@ -538,7 +545,7 @@ fn choose_path_nodes_for(walks: &mut [Walk], prune: bool) -> (Vec<(char, u8)>, u
 
 #[cfg(test)]
 mod tests {
-    use super::{EXPORTING, as_export};
+    use super::{EXPORTING, as_export, simulate_all};
 
     #[test]
     fn an_export_is_marked_only_while_it_runs() {
@@ -549,5 +556,17 @@ mod tests {
         assert!(std::panic::catch_unwind(|| as_export(|| panic!("in an export"))).is_err());
         assert!(!EXPORTING.get());
         assert!(as_export(|| !std::thread::scope(|s| s.spawn(|| EXPORTING.get()).join().unwrap())));
+    }
+
+    #[test]
+    fn capped_and_full_routes_are_kept_apart() {
+        let area = crate::sim::area::tests::u_tile();
+        let (plan, ends) = ([0xc4; 20], [((2.0, 1.0), (8.0, 1.0))]);
+        let used_at = |cap| simulate_all(&area, plan, &ends, cap)[0].stats.intra_used;
+        let capped = used_at(200_000);
+        let used = used_at(i64::MAX);
+        assert!(capped > 200_000 && used > capped, "{capped} capped, {used} full");
+        // Both kept for the plan, neither stands in for the other.
+        assert_eq!((used_at(200_000), used_at(i64::MAX)), (capped, used));
     }
 }
