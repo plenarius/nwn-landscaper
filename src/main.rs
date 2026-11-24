@@ -31,6 +31,7 @@ mod models;
 mod newbp;
 mod newscript;
 mod objects;
+mod occluders;
 mod oracle;
 mod paint;
 mod pathnode;

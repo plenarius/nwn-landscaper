@@ -12,7 +12,7 @@ use mg_resman::ResKey;
 use mg_set::Tileset;
 
 use super::{
-    MINIMAP, Painter, SHADOW_MAP, bake_size, baked_name, choose_path_nodes, crlf, edge, entrance, hak_name, in_parallel, minimap,
+    MINIMAP, Painter, SHADOW_MAP_FINE, bake_size, baked_name, choose_path_nodes, crlf, edge, entrance, hak_name, in_parallel, minimap,
     minimap_name, set_file, shadow_map, shadow_name, shadow_strength, start_point, surfaced, tile_level, tile_model, tile_name, tile_wok,
     tiles_x, tiles_y, tileset_name, walkmesh,
 };
@@ -150,7 +150,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     // Each tile's minimap from the terrain alone, row by row from the south: what the hak has until the area is drawn from above.
     let mut terrain_minimaps = Vec::with_capacity(tiles_x() * tiles_y());
     // And its baked shadows.
-    let mut shadows = mg_image::Rgba::new(SHADOW_MAP * tiles_x() as u32, SHADOW_MAP * tiles_y() as u32);
+    let mut shadows = mg_image::Rgba::new(SHADOW_MAP_FINE * tiles_x() as u32, SHADOW_MAP_FINE * tiles_y() as u32);
     let timing = std::env::var_os("LS_TIMING").is_some();
     // LS_DUMP: each baked texture as a PNG and each model's text beside the export, to look at.
     let dump = std::env::var_os("LS_DUMP").is_some();
@@ -202,11 +202,15 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         walk_faces += faces;
         most = most.max(faces);
         if let (Some(map), Some(dds)) = (shadow, shadow_dds) {
-            let row = (SHADOW_MAP * tiles_x() as u32 * 4) as usize;
-            for y in 0..SHADOW_MAP as usize {
-                let at = (ty * SHADOW_MAP as usize + y) * row + tx * SHADOW_MAP as usize * 4;
-                shadows.data[at..at + SHADOW_MAP as usize * 4]
-                    .copy_from_slice(&map.data[y * SHADOW_MAP as usize * 4..][..SHADOW_MAP as usize * 4]);
+            // (Each tile at the finer size, a coarse map's pixels doubled.)
+            let (n, step) = (SHADOW_MAP_FINE as usize, (SHADOW_MAP_FINE / map.width) as usize);
+            let row = n * tiles_x() * 4;
+            for y in 0..n {
+                for x in 0..n {
+                    let at = (ty * n + y) * row + (tx * n + x) * 4;
+                    let from = ((y / step) * map.width as usize + x / step) * 4;
+                    shadows.data[at..at + 4].copy_from_slice(&map.data[from..from + 4]);
+                }
             }
             owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::DDS, dds));
             owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));

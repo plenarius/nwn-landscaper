@@ -5,6 +5,13 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **Baked objects cast their own shadows.** A tree's shadow was its crown filled down to the ground as a column, cast in
+  blocky steps, with no trunk: now trunks, fronds and leaves fall on the ground as they stand, through the gaps in cut-out
+  textures, sharper near the ground and softer higher up, with a little shade under and around them. Tiles objects shade get a
+  shadow map twice as fine (8 cm a pixel); the others are as before.
+
 ## 0.2.4
 
 - **No change to the engine.** Released with the editor's 0.2.4, whose Place list pictures check which way up the browser

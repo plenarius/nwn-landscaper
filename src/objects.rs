@@ -3,7 +3,7 @@
 
 //! Placeables baked into the terrain: the editor's objects, their models' triangles copied into the tiles (clipped at tile edges, each
 //! tile its share, textures referenced by name), their walkmesh footprints made ground nothing can walk on (so the path-node planner
-//! and the simulator see them), and their tops casting shadows.
+//! and the simulator see them), and their triangles casting shadows (occluders.rs).
 
 use std::sync::{Arc, RwLock};
 
@@ -28,6 +28,8 @@ pub struct Placed {
     pub max: [f32; 3],
     /// Baked into the tiles (else an object: footprint only).
     pub baked: bool,
+    /// Its model and placement, for the shadow cache.
+    pub what: String,
 }
 
 fn place(o: &Object, f: &Flat) -> Placed {
@@ -56,7 +58,8 @@ fn place(o: &Object, f: &Flat) -> Placed {
         })
         .collect();
     let groups = f.groups.iter().zip(&f.transparency).map(|((t, a, n), h)| (t.clone(), *a, *n, *h)).collect();
-    Placed { positions, uvs: f.uvs.clone(), groups, footprint, min, max, baked: o.baked }
+    let what = format!("{}:{}:{}:{}:{}:{}", o.model, o.x, o.y, o.z, o.bearing, o.scale);
+    Placed { positions, uvs: f.uvs.clone(), groups, footprint, min, max, baked: o.baked, what }
 }
 
 /// The current terrain's objects placed, and an index of their footprints.
@@ -65,47 +68,14 @@ pub struct Scene {
     pub objects: Vec<Placed>,
     /// Footprint triangles by 2 m cell.
     cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>>,
-    /// The objects' tops on a 0.25 m grid (area metres), for shadows.
-    tops: Tops,
+    /// The baked ones' triangles, for shadows.
+    occluders: Option<crate::occluders::Occluders>,
+    /// The area's lowest ground (m): how far below an object its shadow can fall.
+    pub lowest: f32,
     serial: u64,
 }
 
 const CELL: f32 = 2.0;
-/// The tops' grid (m).
-pub const TOP_CELL: f32 = 0.25;
-
-/// The tops' cells, from a cell beyond the area's south-west corner to one beyond its north-east one (no others are marked), as one
-/// array: the shadow maps ask hundreds of millions of times. NaN: nothing there.
-struct Tops {
-    w: i32,
-    h: i32,
-    cells: Vec<f32>,
-}
-
-impl Tops {
-    fn new([aw, ah]: [f32; 2]) -> Tops {
-        let (w, h) = ((aw / TOP_CELL).floor() as i32 + 3, (ah / TOP_CELL).floor() as i32 + 3);
-        Tops { w, h, cells: vec![f32::NAN; (w * h) as usize] }
-    }
-
-    fn index(&self, (cx, cy): (i32, i32)) -> Option<usize> {
-        let (i, j) = (cx + 1, cy + 1);
-        ((0..self.w).contains(&i) && (0..self.h).contains(&j)).then(|| (j * self.w + i) as usize)
-    }
-
-    /// Raises cell `c` to `z` (as a map entry starting at `f32::MIN`).
-    fn mark(&mut self, c: (i32, i32), z: f32) {
-        if let Some(k) = self.index(c) {
-            let e = &mut self.cells[k];
-            *e = if e.is_nan() { f32::MIN.max(z) } else { e.max(z) };
-        }
-    }
-
-    fn get(&self, c: (i32, i32)) -> Option<f32> {
-        self.index(c).map(|k| self.cells[k]).filter(|v| !v.is_nan())
-    }
-}
-
 static SCENE: RwLock<Option<Arc<Scene>>> = RwLock::new(None);
 
 /// The objects of the loaded terrain (built once per load).
@@ -117,7 +87,9 @@ pub fn scene() -> Option<Arc<Scene>> {
     if let Some(s) = SCENE.read().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().filter(|s| s.serial == hm.serial) {
         return Some(s.clone());
     }
-    let built = Arc::new(build(&hm.objects, hm.serial, area_of(&hm)).ok()?);
+    let mut built = build(&hm.objects, hm.serial, area_of(&hm)).ok()?;
+    built.lowest = hm.data.iter().copied().fold(f32::MAX, f32::min);
+    let built = Arc::new(built);
     *SCENE.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(built.clone());
     Some(built)
 }
@@ -146,7 +118,6 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2]) -> Result<Scene> {
     let game = models::game()?;
     let mut objects = Vec::new();
     let mut cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>> = Default::default();
-    let mut tops = Tops::new([aw, ah]);
     for o in list {
         let p = place(o, &*models::flat(game, &o.model)?);
         // Decoration (not solid) doesn't block walking.
@@ -159,46 +130,10 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2]) -> Result<Scene> {
                 }
             }
         }
-        // Tops: each triangle over the cells it covers, at its own height there (an upright face, fence boards say, along its edges).
-        // Only baked ones: an object can be moved or destroyed in play.
-        for t in p.positions.as_chunks::<3>().0.iter().filter(|_| p.baked) {
-            let mut mark = |x: f32, y: f32, z: f32| {
-                if !(-TOP_CELL..=aw + TOP_CELL).contains(&x) || !(-TOP_CELL..=ah + TOP_CELL).contains(&y) {
-                    return;
-                }
-                tops.mark(((x / TOP_CELL).floor() as i32, (y / TOP_CELL).floor() as i32), z);
-            };
-            for k in 0..3 {
-                let (a, b) = (t[k], t[(k + 1) % 3]);
-                let steps = ((b[0] - a[0]).hypot(b[1] - a[1]) / (TOP_CELL / 2.0)).ceil().max(1.0) as usize;
-                for i in 0..=steps {
-                    let f = i as f32 / steps as f32;
-                    mark(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
-                }
-            }
-            let det = (t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[2][0] - t[0][0]) * (t[1][1] - t[0][1]);
-            if det.abs() < 1e-6 {
-                continue;
-            }
-            let (x0, x1) = (t.iter().map(|q| q[0]).fold(f32::MAX, f32::min), t.iter().map(|q| q[0]).fold(f32::MIN, f32::max));
-            let (y0, y1) = (t.iter().map(|q| q[1]).fold(f32::MAX, f32::min), t.iter().map(|q| q[1]).fold(f32::MIN, f32::max));
-            for cy in cells_between(y0, y1, TOP_CELL, ah) {
-                for cx in cells_between(x0, x1, TOP_CELL, aw) {
-                    let (x, y) = ((cx as f32 + 0.5) * TOP_CELL, (cy as f32 + 0.5) * TOP_CELL);
-                    let l1 = ((t[1][1] - t[2][1]) * (x - t[2][0]) + (t[2][0] - t[1][0]) * (y - t[2][1]))
-                        / ((t[1][1] - t[2][1]) * (t[0][0] - t[2][0]) + (t[2][0] - t[1][0]) * (t[0][1] - t[2][1]));
-                    let l2 = ((t[2][1] - t[0][1]) * (x - t[2][0]) + (t[0][0] - t[2][0]) * (y - t[2][1]))
-                        / ((t[1][1] - t[2][1]) * (t[0][0] - t[2][0]) + (t[2][0] - t[1][0]) * (t[0][1] - t[2][1]));
-                    let l3 = 1.0 - l1 - l2;
-                    if l1 >= 0.0 && l2 >= 0.0 && l3 >= 0.0 {
-                        mark(x, y, l1 * t[0][2] + l2 * t[1][2] + l3 * t[2][2]);
-                    }
-                }
-            }
-        }
         objects.push(p);
     }
-    Ok(Scene { objects, cells, tops, serial })
+    let occluders = crate::occluders::Occluders::build(&objects);
+    Ok(Scene { objects, cells, occluders, lowest: 0.0, serial })
 }
 
 fn inside(t: &[[f32; 2]; 3], x: f32, y: f32) -> bool {
@@ -213,9 +148,9 @@ impl Scene {
         self.cells.get(&((x / CELL).floor() as i32, (y / CELL).floor() as i32)).is_some_and(|ts| ts.iter().any(|t| inside(t, x, y)))
     }
 
-    /// The highest object surface over (x, y), if any.
-    pub fn top(&self, x: f32, y: f32) -> Option<f32> {
-        self.tops.get(((x / TOP_CELL).floor() as i32, (y / TOP_CELL).floor() as i32))
+    /// The baked objects' triangles, for shadows (None: none baked).
+    pub fn occluders(&self) -> Option<&crate::occluders::Occluders> {
+        self.occluders.as_ref()
     }
 }
 
@@ -296,25 +231,6 @@ pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_tops_grid_keeps_the_highest_mark_of_each_cell_within_a_cell_of_the_area() {
-        let mut tops = Tops::new([20.0, 10.0]);
-        assert_eq!(tops.get((3, 4)), None);
-        tops.mark((3, 4), 1.5);
-        tops.mark((3, 4), 0.5);
-        assert_eq!(tops.get((3, 4)), Some(1.5));
-        // A cell beyond each corner is on the grid; further is not, and isn't marked.
-        for c in [(-1, -1), (81, 41)] {
-            tops.mark(c, -2.0);
-            assert_eq!(tops.get(c), Some(-2.0));
-        }
-        tops.mark((82, 0), 1.0);
-        assert_eq!((tops.get((82, 0)), tops.get((-2, 0))), (None, None));
-        // A NaN height marks the cell as a map entry starting at f32::MIN would.
-        tops.mark((5, 5), f32::NAN);
-        assert_eq!(tops.get((5, 5)), Some(f32::MIN));
-    }
 
     #[test]
     fn a_triangle_across_a_tile_edge_is_split_between_the_tiles() {

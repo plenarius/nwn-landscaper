@@ -30,7 +30,7 @@ pub(crate) use self::generate::generate;
 pub(crate) use self::install::Before;
 use self::mdl::{Grid, aabb_body, grid, normal_z, num, trimesh, trimesh_full, trimesh_listed, trimesh_with};
 use self::painter::{
-    MINIMAP, Painter, SHADOW_MAP, bake_size, entrance_rock, minimap, shadow_map, shadow_mtr, shadow_name, shadow_strength,
+    MINIMAP, Painter, SHADOW_MAP_FINE, bake_size, entrance_rock, minimap, shadow_map, shadow_mtr, shadow_name, shadow_strength,
 };
 use self::plan::{CROSSING_LIMIT, choose_path_nodes, plan_digest, sim_area_of, simulate_all, tile_crossings_for, tile_mesh, walkmesh_raw};
 pub(crate) use self::plan::{Walk, area_plan, in_parallel, in_parallel_on, walkmesh};

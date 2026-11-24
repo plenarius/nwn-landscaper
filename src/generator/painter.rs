@@ -390,15 +390,45 @@ pub(super) fn shadow_name(tx: usize, ty: usize) -> String {
     format!("{}l", tile_name(tx, ty))
 }
 
-/// Pixels a side of a tile's shadow map.
+/// Pixels a side of a tile's shadow map (16 cm each).
 pub(super) const SHADOW_MAP: u32 = 64;
+/// Pixels a side of the shadow map of a tile baked objects shade (8 cm each): fronds and trunks need them.
+pub(super) const SHADOW_MAP_FINE: u32 = 128;
+
+/// The baked objects that may shade tile (tx, ty): their shadows towards the ground from as high as they stand over the area's
+/// lowest ground, the sky they hide around them. Their placements (`Placed::what`), in the scene's order.
+fn shading(scene: &objects::Scene, tx: usize, ty: usize) -> Vec<&str> {
+    let lowest = scene.lowest;
+    let (x0, y0, x1, y1) = (tx as f32 * TILE, ty as f32 * TILE, (tx + 1) as f32 * TILE, (ty + 1) as f32 * TILE);
+    // (The sun is towards (4000, 4500, 7000): a point h over the ground shades it 4/7 h west and 4.5/7 h south of itself.)
+    let reach = shade::OBJECT_REACH;
+    scene
+        .objects
+        .iter()
+        .filter(|o| o.baked)
+        .filter(|o| {
+            let h = (o.max[2] - lowest).max(0.0) + 1.0;
+            o.min[0] - h * 4.0 / 7.0 - reach < x1 && o.max[0] + reach > x0 && o.min[1] - h * 4.5 / 7.0 - reach < y1 && o.max[1] + reach > y0
+        })
+        .map(|o| o.what.as_str())
+        .collect()
+}
+
+/// Pixels a side of tile (tx, ty)'s shadow map.
+pub(super) fn shadow_size(tx: usize, ty: usize) -> u32 {
+    match objects::scene() {
+        Some(s) if s.occluders().is_some() && !shading(&s, tx, ty).is_empty() => SHADOW_MAP_FINE,
+        _ => SHADOW_MAP,
+    }
+}
 
 /// Tile (tx, ty)'s shadow map (see shade.rs): rows bottom first, over the tile's square as its second texture coordinates run. The
 /// last export's when the ground it is cast from hasn't changed.
 pub(super) fn shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
     let Some(key) = shadow_key(tx, ty, strength) else { return draw_shadow_map(tx, ty, strength) };
     if let Some(data) = SHADOWS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
-        return mg_image::Rgba { width: SHADOW_MAP, height: SHADOW_MAP, data };
+        let size = shadow_size(tx, ty);
+        return mg_image::Rgba { width: size, height: size, data };
     }
     let map = draw_shadow_map(tx, ty, strength);
     SHADOWS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).put(key, &map.data);
@@ -408,8 +438,8 @@ pub(super) fn shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba 
 /// The shadow maps of the last exports, by [`shadow_key`].
 static SHADOWS: std::sync::Mutex<Kept> = std::sync::Mutex::new(Kept::new(32 << 20));
 
-/// A digest of everything tile (tx, ty)'s shadow map is cast from: the ground's heights and the baked objects' tops as far as
-/// [`shade::shade_lit`] looks (13 m around, 80 m towards the sun), the entrances and the strength. None when it can't be kept: no
+/// A digest of everything tile (tx, ty)'s shadow map is cast from: the ground's heights as far as [`shade::shade_lit`] looks (13 m
+/// around, 80 m towards the sun), the baked objects that shade it, the entrances and the strength. None when it can't be kept: no
 /// painted terrain, or a debugging picture.
 fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
     use sha1::Digest;
@@ -436,11 +466,9 @@ fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
         }
     }
     if let Some(scene) = objects::scene() {
-        let cell = objects::TOP_CELL;
-        for cy in (y0 / cell).floor() as i32 - 1..=(y1 / cell).floor() as i32 + 1 {
-            for cx in (x0 / cell).floor() as i32 - 1..=(x1 / cell).floor() as i32 + 1 {
-                h.update(scene.top((cx as f32 + 0.5) * cell, (cy as f32 + 0.5) * cell).unwrap_or(f32::NAN).to_le_bytes());
-            }
+        for what in shading(&scene, tx, ty) {
+            h.update(what.as_bytes());
+            h.update([0]);
         }
     }
     h.update(format!("{:?}", hm.entrances).as_bytes());
@@ -449,7 +477,66 @@ fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
 
 /// Changed whenever a shadow map comes out differently from the same ground (shade.rs, [`draw_shadow_map`]): the cache's entries
 /// from before no longer count.
-const SHADOW_VERSION: u32 = 1;
+const SHADOW_VERSION: u32 = 2;
+
+/// Values on a grid of `cell` m squares over a tile and `apron` squares beyond it, at their centres; rows from the south.
+struct Grid {
+    corner: (f32, f32),
+    cell: f32,
+    n: usize,
+    apron: usize,
+    v: Vec<[f32; 2]>,
+}
+
+impl Grid {
+    /// `cells` squares a side over the tile from `corner`, `f(i, j, x, y)` at each (i, j from -apron).
+    fn new(corner: (f32, f32), cells: usize, apron: usize, f: impl Fn(i64, i64, f32, f32) -> [f32; 2]) -> Grid {
+        let (n, cell) = (cells + 2 * apron, TILE / cells as f32);
+        let v = (0..n * n)
+            .map(|k| {
+                let (i, j) = ((k % n) as i64 - apron as i64, (k / n) as i64 - apron as i64);
+                f(i, j, corner.0 + (i as f32 + 0.5) * cell, corner.1 + (j as f32 + 0.5) * cell)
+            })
+            .collect();
+        Grid { corner, cell, n, apron, v }
+    }
+
+    /// Each value the mean of the 3 x 3 about it: one square less of apron.
+    fn blurred(&self) -> Grid {
+        let n = self.n - 2;
+        let mut v = vec![[0.0; 2]; n * n];
+        for j in 0..n {
+            for i in 0..n {
+                for (dj, di) in (0..3).flat_map(|dj| (0..3).map(move |di| (dj, di))) {
+                    let w = self.v[(j + dj) * self.n + i + di];
+                    v[j * n + i] = [v[j * n + i][0] + w[0] / 9.0, v[j * n + i][1] + w[1] / 9.0];
+                }
+            }
+        }
+        Grid { n, apron: self.apron - 1, v, ..*self }
+    }
+
+    /// The values at (x, y), bilinear.
+    fn at(&self, x: f32, y: f32) -> [f32; 2] {
+        let last = (self.n - 1) as f32;
+        let fx = ((x - self.corner.0) / self.cell - 0.5 + self.apron as f32).clamp(0.0, last);
+        let fy = ((y - self.corner.1) / self.cell - 0.5 + self.apron as f32).clamp(0.0, last);
+        let (i, j) = ((fx.floor() as usize).min(self.n - 2), (fy.floor() as usize).min(self.n - 2));
+        let (tx, ty) = (fx - i as f32, fy - j as f32);
+        let p = |i: usize, j: usize| self.v[j * self.n + i];
+        let (a, b, c, d) = (p(i, j), p(i + 1, j), p(i, j + 1), p(i + 1, j + 1));
+        [0, 1].map(|k| (a[k] * (1.0 - tx) + b[k] * tx) * (1.0 - ty) + (c[k] * (1.0 - tx) + d[k] * tx) * ty)
+    }
+}
+
+/// Points a tile side the sky the objects hide is sampled at (32 cm apart): it changes slowly.
+const SKY_GRID: usize = 32;
+
+/// A seed for point (i, j) of a grid of `n` a tile, from tile (tx, ty): the same from whichever tile asks.
+fn seed(tx: usize, ty: usize, n: usize, i: i64, j: i64) -> u32 {
+    let (gi, gj) = ((tx as i64 * n as i64 + i) as u32, (ty as i64 * n as i64 + j) as u32);
+    gi.wrapping_mul(0x9E37_79B1) ^ gj.wrapping_mul(0x85EB_CA77).rotate_left(13) ^ (n as u32).wrapping_mul(0xC2B2_AE35)
+}
 
 /// Tile (tx, ty)'s shadow map, drawn.
 fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
@@ -458,24 +545,34 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
     // instead, to see whether the client runs the shadow shader at all. LS_SHADOW_DEBUG=corner: an L in each tile's south-west corner
     // (dark along the south edge, lighter along the west), to see how the client orients the map.
     let debug = std::env::var("LS_SHADOW_DEBUG").ok();
-    // Baked objects cast shadows too: the ground with their tops on it.
-    let scene = objects::scene();
     let terrain = heightmap::current();
-    let ground = |x: f32, y: f32| {
-        let h = terrain.as_ref().map_or_else(|| height(x, y), |t| t.at(x, y));
-        scene.as_ref().and_then(|s| s.top(x, y)).map_or(h, |t| t.max(h))
-    };
+    let ground = |x: f32, y: f32| terrain.as_ref().map_or_else(|| height(x, y), |t| t.at(x, y));
     let sun = !terrain.as_ref().is_some_and(|h| h.underground);
-    paint::picture(SHADOW_MAP, SHADOW_MAP, |px, py| {
-        let (x, y) = (ox + (px as f32 + 0.5) / SHADOW_MAP as f32 * TILE, oy + (py as f32 + 0.5) / SHADOW_MAP as f32 * TILE);
+    // Baked objects shade it by their own triangles, when any are near enough: on a finer map, the terrain's shading (smooth) from
+    // the coarse map's points, the sky the objects hide from a blurred coarser grid, their shadows texel by texel.
+    let scene = objects::scene();
+    let occluders =
+        if debug.is_none() { scene.as_ref().filter(|s| !shading(s, tx, ty).is_empty()).and_then(|s| s.occluders()) } else { None };
+    let size = shadow_size(tx, ty);
+    let texel = TILE / size as f32;
+    let fine = occluders.map(|o| {
+        let coarse = Grid::new((ox, oy), SHADOW_MAP as usize, 1, |_, _, x, y| shade::terrain(x, y, sun, &ground));
+        let sky = Grid::new((ox, oy), SKY_GRID, 2, |i, j, x, y| {
+            [shade::sky_through(o, x, y, TILE / SKY_GRID as f32, seed(tx, ty, SKY_GRID, i, j), &ground), 0.0]
+        })
+        .blurred();
+        (o, coarse, sky)
+    });
+    paint::picture(size, size, |px, py| {
+        let (x, y) = (ox + (px as f32 + 0.5) * texel, oy + (py as f32 + 0.5) * texel);
         match debug.as_deref() {
             // =half: the south half of each tile dark (unmistakable on screen).
             Some("half") => {
-                let v = if (py as f32) < SHADOW_MAP as f32 / 2.0 { 0.35 } else { 1.0 };
+                let v = if (py as f32) < size as f32 / 2.0 { 0.35 } else { 1.0 };
                 return [v, v, v];
             }
             Some("corner") => {
-                let (lx, ly) = (px as f32 / SHADOW_MAP as f32, py as f32 / SHADOW_MAP as f32);
+                let (lx, ly) = (px as f32 / size as f32, py as f32 / size as f32);
                 let v = if ly < 0.2 {
                     0.3
                 } else if lx < 0.2 {
@@ -491,7 +588,14 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
             }
             None => {}
         }
-        let v = shade::shade_lit(x, y, strength, sun, &ground) * entrance::darkness(x, y);
+        let v = match &fine {
+            Some((o, coarse, sky)) => {
+                let sun = shade::sun_through(o, x, y, texel, seed(tx, ty, size as usize, px.into(), py.into()), &ground);
+                shade::combine(strength, coarse.at(x, y), shade::Through { sun, sky: sky.at(x, y)[0] })
+            }
+            None => shade::shade_lit(x, y, strength, sun, &ground),
+        };
+        let v = v * entrance::darkness(x, y);
         [v, v, v]
     })
 }
