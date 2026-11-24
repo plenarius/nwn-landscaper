@@ -490,7 +490,7 @@ mod tests {
         })
         .unwrap();
         let after = snapshot(&dir);
-        let names: Vec<String> = after.keys().map(|p| p.display().to_string()).collect();
+        let names: Vec<String> = after.keys().map(|p| p.display().to_string().replace('\\', "/")).collect();
         assert_eq!(names, ["x.import", "x.import/area.are", "x.json", "y.json"], "the earlier import's object, pictures and heights go");
         assert_eq!(after[Path::new("x.json")].as_deref(), Some(&b"new"[..]));
         let _ = std::fs::remove_dir_all(&dir);

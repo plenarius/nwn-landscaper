@@ -39,4 +39,4 @@ jobs:
       - name: Build
         run: cargo test --workspace --locked --no-run
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
