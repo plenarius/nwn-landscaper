@@ -45,6 +45,7 @@ pub const SWITCHES: &[(&str, &str, Effect)] = {
         ("LS_BAKE", "pixels a side of each tile's baked texture (a power of two; default 512)", X),
         ("LS_SHADOW", "how dark baked shadows are, 0 to 1, over the editor's setting", X),
         ("LS_SHADOW_DEBUG", "`half` or `corner`: test patterns in the shadow maps, to see how the game lays them", X),
+        ("LS_MINIMAP", "`terrain`: the minimaps from the terrain alone, not the area drawn from above with what stands on it", X),
         ("LS_REUSE", "every tile uses one of the game's models and minimaps (ttr01_o01_01): to test the tileset alone", X),
         ("LS_NO_EDGE", "no scenery beyond the area's edge", X),
         ("LS_NO_ORIGINAL", "an imported area without the original's identity, scripts and objects: to test pathing alone", X),

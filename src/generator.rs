@@ -8,8 +8,10 @@
 //! This file holds what every stage shares: the area's size, the resref names and the surface materials. The stages are in
 //! `generator/`: the ground (`terrain`), the area plan of walkmeshes and path nodes (`plan`), the painted textures and shadows
 //! (`painter`), ASCII model writing (`mdl`), each tile's files (`tile`, with `edge` and `entrance`), the hak and module
-//! (`generate`), an export's or a check's analysis (`analyse`), and the module's install in the user folder (`install`).
+//! (`generate`), the minimaps drawn from above by nwn-bake (`above`), an export's or a check's analysis (`analyse`), and the
+//! module's install in the user folder (`install`).
 
+mod above;
 mod analyse;
 mod edge;
 mod entrance;
