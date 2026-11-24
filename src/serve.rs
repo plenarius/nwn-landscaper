@@ -18,6 +18,7 @@ mod query;
 mod scripts;
 mod service;
 mod team;
+mod underlay;
 
 use std::path::Path;
 
@@ -356,6 +357,8 @@ mod body_max {
     pub const SCRIPT: usize = 1 << 20;
     /// A few fields of JSON (a blueprint's fields, its gear, an item property).
     pub const FIELDS: usize = 256 << 10;
+    /// An area's underlay picture (`/api/underlay`): a battlemat or a scanned map page.
+    pub const UNDERLAY: usize = 16 << 20;
 }
 
 /// The body of `req`, up to `max` bytes, or the 413 that refuses it. A body that stops arriving or comes too slowly
@@ -504,8 +507,17 @@ struct Ask<'a> {
 
 /// The API's areas, asked in turn: each answers the requests that are its own and returns `None` for the rest. No two
 /// match the same request; anything left is a file of the editor (GET) or refused with 405.
-const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 8] =
-    [team::route, areas::route, export::route, import::route, blueprints::route, scripts::route, dialogs::route, previews::route];
+const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 9] = [
+    team::route,
+    areas::route,
+    underlay::route,
+    export::route,
+    import::route,
+    blueprints::route,
+    scripts::route,
+    dialogs::route,
+    previews::route,
+];
 
 /// Answers one request (on one of the pool's threads on a team server), with the security headers every answer carries
 /// ([`security_headers`]).

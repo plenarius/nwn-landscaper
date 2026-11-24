@@ -288,7 +288,8 @@ pub(super) fn area_lock(path: &std::path::Path) -> std::sync::Arc<std::sync::Mut
 /// - `base` (`&base=<version>`): the [`version`] of the working copy the editor's area started from (its open, or its last
 ///   save). Refused with [`Moved`] (409) when the working copy on disk isn't that one any more, unless `replace`: two tabs on
 ///   one area used to save over each other, the last save winning. A save without `base` (an older editor) isn't checked.
-/// - A replaced working copy is kept as `name.json.replaced-<Unix seconds>`, which the next autosave doesn't overwrite.
+/// - A replaced working copy is kept as `name.json.replaced-<Unix seconds>`, which the next autosave doesn't overwrite. A new
+///   area (`new`, or another `created`) that replaces one removes that one's underlay (`underlay.rs`).
 ///
 /// Returns when it was saved (Unix seconds) and its new [`version`].
 fn save_area(name: &str, body: &[u8], new: bool, replace: bool, base: Option<&str>) -> Result<(u64, String)> {
@@ -323,6 +324,11 @@ fn save_area(name: &str, body: &[u8], new: bool, replace: bool, base: Option<&st
     // (A team server's disk quota, crate::quota: the save, and the copy of the area it replaces.)
     let replacing = old.as_ref().filter(|_| replace && (new || other() || moved)).map_or(0, Vec::len);
     crate::quota::room(name, (body.len() + replacing) as u64)?;
+    // A new area that replaces another (`new`, or another `created`) doesn't take over its underlay: the picture was traced for
+    // that one.
+    if replace && (new || other()) {
+        let _ = std::fs::remove_file(dir.join(format!("{name}.underlay")));
+    }
     if let Some(old) = &old {
         if replacing > 0 {
             crate::atomic::write(&dir.join(format!("{name}.json.replaced-{now}")), old)?;
@@ -345,7 +351,8 @@ fn save_area(name: &str, body: &[u8], new: bool, replace: bool, base: Option<&st
 ///
 /// What it has goes as follows; the area's name is free again at once, and it no longer counts as one of the workspace's areas
 /// ([`crate::quota`]):
-/// - its working copy (`areas/<name>.json`) and its import (`exports/<name>.import/` and its picture) are moved, as they are,
+/// - its working copy (`areas/<name>.json`, and its underlay `areas/<name>.underlay`) and its import (`exports/<name>.import/`
+///   and its picture) are moved, as they are,
 ///   into a folder of their own in `deleted/` (`<name>-<Unix seconds>/`, see [`crate::workspace::deleted_dir`]), for an admin
 ///   to bring back. On a team server, the newest 3 deleted copies of each name stay, and they count towards the 5 GB.
 /// - what can be made again from them is removed: the copy before the last save (`.bak`), the last export (its header,
@@ -386,7 +393,12 @@ fn delete_area(name: &str, base: Option<&str>) -> Result<String> {
         .map(|at| deleted.join(format!("{name}-{at}")))
         .find(|d| std::fs::create_dir(d).is_ok())
         .with_context(|| format!("no folder for {name} in {}", deleted.display()))?;
-    for (from, dir) in [(path.clone(), "areas"), (import, "exports"), (exports.join(format!("{name}.import.view.png")), "exports")] {
+    for (from, dir) in [
+        (path.clone(), "areas"),
+        (areas.join(format!("{name}.underlay")), "areas"),
+        (import, "exports"),
+        (exports.join(format!("{name}.import.view.png")), "exports"),
+    ] {
         if from.exists() {
             let to = aside.join(dir);
             std::fs::create_dir_all(&to)?;
