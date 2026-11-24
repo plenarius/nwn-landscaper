@@ -590,8 +590,10 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
         }
         let v = match &fine {
             Some((o, coarse, sky)) => {
-                let sun = shade::sun_through(o, x, y, texel, seed(tx, ty, size as usize, px.into(), py.into()), &ground);
-                shade::combine(strength, coarse.at(x, y), shade::Through { sun, sky: sky.at(x, y)[0] })
+                // (Underground there is no sun: objects only hide the sky, as the terrain does.)
+                let lit =
+                    if sun { shade::sun_through(o, x, y, texel, seed(tx, ty, size as usize, px.into(), py.into()), &ground) } else { 1.0 };
+                shade::combine(strength, coarse.at(x, y), shade::Through { sun: lit, sky: sky.at(x, y)[0] })
             }
             None => shade::shade_lit(x, y, strength, sun, &ground),
         };

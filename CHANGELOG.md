@@ -11,6 +11,7 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   blocky steps, with no trunk: now trunks, fronds and leaves fall on the ground as they stand, through the gaps in cut-out
   textures, sharper near the ground and softer higher up, with a little shade under and around them. Tiles objects shade get a
   shadow map twice as fine (8 cm a pixel); the others are as before.
+  Underground, where there is no sun, objects cast no sun shadows, only the shade under and around them.
 
 ## 0.2.4
 
