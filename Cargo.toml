@@ -55,8 +55,7 @@ readme = "README.md"
 [dependencies]
 # A release of nwn-bake. To work on both at once, point a local, uncommitted
 # `[patch."https://github.com/plenarius/nwn-bake"]` at a checkout (README, "Development").
-# TODO(nwn-bake#16): switch to tag = "v0.7.0" once it is tagged.
-nwn-bake = { git = "https://github.com/plenarius/nwn-bake", rev = "1fdc4ec3ac2fe404ff79d8bf1587dacd96677daf" }
+nwn-bake = { git = "https://github.com/plenarius/nwn-bake", tag = "v0.7.0" }
 mg-core = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-mdl = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-erf = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
