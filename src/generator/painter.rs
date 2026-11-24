@@ -529,7 +529,7 @@ impl Grid {
     }
 }
 
-/// Which points of a 64-a-tile grid over a tile (and `APRON` beyond it) have their ground shut in by solid objects
+/// Which points of a grid over a tile (as the sky's, 32 a tile, and `APRON` beyond it) have their ground shut in by solid objects
 /// ([`Occluders::shut_in`](crate::occluders::Occluders::shut_in)): no one sees it, so it takes no rays.
 struct Shut {
     corner: (f32, f32),
@@ -539,15 +539,15 @@ struct Shut {
 
 impl Shut {
     /// Points beyond the tile (a point off the grid counts as seen).
-    const APRON: usize = 6;
+    const APRON: usize = 4;
 
     fn new(o: &crate::occluders::Occluders, corner: (f32, f32), ground: &dyn Fn(f32, f32) -> f32) -> Shut {
-        let (n, cell) = (SHADOW_MAP as usize + 2 * Self::APRON, TILE / SHADOW_MAP as f32);
+        let (n, cell) = (SKY_GRID + 2 * Self::APRON, TILE / SKY_GRID as f32);
         let v = (0..n * n)
             .map(|k| {
                 let (i, j) = ((k % n) as f32 - Self::APRON as f32, (k / n) as f32 - Self::APRON as f32);
                 let (x, y) = (corner.0 + (i + 0.5) * cell, corner.1 + (j + 0.5) * cell);
-                o.shut_in([x, y, ground(x, y)])
+                o.shut_in([x, y, ground(x, y)], ground)
             })
             .collect();
         Shut { corner, n, v }
@@ -555,7 +555,7 @@ impl Shut {
 
     /// Whether every point within `r` of the one nearest (x, y) is shut in (a point off the grid is not).
     fn all(&self, x: f32, y: f32, r: i64) -> bool {
-        let cell = TILE / SHADOW_MAP as f32;
+        let cell = TILE / SKY_GRID as f32;
         let at = |v: f32, c: f32| ((v - c) / cell).floor() as i64 + Self::APRON as i64;
         let (i, j) = (at(x, self.corner.0), at(y, self.corner.1));
         let n = self.n as i64;
@@ -637,7 +637,7 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
                 },
             );
         let sky = Grid::new((ox, oy), SKY_GRID, 2, |i, j, x, y| {
-            if shut.all(x, y, 5) {
+            if shut.all(x, y, 3) {
                 return [1.0, 0.0];
             }
             [shade::sky_through(o, x, y, TILE / SKY_GRID as f32, seed(tx, ty, SKY_GRID, i, j), &ground), 0.0]
