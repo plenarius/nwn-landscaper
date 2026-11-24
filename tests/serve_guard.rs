@@ -19,6 +19,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+/// What a Windows program can't start without, kept through `env_clear` (Winsock fails without `SystemRoot`; temporary files
+/// would go to the Windows folder without `TEMP`). Nothing elsewhere.
+fn windows_basics() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    let wanted = ["SystemRoot", "SystemDrive", "TEMP", "TMP"];
+    std::env::vars_os().filter(|(k, _)| cfg!(windows) && wanted.iter().any(|w| k.eq_ignore_ascii_case(w))).collect()
+}
+
 /// A server and its scratch folder; stopped when dropped.
 struct Server {
     child: Child,
@@ -95,6 +102,7 @@ impl Server {
             .arg(root.join("web"))
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .envs(windows_basics())
             .env("HOME", root.join("home"))
             .env("XDG_DATA_HOME", root.join("xdg"))
             .env("NWN_ROOT", root.join("nogame"))
@@ -725,6 +733,7 @@ fn a_damaged_assignments_file_is_never_read_as_empty_or_written_over() {
             .arg(s.root.join("web"))
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .envs(windows_basics())
             .env("HOME", s.root.join("home"))
             .env("XDG_DATA_HOME", s.root.join("xdg"))
             .env("NWN_ROOT", s.root.join("nogame"))
@@ -863,7 +872,9 @@ fn an_oversized_body_is_refused_with_413_and_nothing_is_written() {
     let mut out = Vec::new();
     let _ = c.read_to_end(&mut out);
     let text = String::from_utf8_lossy(&out);
-    assert!(text.starts_with("HTTP/1.1 413"), "{}", text.lines().next().unwrap_or(""));
+    // (On Windows the server's close with the rest of the body unread resets the connection, and the reset throws the 413
+    // away before it is read: refused all the same, and below, nothing written.)
+    assert!(text.starts_with("HTTP/1.1 413") || (cfg!(windows) && out.is_empty()), "{}", text.lines().next().unwrap_or(""));
     // Nothing of "big" anywhere.
     let mut files = Vec::new();
     tree(&s.root, &mut files);
@@ -886,6 +897,7 @@ fn refuses_to_start(team: bool, env: &[(&str, &str)], args: &[&str]) -> String {
         .args(args)
         .env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .envs(windows_basics())
         .env("HOME", root.join("home"))
         .env("XDG_DATA_HOME", root.join("xdg"))
         .env("NWN_ROOT", root.join("nogame"))

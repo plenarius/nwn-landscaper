@@ -207,7 +207,8 @@ mod tests {
         std::fs::hard_link(dir.join("areas/town.json"), dir.join("areas/town.json.bak")).unwrap();
         std::fs::write(dir.join("exports/cave.import/area.are"), vec![0u8; 200]).unwrap();
         std::fs::write(dir.join("uploads/big.mod"), vec![0u8; 5000]).unwrap();
-        assert_eq!(size_of(&dir, true, &mut HashSet::new()), 1200);
+        // (On Windows each name counts: see `file_id`.)
+        assert_eq!(size_of(&dir, true, &mut HashSet::new()), if cfg!(unix) { 1200 } else { 2200 });
         assert_eq!(area_names(&dir).into_iter().collect::<Vec<_>>(), ["cave", "town"]);
         let _ = std::fs::remove_dir_all(&dir);
     }

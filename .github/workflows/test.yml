@@ -3,7 +3,8 @@ name: Tests
 # Runs the tests of the Landscaper's workspace on every pull request to master. They need no Neverwinter Nights install.
 # nwn-bake, a git dependency at a release tag, is tested in its own repository (https://github.com/plenarius/nwn-bake, on
 # three platforms); tests/nwn_bake_split.rs here checks that the Landscaper pins the same Moonglow and the same shared files.
-# Linux only. Formatting, lints and the other checks of STYLE.md run in check.yml (scripts/check.sh).
+# Linux and Windows (until 0.2.2 they ran on Linux only, and every export on Windows failed). Formatting, lints and the other
+# checks of STYLE.md run in check.yml (scripts/check.sh).
 on:
   pull_request:
     branches: [master]
@@ -21,7 +22,11 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
       CARGO_TERM_COLOR: always
@@ -34,4 +39,4 @@ jobs:
       - name: Build
         run: cargo test --workspace --locked --no-run
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast

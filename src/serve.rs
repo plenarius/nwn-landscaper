@@ -599,8 +599,9 @@ fn answer_request(req: &mut tiny_http::Request, web: &Path, gate: &Gate) -> Answ
     }
     let (path, query) = url.split_once('?').unwrap_or((&url, ""));
     // The container's own health check (from inside it only): no sign-in, no log.
+    // `X-Landscaper` tells a second double-click that this is the Landscaper and not another program on the port.
     if path == "/healthz" && req.remote_addr().is_some_and(|a| a.ip().is_loopback()) {
-        return Response::from_string("ok");
+        return Response::from_string("ok").with_header(response_header("X-Landscaper", env!("CARGO_PKG_VERSION")));
     }
     let headers: Vec<(String, String)> =
         req.headers().iter().map(|h| (h.field.as_str().as_str().to_ascii_lowercase(), h.value.to_string())).collect();
@@ -776,17 +777,27 @@ mod pool_tests {
         let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
         let t = std::time::Instant::now();
-        let mut out = String::new();
+        let mut out = Vec::new();
+        // The answer is read as soon as it comes: on Windows a byte sent after the server closed resets the connection, and
+        // the reset throws away an answer not read yet.
+        s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
         for b in b"GET / HTTP/1.1\r\nHost: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\r\n\r\n" {
+            let mut got = [0; 256];
+            if let Ok(n @ 1..) = s.read(&mut got) {
+                out.extend_from_slice(&got[..n]);
+                break;
+            }
             if s.write_all(&[*b]).is_err() {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(300));
+            std::thread::sleep(Duration::from_millis(250));
             if t.elapsed() > Duration::from_secs(4) {
                 break;
             }
         }
-        let _ = s.read_to_string(&mut out);
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let _ = s.read_to_end(&mut out);
+        let out = String::from_utf8_lossy(&out);
         assert!(out.starts_with("HTTP/1.1 408"), "{out}");
     }
 

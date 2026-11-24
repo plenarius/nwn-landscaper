@@ -74,29 +74,43 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-/// Started with no arguments (a double-click on the program): `serve` on 127.0.0.1:8765 with the editor in `web/` beside the
-/// program, the browser opened at it. The window stays open while it serves; when it can't start, it says why and waits for
+/// Started with no arguments (a double-click on the program): `serve` on 127.0.0.1:8765 (or the next free port when another
+/// program has it) with the editor in `web/` beside the program, the browser opened at it. The window stays open while it serves; when it can't start, it says why and waits for
 /// Enter, so the message can be read before the window closes. Without a game install it stops and says what to set.
 fn quick_start() -> std::process::ExitCode {
-    const ADDRESS: &str = "127.0.0.1:8765";
     println!("NWN Landscaper {}: the editor on this machine. (`landscaper --help` lists the commands.)\n", env!("CARGO_PKG_VERSION"));
     let mut args = vec!["landscaper".into(), "serve".into()];
     if let Some(user) = onedrive_user_folder() {
         args.extend(["--user".into(), user.into_os_string()]);
     }
-    let cli = <cli::Cli as clap::Parser>::parse_from(args);
-    config::set_given(config::Given { root: None, user: cli.game.user.clone(), tlk: None, jobs: None });
+    let given = <cli::Cli as clap::Parser>::parse_from(&args);
+    config::set_given(config::Given { root: None, user: given.game.user.clone(), tlk: None, jobs: None });
     let outcome = if models::game_folders().0.is_none() {
         say_folders();
         Err(anyhow::anyhow!("the Landscaper needs the game's files: set NWN_ROOT as above, then start it again"))
-    } else if std::net::TcpListener::bind(ADDRESS).is_err() {
-        // Most likely the Landscaper started earlier and still running in another window: show its editor.
-        println!("Something is already listening on {ADDRESS}: if it is the Landscaper, started before, its editor opens now.");
-        serve::open_browser(&format!("http://{ADDRESS}/"));
-        Ok(())
     } else {
-        serve::OPEN_BROWSER.store(true, std::sync::atomic::Ordering::Relaxed);
-        run(cli)
+        match quick_port() {
+            QuickPort::Running(port) => {
+                // The Landscaper started earlier and still running in another window: show its editor.
+                println!("The Landscaper is already running on port {port}: its editor opens now.");
+                serve::open_browser(&format!("http://127.0.0.1:{port}/"));
+                Ok(())
+            }
+            QuickPort::Free(port) => {
+                if port != QUICK_PORTS.start {
+                    println!("Another program is using port {}, so the editor takes port {port}.", QUICK_PORTS.start);
+                }
+                args.extend(["--port".into(), port.to_string().into()]);
+                serve::OPEN_BROWSER.store(true, std::sync::atomic::Ordering::Relaxed);
+                run(<cli::Cli as clap::Parser>::parse_from(args))
+            }
+            QuickPort::None => Err(anyhow::anyhow!(
+                "ports {} to {} are all taken by other programs: start it from a Command Prompt or terminal with \
+                 `landscaper serve --port <a free port>`",
+                QUICK_PORTS.start,
+                QUICK_PORTS.end - 1
+            )),
+        }
     };
     if let Err(e) = &outcome {
         eprintln!("\nerror: {e:#}");
@@ -104,6 +118,48 @@ fn quick_start() -> std::process::ExitCode {
     println!("\nPress Enter to close this window.");
     let _ = std::io::stdin().read_line(&mut String::new());
     if outcome.is_ok() { std::process::ExitCode::SUCCESS } else { std::process::ExitCode::FAILURE }
+}
+
+/// The ports a double-click tries, in order: other local tools also like 8765.
+const QUICK_PORTS: std::ops::Range<u16> = 8765..8785;
+
+enum QuickPort {
+    /// A Landscaper started before answers there.
+    Running(u16),
+    /// Nothing listens there.
+    Free(u16),
+    None,
+}
+
+/// Where a double-click's editor is: a Landscaper already running on one of [`QUICK_PORTS`], else the first free one. A port
+/// another program holds is passed over.
+fn quick_port() -> QuickPort {
+    for port in QUICK_PORTS {
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return QuickPort::Free(port);
+        }
+        if is_landscaper(port) {
+            return QuickPort::Running(port);
+        }
+    }
+    QuickPort::None
+}
+
+/// Whether what listens on `port` is the Landscaper: its `/healthz` answers with an `X-Landscaper` header.
+fn is_landscaper(port: u16) -> bool {
+    use std::io::{Read, Write};
+    let ask = || -> std::io::Result<String> {
+        let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let mut s = std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_secs(1))?;
+        s.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+        s.set_write_timeout(Some(std::time::Duration::from_secs(1)))?;
+        s.write_all(format!("GET /healthz HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").as_bytes())?;
+        let mut head = Vec::new();
+        // (What came before a reset or a timeout still counts.)
+        let _ = s.take(4096).read_to_end(&mut head);
+        Ok(String::from_utf8_lossy(&head).into_owned())
+    };
+    ask().is_ok_and(|r| r.lines().take_while(|l| !l.trim().is_empty()).any(|l| l.to_ascii_lowercase().starts_with("x-landscaper:")))
 }
 
 /// On Windows, `Documents\Neverwinter Nights` in OneDrive (`%OneDrive%`), where Windows moves the Documents folder when OneDrive
@@ -322,4 +378,39 @@ fn say_folders() {
         format!("{} (LANDSCAPER_MODULE_REPO){found}", std::fs::canonicalize(&repo).unwrap_or(repo).display())
     };
     println!("module: {module}");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Read, Write};
+
+    /// A one-request server on a free port that answers with `reply`.
+    fn answering(reply: &'static str) -> u16 {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut asked = Vec::new();
+            let mut buf = [0; 256];
+            while !asked.ends_with(b"\r\n\r\n") {
+                match s.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => asked.extend_from_slice(&buf[..n]),
+                }
+            }
+            let _ = s.write_all(reply.as_bytes());
+        });
+        port
+    }
+
+    #[test]
+    fn a_second_double_click_opens_only_a_landscaper_and_passes_over_other_programs() {
+        assert!(super::is_landscaper(answering("HTTP/1.1 200 OK\r\nX-Landscaper: 0.2.2\r\nContent-Length: 2\r\n\r\nok")));
+        // Another local tool on the port (a dashboard, or one with its own /healthz).
+        assert!(!super::is_landscaper(answering("HTTP/1.0 404 Not Found\r\nServer: SimpleHTTP/0.6\r\n\r\nnope")));
+        assert!(!super::is_landscaper(answering("HTTP/1.1 200 OK\r\nContent-Length: 15\r\n\r\nX-Landscaper: 1")));
+        // Nothing listening.
+        let free = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port();
+        assert!(!super::is_landscaper(free));
+    }
 }
