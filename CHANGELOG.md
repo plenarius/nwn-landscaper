@@ -5,6 +5,13 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## 0.3.1
+
+- **Exports of imported areas are quicker again.** 0.3.0 shipped an early draft of its skip for the ground no one sees under
+  imported cliff tops: it found little of that ground and cost more than it saved. The finished test is here: on a large
+  imported area it skips about a third of the shadow maps' texels, and their drawing takes about a tenth less time. What the
+  game shows is the same. Released with the editor's 0.3.1, which is unchanged (`WEB_REF`).
+
 ## 0.3.0
 
 - **Released with the editor's 0.3.0**: four sample landscapes in New area (a canyon, a snowy mountain pass, a dune desert, a
