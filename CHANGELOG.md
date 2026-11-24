@@ -7,6 +7,11 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **Underlays.** `/api/underlay?name=<area>` keeps the editor's underlay, a picture laid under an area to trace over (a
+  battlemat, a scanned map), as `areas/<name>.underlay` beside the working copy: `PUT` (PNG, JPEG, WebP, GIF or BMP, up to
+  16 MB, told by its first bytes; anything else is refused with 415), `GET` (answered as the type its bytes are) and `DELETE`.
+  It counts towards a team workspace's 5 GB. Deleting the area sets it aside with the working copy; a new area that replaces
+  one by its name doesn't take its underlay over. Nothing exports it.
 - **Baked objects cast their own shadows.** A tree's shadow was its crown filled down to the ground as a column, cast in
   blocky steps, with no trunk: now trunks, fronds and leaves fall on the ground as they stand, through the gaps in cut-out
   textures, sharper near the ground and softer higher up, with a little shade under and around them. Tiles objects shade get a

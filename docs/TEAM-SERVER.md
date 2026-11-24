@@ -116,7 +116,8 @@ whose assignment has ended (403, as an export). It is refused with 409 while ano
 ground or objects; the answer's `used_by` names them), and when the area was saved since the version the editor holds (see
 "Requests and concurrency").
 
-- **Set aside, for an admin to bring back:** the working copy (`areas/<name>.json`) and the import (`exports/<name>.import/`
+- **Set aside, for an admin to bring back:** the working copy (`areas/<name>.json`, with its underlay picture
+  `areas/<name>.underlay`) and the import (`exports/<name>.import/`
   and its picture `exports/<name>.import.view.png`), moved as they are into `workspaces/<user>/deleted/<name>-<Unix seconds>/`,
   under the same `areas/` and `exports/` folders. The newest 3 deleted copies of each name stay.
 - **Removed, since an export makes them again:** the copy before the last save (`<name>.json.bak`), the last export

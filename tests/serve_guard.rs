@@ -306,6 +306,9 @@ fn routes() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         p("GET", "/api/area?name={}"),
         p("DELETE", "/api/area?name={}&base=none"),
         p("GET", "/api/originals?name={}"),
+        ("PUT", "/api/underlay?name={}", b"\x89PNG\r\n\x1a\n".to_vec()),
+        p("GET", "/api/underlay?name={}"),
+        p("DELETE", "/api/underlay?name={}"),
         p("GET", "/api/package-download?name={}&whole=1"),
         p("GET", "/api/import/{}"),
         p("GET", "/api/import-file/{}/decal_a.png"),
@@ -1273,6 +1276,49 @@ fn deleting_an_area_sets_it_aside_removes_its_export_and_frees_its_name() {
         assert_eq!(delete("town", &v).0, 200);
     }
     assert_eq!(names_in(&deleted).iter().filter(|n| n.starts_with("town-")).count(), 4);
+}
+
+#[test]
+fn an_underlay_is_kept_beside_its_area_set_aside_with_it_and_not_taken_over_by_a_new_area_of_its_name() {
+    let s = Server::start("underlay", &[], false);
+    let areas = s.data().join("areas");
+    let png = b"\x89PNG\r\n\x1a\n picture".to_vec();
+    // Refused: an area that isn't saved, and anything that isn't a picture (a page, whatever type it claims).
+    let (st, b) = s.editor("PUT", "/api/underlay?name=town", &[], &png);
+    assert!(st == 404 && b.contains("save it first"), "{st}: {b}");
+    let (st, b) = s.editor("PUT", "/api/save?name=town&new=1", &[], &area_json("town", 5, Some("t1")));
+    assert_eq!(st, 200, "{b}");
+    let (st, b) = s.editor("PUT", "/api/underlay?name=town", &[("Content-Type", "image/png")], b"<html><script>alert(1)</script>");
+    assert_eq!(st, 415, "{b}");
+    assert_eq!(s.editor("GET", "/api/underlay?name=town", &[], b"").0, 404);
+    // Kept, and answered as the type its bytes are.
+    assert_eq!(s.editor("PUT", "/api/underlay?name=town", &[], &png).0, 200);
+    let host = format!("127.0.0.1:{}", s.port);
+    let (st, head, body) = s.exchange("GET", "/api/underlay?name=town", &[("Host", &host), ("X-Landscaper", "1")], b"");
+    // (`exchange` reads the body as text, so only its ASCII end is compared; the bytes kept are compared below.)
+    let length = format!("content-length: {}", png.len());
+    assert!(st == 200 && head.contains("content-type: image/png") && head.contains(&length) && body.ends_with(" picture"), "{st} {head}");
+    assert_eq!(std::fs::read(areas.join("town.underlay")).unwrap(), png);
+    // Removed, and put back.
+    assert_eq!(s.editor("DELETE", "/api/underlay?name=town", &[], b"").0, 200);
+    assert!(!areas.join("town.underlay").exists());
+    assert_eq!(s.editor("PUT", "/api/underlay?name=town", &[], &png).0, 200);
+    // Saving the area again keeps it; a new area that replaces town doesn't take it over.
+    assert_eq!(s.editor("PUT", "/api/save?name=town", &[], &area_json("town", 6, Some("t1"))).0, 200);
+    assert!(areas.join("town.underlay").exists());
+    let (st, b) = s.editor("PUT", "/api/save?name=town&new=1&replace=1", &[], &area_json("town", 5, Some("t2")));
+    assert_eq!(st, 200, "{b}");
+    assert!(!areas.join("town.underlay").exists());
+    // Deleting an area sets its underlay aside with its working copy.
+    assert_eq!(s.editor("PUT", "/api/underlay?name=town", &[], &png).0, 200);
+    let (_, b) = s.editor("PUT", "/api/save?name=town", &[], &area_json("town", 7, Some("t2")));
+    let version = saved_version(&b);
+    let (st, b) = s.editor("DELETE", &format!("/api/area?name=town&base={version}"), &[], b"");
+    assert_eq!(st, 200, "{b}");
+    let deleted = s.data().join("deleted");
+    let aside = deleted.join(&names_in(&deleted)[0]);
+    assert_eq!(names_in(&aside.join("areas")), ["town.json", "town.underlay"]);
+    assert!(!areas.join("town.underlay").exists());
 }
 
 #[test]
