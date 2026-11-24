@@ -863,13 +863,26 @@ fn an_oversized_body_is_refused_with_413_and_nothing_is_written() {
     )
     .unwrap();
     let chunk = vec![b' '; 1 << 20];
+    let mut out = Vec::new();
+    // The answer is read as soon as it comes: on Windows a chunk sent after the server closed resets the connection, and the
+    // reset throws away an answer not read yet.
+    c.set_read_timeout(Some(Duration::from_millis(20))).unwrap();
+    let mut answered = false;
     for _ in 0..(AREA_MAX >> 20) + 1 {
+        let mut got = [0; 4096];
+        if let Ok(n @ 1..) = c.read(&mut got) {
+            out.extend_from_slice(&got[..n]);
+            answered = true;
+            break;
+        }
         if write!(c, "{:x}\r\n", chunk.len()).and_then(|()| c.write_all(&chunk)).and_then(|()| c.write_all(b"\r\n")).is_err() {
             break; // the server answered and closed
         }
     }
-    let _ = c.write_all(b"0\r\n\r\n");
-    let mut out = Vec::new();
+    if !answered {
+        let _ = c.write_all(b"0\r\n\r\n");
+    }
+    c.set_read_timeout(Some(Duration::from_secs(60))).unwrap();
     let _ = c.read_to_end(&mut out);
     let text = String::from_utf8_lossy(&out);
     assert!(text.starts_with("HTTP/1.1 413"), "{}", text.lines().next().unwrap_or(""));
