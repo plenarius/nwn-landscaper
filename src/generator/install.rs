@@ -120,7 +120,12 @@ pub(crate) fn replace_module(dest: &Path, change: impl FnOnce(&Path) -> Result<(
             std::fs::copy(dest, &work).with_context(|| format!("copying {}", dest.display()))?;
         }
         change(&work)?;
-        std::fs::File::open(&work).and_then(|f| f.sync_all()).with_context(|| format!("writing {}", work.display()))?;
+        // (Opened for writing: Windows refuses to flush a file opened read-only, "Access is denied".)
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&work)
+            .and_then(|f| f.sync_all())
+            .with_context(|| format!("writing {}", work.display()))?;
         if dest.exists() {
             // The module before, kept: a hard link costs nothing and needs no room; a copy where links don't work.
             let bak = dir.join(format!("{file}.bak"));

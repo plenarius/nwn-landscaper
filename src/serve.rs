@@ -599,8 +599,9 @@ fn answer_request(req: &mut tiny_http::Request, web: &Path, gate: &Gate) -> Answ
     }
     let (path, query) = url.split_once('?').unwrap_or((&url, ""));
     // The container's own health check (from inside it only): no sign-in, no log.
+    // `X-Landscaper` tells a second double-click that this is the Landscaper and not another program on the port.
     if path == "/healthz" && req.remote_addr().is_some_and(|a| a.ip().is_loopback()) {
-        return Response::from_string("ok");
+        return Response::from_string("ok").with_header(response_header("X-Landscaper", env!("CARGO_PKG_VERSION")));
     }
     let headers: Vec<(String, String)> =
         req.headers().iter().map(|h| (h.field.as_str().as_str().to_ascii_lowercase(), h.value.to_string())).collect();

@@ -7,6 +7,11 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **Export works on Windows.** Every export there stopped with "Access is denied (os error 5)" on the module's `.work` copy:
+  the copy was flushed to disk through a read-only handle, which Windows refuses. The tests now run on Windows too.
+- **A double-click passes over another program on port 8765.** It used to open whatever was listening there (another local
+  tool's page) and say it was the Landscaper. Now it opens a Landscaper already running only when `/healthz` says it is one
+  (an `X-Landscaper` header), and otherwise starts on the next free port up to 8784, and says which.
 - **Export is faster, and an export again much faster.** Each tile's files (its baked texture, shadow map, model, walkmesh and
   minimap) are made on every core at once, the in-tile crossings check spreads single crossings instead of whole tiles, and an
   import's pictures load side by side. `landscaper serve` keeps the last exports' baked textures, shadow maps and simulated routes by

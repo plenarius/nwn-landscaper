@@ -12,9 +12,9 @@ You need Neverwinter Nights: Enhanced Edition, installed and started once (the f
   Terminal, run `xattr -dr com.apple.quarantine` followed by this folder's path.
 - **Linux:** run `./landscaper` in this folder.
 
-A window opens and shows the game and the user folder it found, then your browser opens the editor at <http://127.0.0.1:8765/>.
-Keep the window open while you work. To stop the Landscaper, close the window or press Ctrl+C in it. Only this computer can
-reach the editor.
+A window opens and shows the game and the user folder it found, then your browser opens the editor at <http://127.0.0.1:8765/>
+(or the next free port, if another program has 8765: the window says which). Keep the window open while you work. To stop
+the Landscaper, close the window or press Ctrl+C in it. Only this computer can reach the editor.
 
 ## If it can't find the game
 

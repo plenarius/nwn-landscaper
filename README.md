@@ -20,8 +20,8 @@ Made for [Layonara](https://layonara.com)'s builders. The code is configurable f
 Download the archive for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases): Windows
 (x86-64), macOS (Apple silicon and Intel) or Linux (x86-64). Unpack it anywhere and start the program in it: `landscaper.exe`
 on Windows, `landscaper` on macOS and Linux. A window shows the game and user folder it found, and your browser opens the editor
-at <http://127.0.0.1:8765/>. Close the window to stop it. `QUICKSTART.txt` in the archive says the same, and what to set when it
-can't find the game.
+at <http://127.0.0.1:8765/> (or the next free port, if another program has 8765). Close the window to stop it. `QUICKSTART.txt`
+in the archive says the same, and what to set when it can't find the game.
 
 The archive holds the engine and the editor of the same release, so you need nothing else but the game. Check a download against
 `SHA256SUMS` on the release page.
