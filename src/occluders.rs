@@ -279,10 +279,10 @@ impl Occluders {
         self.split(first + 1, mid, to, depth + 1);
     }
 
-    /// How much light gets from `o` along `d` (unit) to `far` metres: 1 all, 0 none (each surface crossed takes its opacity).
-    pub fn through(&self, o: [f32; 3], d: [f32; 3], far: f32) -> f32 {
+    /// Calls `hit(triangle, u, v)` for each triangle a ray from `o` along `d` (unit) crosses before `far`, in no order, until it
+    /// returns true.
+    fn hits(&self, o: [f32; 3], d: [f32; 3], far: f32, mut hit: impl FnMut(&Tri, f32, f32) -> bool) {
         let inv = d.map(|v| if v.abs() < 1e-9 { 1e9_f32.copysign(v) } else { 1.0 / v });
-        let mut left = 1.0f32;
         let mut stack = [0u32; 64];
         let mut sp = 1;
         while sp > 0 {
@@ -325,17 +325,49 @@ impl Occluders {
                 if dist <= 1e-3 || dist >= far {
                     continue;
                 }
-                let opacity = match t.mask {
-                    NONE => 1.0,
-                    m => self.masks[m as usize].at(t.uv[0] + u * t.du1[0] + v * t.du2[0], t.uv[1] + u * t.du1[1] + v * t.du2[1]),
-                };
-                left *= 1.0 - opacity;
-                if left < 0.004 {
-                    return 0.0;
+                if hit(t, u, v) {
+                    return;
                 }
             }
         }
-        left
+    }
+
+    /// How much light gets from `o` along `d` (unit) to `far` metres: 1 all, 0 none (each surface crossed takes its opacity).
+    pub fn through(&self, o: [f32; 3], d: [f32; 3], far: f32) -> f32 {
+        let mut left = 1.0f32;
+        self.hits(o, d, far, |t, u, v| {
+            let opacity = match t.mask {
+                NONE => 1.0,
+                m => self.masks[m as usize].at(t.uv[0] + u * t.du1[0] + v * t.du2[0], t.uv[1] + u * t.du1[1] + v * t.du2[1]),
+            };
+            left *= 1.0 - opacity;
+            left < 0.004
+        });
+        if left < 0.004 { 0.0 } else { left }
+    }
+
+    /// Whether a ray from `o` along `d` (unit) meets a solid surface (not a cut-out) before `far` metres.
+    fn blocked(&self, o: [f32; 3], d: [f32; 3], far: f32) -> bool {
+        let mut solid = false;
+        self.hits(o, d, far, |t, _, _| {
+            solid = t.mask == NONE;
+            solid
+        });
+        solid
+    }
+
+    /// Whether the ground at `o` is shut in by solid surfaces: under one and walled all round, so no one sees it (the ground under
+    /// an imported cliff's top, or inside a boulder). Ground under a tree or an overhang is open to the side.
+    pub fn shut_in(&self, o: [f32; 3]) -> bool {
+        const FAR: f32 = 40.0;
+        let o = [o[0], o[1], o[2] + 0.05];
+        // (Eight ways round, a little upwards: the ground itself doesn't count.)
+        let (rise, flat) = (0.34f32.sin(), 0.34f32.cos());
+        self.blocked(o, [0.0, 0.0, 1.0], FAR)
+            && (0..8).all(|k| {
+                let a = k as f32 * std::f32::consts::FRAC_PI_4;
+                self.blocked(o, [flat * a.cos(), flat * a.sin(), rise], FAR)
+            })
     }
 }
 
@@ -373,6 +405,22 @@ mod tests {
         assert_eq!(o.through([0.5, 0.5, 0.0], up, 4.0), 1.0);
         assert_eq!(o.through([0.5, 0.5, 6.0], up, 100.0), 1.0);
         assert_eq!(o.through([20.1, 0.1, 0.0], up, 100.0), 0.0);
+    }
+
+    #[test]
+    fn ground_in_a_closed_box_is_shut_in_and_ground_beside_it_or_under_a_roof_alone_is_not() {
+        // A box over (0..4, 0..4) from 0 to 3 m, and a roof alone over (10..14, 0..4) at 3 m.
+        let quad = |a: [f32; 3], b: [f32; 3], c: [f32; 3], d: [f32; 3]| [a, b, c, a, c, d];
+        let mut ps = Vec::new();
+        ps.extend(quad([0.0, 0.0, 3.0], [4.0, 0.0, 3.0], [4.0, 4.0, 3.0], [0.0, 4.0, 3.0]));
+        for (a, b) in [([0.0, 0.0], [4.0, 0.0]), ([4.0, 0.0], [4.0, 4.0]), ([4.0, 4.0], [0.0, 4.0]), ([0.0, 4.0], [0.0, 0.0])] {
+            ps.extend(quad([a[0], a[1], 0.0], [b[0], b[1], 0.0], [b[0], b[1], 3.0], [a[0], a[1], 3.0]));
+        }
+        ps.extend(quad([10.0, 0.0, 3.0], [14.0, 0.0, 3.0], [14.0, 4.0, 3.0], [10.0, 4.0, 3.0]));
+        let o = Occluders::build(&[placed(ps)]).expect("triangles");
+        assert!(o.shut_in([2.0, 2.0, 0.0]));
+        assert!(!o.shut_in([6.0, 2.0, 0.0]));
+        assert!(!o.shut_in([12.0, 2.0, 0.0]));
     }
 
     #[test]

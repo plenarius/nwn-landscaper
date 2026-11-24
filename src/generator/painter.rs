@@ -477,7 +477,7 @@ fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
 
 /// Changed whenever a shadow map comes out differently from the same ground (shade.rs, [`draw_shadow_map`]): the cache's entries
 /// from before no longer count.
-const SHADOW_VERSION: u32 = 2;
+const SHADOW_VERSION: u32 = 3;
 
 /// Values on a grid of `cell` m squares over a tile and `apron` squares beyond it, at their centres; rows from the south.
 struct Grid {
@@ -529,6 +529,74 @@ impl Grid {
     }
 }
 
+/// Which points of a 64-a-tile grid over a tile (and `APRON` beyond it) have their ground shut in by solid objects
+/// ([`Occluders::shut_in`](crate::occluders::Occluders::shut_in)): no one sees it, so it takes no rays.
+struct Shut {
+    corner: (f32, f32),
+    n: usize,
+    v: Vec<bool>,
+}
+
+impl Shut {
+    /// Points beyond the tile (a point off the grid counts as seen).
+    const APRON: usize = 6;
+
+    fn new(o: &crate::occluders::Occluders, corner: (f32, f32), ground: &dyn Fn(f32, f32) -> f32) -> Shut {
+        let (n, cell) = (SHADOW_MAP as usize + 2 * Self::APRON, TILE / SHADOW_MAP as f32);
+        let v = (0..n * n)
+            .map(|k| {
+                let (i, j) = ((k % n) as f32 - Self::APRON as f32, (k / n) as f32 - Self::APRON as f32);
+                let (x, y) = (corner.0 + (i + 0.5) * cell, corner.1 + (j + 0.5) * cell);
+                o.shut_in([x, y, ground(x, y)])
+            })
+            .collect();
+        Shut { corner, n, v }
+    }
+
+    /// Whether every point within `r` of the one nearest (x, y) is shut in (a point off the grid is not).
+    fn all(&self, x: f32, y: f32, r: i64) -> bool {
+        let cell = TILE / SHADOW_MAP as f32;
+        let at = |v: f32, c: f32| ((v - c) / cell).floor() as i64 + Self::APRON as i64;
+        let (i, j) = (at(x, self.corner.0), at(y, self.corner.1));
+        let n = self.n as i64;
+        (j - r..=j + r).all(|b| (i - r..=i + r).all(|a| (0..n).contains(&a) && (0..n).contains(&b) && self.v[(b * n + a) as usize]))
+    }
+}
+
+/// `values` (a `size` x `size` map, rows from the south) with each `None` given the mean of its neighbours that have one, again
+/// until all have, or 1 when none had any: the ground no one sees, so its texels blend into what is seen around them.
+fn fill_unseen(values: Vec<Option<f32>>, size: usize) -> Vec<f32> {
+    let mut v = values;
+    loop {
+        let mut next = v.clone();
+        let mut changed = false;
+        for j in 0..size {
+            for i in 0..size {
+                if v[j * size + i].is_some() {
+                    continue;
+                }
+                let around: Vec<f32> = [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)]
+                    .iter()
+                    .filter_map(|&(di, dj)| {
+                        let (a, b) = (i as i64 + di, j as i64 + dj);
+                        ((0..size as i64).contains(&a) && (0..size as i64).contains(&b))
+                            .then(|| v[b as usize * size + a as usize])
+                            .flatten()
+                    })
+                    .collect();
+                if !around.is_empty() {
+                    next[j * size + i] = Some(around.iter().sum::<f32>() / around.len() as f32);
+                    changed = true;
+                }
+            }
+        }
+        v = next;
+        if !changed {
+            return v.into_iter().map(|x| x.unwrap_or(1.0)).collect();
+        }
+    }
+}
+
 /// Points a tile side the sky the objects hide is sampled at (32 cm apart): it changes slowly.
 const SKY_GRID: usize = 32;
 
@@ -549,19 +617,47 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
     let ground = |x: f32, y: f32| terrain.as_ref().map_or_else(|| height(x, y), |t| t.at(x, y));
     let sun = !terrain.as_ref().is_some_and(|h| h.underground);
     // Baked objects shade it by their own triangles, when any are near enough: on a finer map, the terrain's shading (smooth) from
-    // the coarse map's points, the sky the objects hide from a blurred coarser grid, their shadows texel by texel.
+    // the coarse map's points, the sky the objects hide from a blurred coarser grid, their shadows texel by texel. Ground they shut
+    // in (under an imported cliff's top) takes no rays: what is read near ground that is seen is worked out (a margin of points
+    // for each grid's reach), and its texels take their seen neighbours' values.
     let scene = objects::scene();
     let occluders =
         if debug.is_none() { scene.as_ref().filter(|s| !shading(s, tx, ty).is_empty()).and_then(|s| s.occluders()) } else { None };
     let size = shadow_size(tx, ty);
     let texel = TILE / size as f32;
     let fine = occluders.map(|o| {
-        let coarse = Grid::new((ox, oy), SHADOW_MAP as usize, 1, |_, _, x, y| shade::terrain(x, y, sun, &ground));
+        let shut = Shut::new(o, (ox, oy), &ground);
+        let coarse =
+            Grid::new(
+                (ox, oy),
+                SHADOW_MAP as usize,
+                1,
+                |_, _, x, y| {
+                    if shut.all(x, y, 2) { [0.0; 2] } else { shade::terrain(x, y, sun, &ground) }
+                },
+            );
         let sky = Grid::new((ox, oy), SKY_GRID, 2, |i, j, x, y| {
+            if shut.all(x, y, 5) {
+                return [1.0, 0.0];
+            }
             [shade::sky_through(o, x, y, TILE / SKY_GRID as f32, seed(tx, ty, SKY_GRID, i, j), &ground), 0.0]
         })
         .blurred();
-        (o, coarse, sky)
+        // Each texel's value, None where no one sees it.
+        let values: Vec<Option<f32>> = (0..size * size)
+            .map(|k| {
+                let (px, py) = (k % size, k / size);
+                let (x, y) = (ox + (px as f32 + 0.5) * texel, oy + (py as f32 + 0.5) * texel);
+                if shut.all(x, y, 1) {
+                    return None;
+                }
+                // (Underground there is no sun: objects only hide the sky, as the terrain does.)
+                let lit =
+                    if sun { shade::sun_through(o, x, y, texel, seed(tx, ty, size as usize, px.into(), py.into()), &ground) } else { 1.0 };
+                Some(shade::combine(strength, coarse.at(x, y), shade::Through { sun: lit, sky: sky.at(x, y)[0] }))
+            })
+            .collect();
+        fill_unseen(values, size as usize)
     });
     paint::picture(size, size, |px, py| {
         let (x, y) = (ox + (px as f32 + 0.5) * texel, oy + (py as f32 + 0.5) * texel);
@@ -589,12 +685,7 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
             None => {}
         }
         let v = match &fine {
-            Some((o, coarse, sky)) => {
-                // (Underground there is no sun: objects only hide the sky, as the terrain does.)
-                let lit =
-                    if sun { shade::sun_through(o, x, y, texel, seed(tx, ty, size as usize, px.into(), py.into()), &ground) } else { 1.0 };
-                shade::combine(strength, coarse.at(x, y), shade::Through { sun: lit, sky: sky.at(x, y)[0] })
-            }
+            Some(values) => values[(py * size + px) as usize],
             None => shade::shade_lit(x, y, strength, sun, &ground),
         };
         let v = v * entrance::darkness(x, y);
