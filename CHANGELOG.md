@@ -5,7 +5,7 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.2.2
 
 - **Export works on Windows.** Every export there stopped with "Access is denied (os error 5)" on the module's `.work` copy:
   the copy was flushed to disk through a read-only handle, which Windows refuses. The tests now run on Windows too.
@@ -21,8 +21,6 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   (200,000 units of work), so the step takes about a second where one bad tile made it 8 (a 13x12 area). The warning says
   "over 200,000" instead of the exact cost (the report's `units` is now `over`, the limit), and its marker is on one of the
   tile's ways over the limit, not always the worst. What an export writes is the same, byte for byte.
-
-## 0.2.2
 
 - **A trusted service can list and fetch a builder's exports.** With `LANDSCAPER_SERVICE_KEY` set, a team server answers
   read-only `/api/service/*` routes: a builder's exports, one export's area files and new blueprints (as Publish packs them), its
