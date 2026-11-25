@@ -5,8 +5,9 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.6.1
 
+- **Released with the editor's 0.6.1**, which is unchanged. The self-host image builds it (`WEB_REF`).
 - **The Windows build is signed.** The release's Windows program has an Authenticode signature from Azure Artifact Signing, so
   SmartScreen and antivirus see a verified publisher.
 - **No dark teeth along river banks.** Steep ground took one texture a face, the paint nearest the face's middle, so where the
