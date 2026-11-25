@@ -10,6 +10,16 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 - **The macOS build is signed and notarized.** The release's macOS program is signed with a Developer ID and notarized by Apple,
   so it starts without Privacy & Security's Open Anyway. The Windows build is not signed yet.
 
+## 0.4.0
+
+- **Chasms.** The editor's chasm (its 0.4.0) comes in the export as runs of samples, the header's new, optional `chasm`.
+  Each chasm sample drops 20 m below its rim, the nearest ground that isn't chasm. Its walls fade to black and its floor
+  is black, so it reads as bottomless from any camera angle; the edge scenery and the minimap draw it black. Nothing walks
+  in a chasm or on its rim (the walkmesh, the path nodes and the path check), and water never fills one. A tile's height
+  level leaves its chasm out, so ground beside one keeps the level NWN paths on. An older engine ignores the field and
+  exports the ground there as it is. The shared texture hak is rebuilt once, for the new fade texture. The self-host image
+  builds the editor's 0.4.0 (`WEB_REF`).
+
 ## 0.3.1
 
 - **Exports of imported areas are quicker again.** 0.3.0 shipped an early draft of its skip for the ground no one sees under

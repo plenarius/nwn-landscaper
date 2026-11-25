@@ -27,9 +27,18 @@ fn cliff_height() -> f32 {
 }
 const CLIFF_WIDTH: f32 = 0.6;
 
-/// Ground nothing can walk on besides slopes: LS_FLAT's strip, deep water.
+/// Ground nothing can walk on besides slopes: LS_FLAT's strip, deep water, a cave's void, a chasm.
 pub(crate) fn blocked(x: f32, y: f32) -> bool {
-    flat_blocked(x, y) || heightmap::deep_water(x, y, SHALLOW) || objects::scene().is_some_and(|s| s.blocks(x, y)) || in_void(x, y)
+    flat_blocked(x, y)
+        || heightmap::deep_water(x, y, SHALLOW)
+        || objects::scene().is_some_and(|s| s.blocks(x, y))
+        || in_void(x, y)
+        || in_chasm(x, y)
+}
+
+/// Whether (x, y) is in a chasm (see `heightmap::fit_chasm`): nothing walks there, however flat its floor.
+pub(super) fn in_chasm(x: f32, y: f32) -> bool {
+    heightmap::current().is_some_and(|h| h.in_chasm(x, y))
 }
 
 /// Whether (x, y) is a cave's void: rock at its roof (nothing walks there).
@@ -125,17 +134,26 @@ pub(crate) fn height(x: f32, y: f32) -> f32 {
 pub(super) const TRANSITION: f32 = 5.0;
 
 /// A tile's height level: its mean ground height in TRANSITION steps. The engine expects a tile's ground near Tile_Height *
-/// Transition; pathing across tiles fails once ground strays ~2.5-4 m from it.
+/// Transition; pathing across tiles fails once ground strays ~2.5-4 m from it. A chasm's depths are left out of the mean (unless
+/// the whole tile is chasm): a tile half chasm would otherwise sit 10 m under the ground creatures walk on.
 pub(super) fn tile_level(tx: usize, ty: usize) -> i32 {
     if std::env::var_os("LS_NOLEVEL").is_some() {
         return 0;
     }
     let n = 10;
-    let mut sum = 0.0;
+    let hm = heightmap::current().filter(|h| !h.rim.is_empty());
+    let (mut sum, mut count, mut all) = (0.0, 0, 0.0);
     for j in 0..=n {
         for i in 0..=n {
-            sum += height(tx as f32 * TILE + i as f32, ty as f32 * TILE + j as f32);
+            let (x, y) = (tx as f32 * TILE + i as f32, ty as f32 * TILE + j as f32);
+            let z = height(x, y);
+            all += z;
+            if !hm.as_ref().is_some_and(|h| h.in_chasm(x, y)) {
+                sum += z;
+                count += 1;
+            }
         }
     }
-    (sum / ((n + 1) * (n + 1)) as f32 / TRANSITION).round() as i32
+    let mean = if count > 0 { sum / count as f32 } else { all / ((n + 1) * (n + 1)) as f32 };
+    (mean / TRANSITION).round() as i32
 }

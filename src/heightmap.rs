@@ -17,6 +17,10 @@
 //!
 //! Water, optional: `"water": [{ "i": 40, "j": 12, "level": 6.5 }, ...]`, bodies of water each filled from a sample (i, j) to a level:
 //! every sample joined to it (4-connected) through samples lower than the level is under water. The editor floods them the same way.
+//!
+//! Chasms, optional: `"chasm": [[first, count], ...]`, runs of samples (indices in the order above) that drop away into a bottomless
+//! chasm: each is lowered to [`CHASM_DEPTH`] under its rim (the nearest sample that is not in a chasm, see [`fit_chasm`]), nothing
+//! walks there, and it is drawn fading to black. Water never fills a chasm.
 
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -168,6 +172,9 @@ pub struct Heightmap {
     pub roof: Option<f32>,
     /// Each sample's ceiling, when the roof follows the floor (`clearance`): empty, the flat `roof`.
     pub ceiling: Vec<f32>,
+    /// Each sample's rim height when the area has a chasm ([`fit_chasm`]): a chasm sample's is its nearest open sample's, an open
+    /// one's its own. Empty: no chasm.
+    pub rim: Vec<f32>,
     /// Baked shadows' strength (0..1), if the editor set it.
     pub shadow: Option<f32>,
     /// The editor's light and fog (see `atmosphere`), if set.
@@ -262,6 +269,9 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
             bail!("material {bad} is past the palette's {} textures", palette.len());
         }
     }
+    // A chasm: its samples dropped under their rims (after the ceiling: a chasm is open ground).
+    let chasm = chasm_of(&j["chasm"], width * height)?;
+    let rim = if chasm.iter().any(|&c| c) { fit_chasm(&mut data, width, &chasm) } else { Vec::new() };
     let water = match j["water"].as_array().filter(|b| !b.is_empty()) {
         Some(bodies) => {
             let bodies: Vec<Body> = bodies
@@ -275,7 +285,9 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
                 })
                 .collect::<Option<_>>()
                 .context("water: each body needs i, j and level")?;
-            flood(&data, width, &bodies)
+            // (water never runs into a chasm: its samples are walls to it)
+            let walled: Vec<f32> = data.iter().zip(&chasm).map(|(&h, &c)| if c { f32::INFINITY } else { h }).collect();
+            flood(&walled, width, &bodies)
         }
         None => Vec::new(),
     };
@@ -304,6 +316,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         interior: j["kind"].as_str() == Some("interior"),
         roof: j["roof"].as_f64().map(|v| v as f32),
         ceiling,
+        rim,
         objects: j["objects"].as_array().map_or_default(|list| {
             list.iter()
                 .filter_map(|o| {
@@ -467,7 +480,98 @@ pub fn fit_ceiling(data: &mut [f32], width: usize, roof: f32, clearance: f32) ->
     ceiling
 }
 
+/// How far a chasm drops under its rim (m). Deep enough that its walls fade to black well before the bottom and that the game's
+/// fog (outdoor areas start it at 20 to 40 m from the camera) takes the rest; the floor is black anyway, so no camera angle shows
+/// one. The editor's `CHASM_DEPTH` is the same.
+pub const CHASM_DEPTH: f32 = 20.0;
+
+/// Ground more than this under its rim (m) is in a chasm: nothing walks there.
+pub const CHASM_BELOW: f32 = 0.3;
+
+/// The most chasm runs a header may list: one a sample, on the largest area (32 by 32 tiles).
+const MAX_CHASM_RUNS: usize = 513 * 513;
+
+/// The chasm samples of a header's `chasm` list (runs of `[first, count]` over `samples` samples; null or missing: none).
+pub fn chasm_of(list: &serde_json::Value, samples: usize) -> Result<Vec<bool>> {
+    let mut mask = vec![false; samples];
+    if list.is_null() {
+        return Ok(mask);
+    }
+    let runs = list.as_array().context("chasm: a list of [first, count] runs")?;
+    anyhow::ensure!(runs.len() <= MAX_CHASM_RUNS, "chasm: {} runs, at most {MAX_CHASM_RUNS}", runs.len());
+    for r in runs {
+        let (Some(first), Some(count)) = (r.get(0).and_then(serde_json::Value::as_u64), r.get(1).and_then(serde_json::Value::as_u64))
+        else {
+            bail!("chasm: each run is [first, count], not {r}");
+        };
+        let (first, count) = (first as usize, count as usize);
+        anyhow::ensure!(
+            first.checked_add(count).is_some_and(|end| end <= samples),
+            "chasm: the run [{first}, {count}] goes past the area's {samples} samples"
+        );
+        mask[first..first + count].iter_mut().for_each(|c| *c = true);
+    }
+    Ok(mask)
+}
+
+/// Drops the chasm (`chasm`, one flag a sample, rows `width` wide): every chasm sample's rim is the height of the nearest sample
+/// that is not in it (breadth first, east, west, north, south in turn, as [`fit_ceiling`] and the editor's `chasmFit` go), and
+/// it is lowered to [`CHASM_DEPTH`] under that rim. Returns each sample's rim (an open sample's is its own height; with no open
+/// sample at all, every sample's own).
+pub fn fit_chasm(data: &mut [f32], width: usize, chasm: &[bool]) -> Vec<f32> {
+    let height = data.len() / width;
+    let mut from = vec![usize::MAX; data.len()];
+    let mut queue = std::collections::VecDeque::new();
+    for k in 0..data.len() {
+        if !chasm[k] {
+            from[k] = k;
+            queue.push_back(k);
+        }
+    }
+    while let Some(k) = queue.pop_front() {
+        let (i, j) = ((k % width) as i64, (k / width) as i64);
+        for (di, dj) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let (a, b) = (i + di, j + dj);
+            if a < 0 || b < 0 || a >= width as i64 || b >= height as i64 {
+                continue;
+            }
+            let n = b as usize * width + a as usize;
+            if from[n] == usize::MAX {
+                from[n] = from[k];
+                queue.push_back(n);
+            }
+        }
+    }
+    let rim: Vec<f32> = (0..data.len()).map(|k| if from[k] == usize::MAX { data[k] } else { data[from[k]] }).collect();
+    for k in 0..data.len() {
+        if chasm[k] {
+            data[k] = rim[k] - CHASM_DEPTH;
+        }
+    }
+    rim
+}
+
 impl Heightmap {
+    /// How far (x, y) is under its chasm's rim (m, bilinear): 0 on open ground, [`CHASM_DEPTH`] on a chasm's floor; 0 with no chasm.
+    pub fn chasm_depth(&self, x: f32, y: f32) -> f32 {
+        if self.rim.is_empty() {
+            return 0.0;
+        }
+        let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
+        let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
+        let (ix, iy) = ((fx.floor() as usize).min(self.width - 2), (fy.floor() as usize).min(self.height - 2));
+        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
+        let d = |i: usize, j: usize| self.rim[j * self.width + i] - self.data[j * self.width + i];
+        let a = d(ix, iy) + (d(ix + 1, iy) - d(ix, iy)) * tx;
+        let b = d(ix, iy + 1) + (d(ix + 1, iy + 1) - d(ix, iy + 1)) * tx;
+        (a + (b - a) * ty).max(0.0)
+    }
+
+    /// Whether (x, y) is in a chasm: more than [`CHASM_BELOW`] under its rim.
+    pub fn in_chasm(&self, x: f32, y: f32) -> bool {
+        self.chasm_depth(x, y) > CHASM_BELOW
+    }
+
     /// The ceiling at area coordinates: where the rock tops out (bilinear), the flat roof if it does not follow the floor.
     pub fn roof_at(&self, x: f32, y: f32) -> Option<f32> {
         if self.ceiling.is_empty() {
@@ -613,6 +717,48 @@ mod tests {
     }
 
     #[test]
+    fn a_chasm_drops_under_its_nearest_rim() {
+        // A row: ground at 5, two chasm samples, ground at 12.
+        let mut d = vec![5.0, 9.0, 9.0, 12.0];
+        let rim = fit_chasm(&mut d, 4, &[false, true, true, false]);
+        assert_eq!(rim, vec![5.0, 5.0, 12.0, 12.0]);
+        assert_eq!(d, vec![5.0, 5.0 - CHASM_DEPTH, 12.0 - CHASM_DEPTH, 12.0]);
+        // All of it chasm: no rim, each sample drops from its own height.
+        let mut d = vec![3.0, 4.0];
+        assert_eq!(fit_chasm(&mut d, 2, &[true, true]), vec![3.0, 4.0]);
+        assert_eq!(d, vec![3.0 - CHASM_DEPTH, 4.0 - CHASM_DEPTH]);
+    }
+
+    #[test]
+    fn chasm_runs_are_read_and_checked() {
+        let mask = chasm_of(&serde_json::json!([[1, 2], [6, 1]]), 8).unwrap();
+        assert_eq!(mask, vec![false, true, true, false, false, false, true, false]);
+        assert_eq!(chasm_of(&serde_json::Value::Null, 3).unwrap(), vec![false; 3]);
+        for bad in [serde_json::json!([[7, 2]]), serde_json::json!([[1]]), serde_json::json!({ "a": 1 }), serde_json::json!([[-1, 2]])] {
+            assert!(chasm_of(&bad, 8).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_loaded_chasm_is_deep_unwalkable_and_dry() {
+        // A 3 by 3 tile area at 1 m, a lake to 3 m over all of it, and a chasm across row 20 (the whole row).
+        let n = 3 * 16 + 1;
+        let path = area("chasm", serde_json::json!({ "chasm": [[20 * n, n]], "water": [{ "i": 2, "j": 2, "level": 3.0 }] }), None);
+        let hm = read(&path).unwrap();
+        let (y, x) = (20.0 * 0.625, 10.0);
+        assert_eq!(hm.at(x, y), 1.0 - CHASM_DEPTH);
+        assert_eq!(hm.chasm_depth(x, y), CHASM_DEPTH);
+        assert!(hm.in_chasm(x, y) && !hm.in_chasm(x, 5.0));
+        // Halfway down its wall, between the rim's row and the chasm's.
+        assert!((hm.chasm_depth(x, 19.5 * 0.625) - CHASM_DEPTH / 2.0).abs() < 1e-4);
+        // The lake stops at the chasm: it never fills it, so it stays south of it.
+        assert!(hm.water_at(x, y).is_none() && hm.water_at(x, 5.0).is_some() && hm.water_at(x, 25.0).is_none());
+        // No chasm: no rims, nothing in one.
+        let plain = read(&area("plain", serde_json::json!({}), None)).unwrap();
+        assert!(plain.rim.is_empty() && !plain.in_chasm(x, y));
+    }
+
+    #[test]
     fn bilinear_at_grid_points_and_between() {
         let hm = Heightmap {
             name: "t".into(),
@@ -636,6 +782,7 @@ mod tests {
             interior: false,
             roof: None,
             ceiling: vec![],
+            rim: vec![],
             serial: 0,
         };
         assert_eq!(hm.at(10.0, 0.0), 1.0);

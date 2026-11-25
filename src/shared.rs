@@ -21,6 +21,24 @@ use crate::paint;
 pub const HAK: &str = "ls_textures";
 /// The cave entrance and void black.
 pub const BLACK: &str = "ls_black";
+/// A chasm wall's fade (an MTR's texture7, over the wall's own texture): white at its left, black from [`CHASM_DARK`] of the way
+/// across. A wall's vertices take `u` from how far under the rim they are ([`chasm_fade_u`]).
+pub const CHASM_FADE: &str = "ls_chasmfade";
+/// How far down a chasm (a fraction of its depth) its walls are black: below this only the fog shows anything.
+pub const CHASM_DARK: f32 = 0.65;
+/// The fade texture's width (pixels).
+const FADE_WIDTH: u32 = 64;
+
+/// How bright a chasm wall is `t` of the way down (0 at the rim, 1 at the floor), as the game multiplies its colour: falling
+/// fast near the rim, black from [`CHASM_DARK`] down. The editor's `chasmFade` (js/view.js) is the same curve.
+pub fn chasm_fade(t: f32) -> f32 {
+    (1.0 - t / CHASM_DARK).clamp(0.0, 1.0).powf(1.6)
+}
+
+/// The fade texture's `u` for a vertex `t` of the way down: on its pixels' centres, so neither end blends with the other.
+pub fn chasm_fade_u(t: f32) -> f32 {
+    (0.5 + t.clamp(0.0, 1.0) * (FADE_WIDTH - 1) as f32) / FADE_WIDTH as f32
+}
 
 /// Builds `<hak_dir>/ls_textures.hak` unless it is up to date; whether it was built.
 pub fn ensure(hak_dir: &Path) -> Result<bool> {
@@ -38,6 +56,9 @@ pub fn ensure(hak_dir: &Path) -> Result<bool> {
         owned.push((ResRef::from_str(&paint::resref(id))?, ResType::DDS, paint::dds(&library[id].image)));
     }
     owned.push((ResRef::from_str(BLACK)?, ResType::DDS, paint::dds(&paint::picture(4, 4, |_, _| [0.0, 0.0, 0.0]))));
+    let fade = paint::picture(FADE_WIDTH, 4, |x, _| [chasm_fade(x as f32 / (FADE_WIDTH - 1) as f32); 3]);
+    owned.push((ResRef::from_str(CHASM_FADE)?, ResType::DDS, paint::dds(&fade)));
+    owned.push((ResRef::from_str(CHASM_FADE)?, ResType::TXI, b"clamp 3\r\n".to_vec()));
     for (name, text) in shaders()? {
         owned.push((ResRef::from_str(name)?, ResType::SHD, text.into_bytes()));
     }
@@ -79,7 +100,8 @@ fn stamp() -> Result<String> {
         }
     }
     shaders()?.hash(&mut h);
-    1u32.hash(&mut h);
+    // (2: the chasm fade joined the black)
+    2u32.hash(&mut h);
     Ok(format!("{:016x}", h.finish()))
 }
 

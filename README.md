@@ -29,7 +29,7 @@ The archive holds the engine and the editor of the same release, so you need not
 The first start:
 
 - **macOS:** the program is signed with a Developer ID and notarized by Apple, so the first start only asks whether to open a
-  program downloaded from the internet. (Releases up to 0.3.1 aren't signed: open System Settings, Privacy & Security, and click
+  program downloaded from the internet. (Releases up to 0.4.0 aren't signed: open System Settings, Privacy & Security, and click
   **Open Anyway**.)
 - **Windows:** the program isn't signed yet, so SmartScreen may say it protected your PC. Click **More info**, then **Run anyway**.
 

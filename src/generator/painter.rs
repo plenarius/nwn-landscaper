@@ -358,7 +358,7 @@ pub(super) fn minimap(tx: usize, ty: usize, painter: Option<&Painter>) -> mg_ima
             None if n[2] >= WALKABLE_NZ => [0.33, 0.45, 0.2],
             None => [0.5, 0.48, 0.45],
         };
-        if in_void(x, y) {
+        if in_void(x, y) || heightmap::current().is_some_and(|h| h.in_chasm(x, y)) {
             return [0.0, 0.0, 0.0];
         }
         let lit = (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]).max(0.0);
