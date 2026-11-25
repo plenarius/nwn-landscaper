@@ -250,6 +250,25 @@ which near a cut may be across it. The engine fits rims with the halo in view, s
 
 Edges on the canvas's own border, and on gaps, follow the same rule: a gap is canvas ground, so option A shows it.
 
+**Edge trials (2026-11-25).** A throwaway trial for the maintainer to walk in the game client: a 30 by 30 tile landscape (hills,
+a river and a road crossing the cuts, the texture mix, baked trees) cut into 10 by 10 pieces, its centre piece exported once per
+treatment, each also with a 90 m fog clip, and the uncut landscape for reference. The overhang there is the halo's own tiles at
+full detail, grafted into the boundary tiles. Seen in the game client (software rendering, off screen) and in nwn-bake renders:
+
+- **The overhang (A) matches the uncut landscape** within 50 m: ground, paint, water and trees carry on across the cut, lit like
+  the tile beside them, with no seam. It ends in a hard line against the background, which is the area's fog colour; at the
+  exported 45 m fog clip the client's distance haze hides that line from a low camera, not from a high one.
+- **A fade** (the overhang's materials drawn by a copy of the tile shader that mixes towards `fogColor` from 25 to 50 m past the
+  area) turns that line into haze. A real build would pass the area's size to the shader per material.
+- **3B (the first 10 m repeated 5 deep) is worse than today's edge**: stepped ridges with slivers of sky between the copies,
+  stepped water, a sawtooth skyline. Drop it.
+- **The neighbour's trees in the overhang** read as the real landscape does; without them a wooded neighbour looks bare.
+- **Cost at full detail** for a 10 by 10 piece: 246,000 triangles past the edge (2.5 times the piece's own) and 68 MB more hak
+  (every halo tile's baked texture and shadow map). The quarter-detail overhang above, with a small baked texture, is the one to
+  build; its look still needs one more trial.
+
+The maintainer's look in the client picks among A, A with the fade, and either with trees.
+
 ### 4. Tile levels and path nodes
 
 - **Tile levels need nothing new.** A tile's level is the mean height of its own ground (`src/generator/terrain.rs:152`). A cut on
