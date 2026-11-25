@@ -12,6 +12,7 @@
 //! - **`landscaper textures add <list.json>`**: the same, from a list of your own: textures of the game or of the module's haks, by
 //!   name (see [`add_listed`]).
 //! - **`landscaper textures build <folder>`**: a folder of your own PNG, TGA or DDS pictures (a subfolder is a category).
+//! - **`landscaper textures get <pack>`**: a texture pack, downloaded (see [`packs`]).
 //!
 //! A team's own art, whatever its licence, stays in its own library folder; it never goes through this repository.
 
@@ -24,6 +25,8 @@ use mg_rules::GameData;
 use serde_json::{Value, json};
 
 use crate::paint;
+
+pub mod packs;
 
 const STARTER: &str = include_str!("starter_textures.json");
 
@@ -87,20 +90,31 @@ fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= MAX_LISTED_ID && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
-/// What the library has: `<dir>/catalog.json` as the editor and the exporter read it (`{ "textures": [...] }`).
+/// What the library has: `<dir>/catalog.json` as the editor and the exporter read it (`{ "textures": [...] }`), and the texture
+/// packs installed in it (`"packs"`, only when there are some).
 struct Library {
     dir: PathBuf,
     entries: Vec<Value>,
+    packs: Vec<Value>,
+}
+
+/// One change to the library at a time: two builders picking a tileset texture, or a pack installed meanwhile, must not write
+/// over each other's catalog.
+fn lock() -> std::sync::MutexGuard<'static, ()> {
+    static BUSY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The starter set's ids (whether or not they are in the library): a pack may not take one.
+fn starter_ids() -> Vec<String> {
+    parse_list(STARTER).map_or_default(|(_, specs)| specs.into_iter().map(|s| s.id).collect())
 }
 
 impl Library {
     fn open(dir: &Path) -> Library {
-        let entries = std::fs::read(dir.join("catalog.json"))
-            .ok()
-            .and_then(|d| serde_json::from_slice::<Value>(&d).ok())
-            .and_then(|v| v["textures"].as_array().cloned())
-            .unwrap_or_default();
-        Library { dir: dir.to_path_buf(), entries }
+        let catalog = std::fs::read(dir.join("catalog.json")).ok().and_then(|d| serde_json::from_slice::<Value>(&d).ok());
+        let list = |k: &str| catalog.as_ref().and_then(|v| v[k].as_array().cloned()).unwrap_or_default();
+        Library { dir: dir.to_path_buf(), entries: list("textures"), packs: list("packs") }
     }
 
     /// Writes `spec`'s pictures and its entry (replacing one with the same id). An id whose resref in the hak is another
@@ -112,8 +126,7 @@ impl Library {
         {
             bail!("'{}' and '{other}' would both be {hak_name} in the hak: give one another id", spec.id);
         }
-        let render = fit(opaque(picture), RENDER);
-        let swatch = fit(render.clone(), SWATCH);
+        let (render, swatch) = library_pictures(picture);
         std::fs::create_dir_all(&self.dir).with_context(|| format!("creating {}", self.dir.display()))?;
         let (file, small) = (format!("{}.png", spec.id), format!("{}_128.png", spec.id));
         paint::write_png(&self.dir.join(&file), &render)?;
@@ -151,8 +164,24 @@ impl Library {
         std::fs::create_dir_all(&self.dir)?;
         let path = self.dir.join("catalog.json");
         // In one step: on a team server everyone's exports read it, and a cut-off catalog fails every one of them.
-        crate::atomic::write(&path, &serde_json::to_vec_pretty(&json!({ "textures": self.entries }))?)
+        let mut catalog = json!({ "textures": self.entries });
+        if !self.packs.is_empty() {
+            catalog["packs"] = self.packs.clone().into();
+        }
+        crate::atomic::write(&path, &serde_json::to_vec_pretty(&catalog)?)
     }
+
+    /// The pack the entry `id` came from, if it came from one.
+    fn pack_of(&self, id: &str) -> Option<&str> {
+        self.entries.iter().find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id))).and_then(|e| e["pack"].as_str())
+    }
+}
+
+/// A picture as the library keeps it: opaque, fitted to the render size, and its swatch.
+fn library_pictures(picture: Rgba) -> (Rgba, Rgba) {
+    let render = fit(opaque(picture), RENDER);
+    let swatch = fit(render.clone(), SWATCH);
+    (render, swatch)
 }
 
 /// Library pictures have no transparency (the game's own can carry a specular mask in alpha).
@@ -200,6 +229,11 @@ fn add_specs(library: &mut Library, haks: &[String], specs: &[Spec], replace: bo
     for s in specs {
         if library.has(&s.id) && !replace {
             report.kept += 1;
+            continue;
+        }
+        // A pack's texture is the pack's: removing it again must not take one of yours with it.
+        if let Some(pack) = library.pack_of(&s.id) {
+            report.problems.push(format!("{}: the id is the texture pack {pack}'s; give yours another", s.id));
             continue;
         }
         match game_picture(&game, &s.resref) {
@@ -274,9 +308,7 @@ pub struct Picked {
 /// Puts the tileset texture `resref` (found in the game or `haks`) in the library as a "Tileset" texture, unless it is there
 /// already. `surface` is the surfacemat row the ground it was picked from walks as (0: not known, so the name decides).
 pub fn add_picked(haks: &[String], resref: &str, surface: u32) -> Result<Picked> {
-    // One at a time: two builders picking together must not write over each other's catalog.
-    static BUSY: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _one = lock();
     anyhow::ensure!(ResRef::from_str(resref).is_ok(), "'{resref}' is not a texture name");
     let mut library = Library::open(&paint::texture_dir());
     let name = resref.to_ascii_lowercase();
@@ -446,7 +478,8 @@ fn print_report(r: &Report) {
     }
 }
 
-/// `landscaper textures init | add <list.json> | build <folder> [--category NAME] [--surface N] | list`
+/// `landscaper textures init | add <list.json> | build <folder> [--category NAME] [--surface N] | list | get | list-packs |
+/// remove-pack | pack`
 pub fn run(command: crate::cli::Textures) -> Result<()> {
     use crate::cli::Textures;
     match command {
@@ -464,6 +497,71 @@ pub fn run(command: crate::cli::Textures) -> Result<()> {
                     e["name"].as_str().unwrap_or("")
                 );
             }
+        }
+        Textures::Get { pack, index } => {
+            let progress = |step: &'static str, done: u64, total: u64| {
+                if step == "downloading" && total > 0 {
+                    eprint!("\r  downloading {} of {} KB   ", done >> 10, total >> 10);
+                }
+            };
+            let (source, expect) = if pack.contains("://")
+                || Path::new(&pack).extension().is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+                || Path::new(&pack).is_file()
+            {
+                (packs::Source::parse(&pack), packs::Expect::default())
+            } else {
+                let url = index.unwrap_or_else(packs::index_url);
+                packs::find_in_index(&packs::fetch_index(&url)?, &pack)?
+            };
+            let r = packs::install(&source, &expect, &progress)?;
+            eprintln!();
+            if r.unchanged {
+                println!("{} {} is installed already", r.name, r.version);
+            } else {
+                let was = r.replaced.map_or(String::new(), |v| format!(" (replacing {v})"));
+                println!("installed {} {}{was}: {} textures", r.name, r.version, r.textures);
+            }
+        }
+        Textures::ListPacks { index } => {
+            let installed = packs::installed();
+            println!("installed ({}):", installed.len());
+            for p in &installed {
+                println!(
+                    "  {:<24} {:<10} {}",
+                    p["id"].as_str().unwrap_or(""),
+                    p["version"].as_str().unwrap_or(""),
+                    p["name"].as_str().unwrap_or("")
+                );
+            }
+            let url = index.unwrap_or_else(packs::index_url);
+            match packs::fetch_index(&url) {
+                Ok(list) => {
+                    println!("available from {url} ({}):", list.len());
+                    for p in &list {
+                        println!(
+                            "  {:<24} {:<10} {} ({} textures, {} KB; {})",
+                            p["id"].as_str().unwrap_or(""),
+                            p["version"].as_str().unwrap_or(""),
+                            p["name"].as_str().unwrap_or(""),
+                            p["textures"].as_u64().unwrap_or(0),
+                            p["size"].as_u64().unwrap_or(0) >> 10,
+                            p["licence"].as_str().unwrap_or("")
+                        );
+                    }
+                }
+                Err(e) => eprintln!("the list of packs ({url}) could not be read: {e:#}"),
+            }
+        }
+        Textures::RemovePack { id, force } => {
+            let r = packs::remove(&id, force)?;
+            println!("removed {}: {} textures", r.name, r.textures);
+            if !r.left_in.is_empty() {
+                eprintln!("  these areas paint with them and won't export until it is installed again: {}", r.left_in.join(", "));
+            }
+        }
+        Textures::Pack { list, out, index } => {
+            let m = packs::make(&list, &out, index.as_deref())?;
+            println!("{}: {} textures, {} KB, sha256 {}", m.zip.display(), m.textures, m.size >> 10, m.sha256);
         }
     }
     Ok(())

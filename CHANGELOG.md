@@ -7,6 +7,14 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **Texture packs.** Optional sets of textures a user downloads into the library: `landscaper textures get <id | URL | zip>`,
+  `list-packs` and `remove-pack`, and `/api/textures/packs` for the editor's Get more textures dialog (install in the background
+  with its progress, remove). A pack is one zip of `pack.json` and the library's own pictures; an install checks its size, the
+  index's sha256, every file's sha256, every picture and every path, and writes nothing to the catalog until all of it passed.
+  Ids are namespaced by each pack's prefix, and any clash with the library or the starter set is refused. A removal is refused
+  while an area paints with the pack's textures. The list of packs is `LANDSCAPER_PACKS_URL` (default: an asset of the
+  `texture-packs` release); `landscaper textures pack` makes a pack and its index entry from a list of pictures. On a team
+  server only admins install or remove. [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md).
 - **The macOS build is signed and notarized.** The release's macOS program is signed with a Developer ID and notarized by Apple,
   so it starts without Privacy & Security's Open Anyway. The Windows build is not signed yet.
 - **Running out of open files no longer stops the server for good.** When `landscaper serve` had no file descriptor left for a

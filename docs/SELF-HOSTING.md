@@ -47,6 +47,9 @@ folder's `hak/`, `surface` the footsteps row of `surfacemat.2da` (1 dirt, 3 gras
 Docker setup, run these inside the container (`docker compose exec landscaper landscaper textures list`). The whole library
 is built into `ls_textures.hak` with your exports, so use art you may put in a hak.
 
+Texture packs add ready-made textures: **Get more textures…** in the Paint panel, or `landscaper textures get <pack>`
+([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). On a team server only admins install or remove them.
+
 In the editor, the Paint tool can also pick a texture up from an imported area's ground (`I`, then click): the tileset's own texture
 under the click joins the library as a "Tileset" texture. It needs the tileset's haks in your user folder's `hak/` as any import does.
 
