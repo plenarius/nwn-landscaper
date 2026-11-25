@@ -161,6 +161,11 @@ the editor runs per stroke can stay whole-grid; only memory, saves and uploads n
 
 Each question lists the options with the recommendation first.
 
+**Decided (2026-11-25):** canvas size up to 128 by 128, edited through a window (question 1, the recommendation); free rectangles
+on tile lines, 3 to 32 tiles a side, gaps allowed, with a Grid button (question 2); automatic crossings made by the export
+(question 5). Spikes S1 to S4 come before any building. The other questions stand at their recommendations until the spikes
+report.
+
 ### 1. Canvas size
 
 How large a canvas the editor carries, and what has to change for it.
