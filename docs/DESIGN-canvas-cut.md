@@ -166,6 +166,10 @@ on tile lines, 3 to 32 tiles a side, gaps allowed, with a Grid button (question 
 (question 5). Spikes S1 to S4 come before any building. The other questions stand at their recommendations until the spikes
 report.
 
+**The spikes reported (2026-11-25, "Spike results" below):** question 1's window holds and needs its ranged GPU uploads; question
+3 stays at the overhang (3A), which the client's code supports, until one look in the game client; question 5 holds, and each
+crossing gets an OnEnter script, since walking into a transition trigger alone moves nobody.
+
 ### 1. Canvas size
 
 How large a canvas the editor carries, and what has to change for it.
@@ -237,6 +241,8 @@ which near a cut may be across it. The engine fits rims with the halo in view, s
   models on those sides become empty. They can't stay underneath: the client repeats one strip model at every depth, so a strip
   that carries the boundary profile outward would poke through wherever the neighbour's ground falls away. Spike S2 has to show
   that the client draws geometry outside a tile's own cell, lights it, and doesn't cull it when the tile's centre is off screen.
+  The client's code says it does (see "Spike results", S2): a tile mesh is culled by its own box, and the scene covers 5 cells
+  beyond the area, so the overhang stays within 50 m. What is left is the look in the game client.
 - **B. The edge strip from the neighbour's first 10 m, repeated 5 deep.** Matches near the cut, then repeats every 10 m: a hump 4 m
   past the cut becomes five humps. Fits the client's one-model-per-row rule without a spike, but looks wrong in most ground.
 - **C. Keep today's extruded profile.** Already continuous at the cut, since the profile there is the shared column, but flat
@@ -272,7 +278,10 @@ How a player walks from one piece to the next.
   - its target, a waypoint in the other piece 4 m in from the cut (past that piece's own trigger, so nobody is sent straight back),
     in front of the middle of the stretch, facing away from the cut. A player who leaves northward arrives on the south side of the
     next piece facing north: the sides and the facing match;
-  - `LinkedTo` the waypoint's tag and `LinkedToFlags` 2 (waypoint).
+  - `LinkedTo` the waypoint's tag and `LinkedToFlags` 2 (waypoint);
+  - a small OnEnter script the export adds: walking into a transition trigger only runs its OnEnter script; the game moves a
+    player only when they click it (spike S3). The script sends a player to the trigger's target, as the game's own click
+    script does; a click still works as on any transition.
 
   Tags come from the crossing's place on the canvas, not from the pieces: the trigger `<canvas>_x<i>_<j><d>`, its waypoint
   `<canvas>_w<i>_<j><d>`, where (*i*, *j*) is the stretch's middle sample on the canvas and *d* the direction of travel
@@ -296,8 +305,9 @@ one graph, a node a crossing or entrance and an edge a working route or a crossi
 
 The whole canvas check runs per piece, so a change re-checks only the pieces it touched and their neighbours.
 
-Two things need a spike first (S3): whether walking into a transition trigger moves the player or only a click does, and whether
-32 small triggers along one side behave (highlight clutter, the transition cursor, load screens).
+Spike S3 answered the first of two questions from the code and a server run: walking into a transition trigger moves nobody
+unless its OnEnter script does, hence the script above. Whether 16 small triggers along one side behave in the client (highlight
+clutter, the transition cursor) still needs a look in the game.
 
 ### 6. Identity
 
@@ -452,19 +462,20 @@ Drawn as HTML and screenshots, not the editor; the ground is noise.
 
 ## Risks
 
-- **Spike S2 fails** (the client culls or won't light tile geometry outside its cell): edges stay extruded. Playable and continuous
-  at the cut, but the "real neighbour ground" part of the request isn't met. Option 3B is no better.
-- **Crossings by click only** (spike S3): if walking into a trigger doesn't move the player, a crossing works like every
-  edge transition in the game: the player clicks it. Not a defect, but it changes how "walking from one piece to the next" feels.
+- **Spike S2 fails in the client** (the overhang looks wrong: unlit, popping, or fogged differently): edges stay extruded.
+  Playable and continuous at the cut, but the "real neighbour ground" part of the request isn't met. Option 3B is no better.
+  The code reading (spike results) makes this unlikely, but it has not been seen in the game yet.
+- **Every crossing is a load screen.** Each piece is its own area, so crossing loads the next one, as any transition does.
+  Nothing in the design can hide that; small pieces mean more crossings.
 - **Many crossings** clutter the transition highlight along an open edge. Merging stretches (fewer, longer crossings, arrival
   farther from where the player left) is the lever; the 2-tile maximum may become 4.
 - **Published areas shift** when their pieces' corners move, which breaks scripts that store locations as numbers. The publish
   dialog warns; nothing can prevent it.
 - **Build size.** This is the largest change the editor has had: a new data model under every tool. The build order below keeps
   each step shippable and lets the first one (the four cost fixes) help today's areas even if the rest stops.
-- **Export time.** The engine builds one area at a time (`job()`, `src/serve.rs:280`), and a large area can take a minute or more.
-  Exporting a 16-piece canvas is 16 or more minutes the first time. Exports after that rebuild only the pieces that changed and
-  their neighbours (question 9). Spike S4 measures it.
+- **Export time.** The engine builds one area at a time (`job()`, `src/serve.rs:280`). Spike S4 measured about 2.5 minutes for a
+  32 by 32 piece on a 4-core desktop, so a 16-piece canvas takes about 40 minutes the first time there. Exports after that rebuild
+  only the pieces that changed and their neighbours (question 9).
 - **Tag prefixes.** Canvas-wide `tagPrefix` tags differ from the per-area tags builders know. Two canvases with the same name in
   one module would collide; the engine refuses a canvas whose name is already an area or canvas in the module.
 - **Memory on small machines.** 76 MB of grids at 128 by 128, plus the GPU's full-detail window, is fine on a desktop and tight on
@@ -478,6 +489,129 @@ Drawn as HTML and screenshots, not the editor; the ground is noise.
 | S2 | Does the client draw, light and keep (not cull) boundary tile geometry 50 m beyond the area's edge? A 4 by 4 area with overhanging boundary tiles and empty edge models. | Agent builds, the maintainer looks in the game client | 3 h | 20 min |
 | S3 | Does walking into an area transition trigger move a player, or only a click? Does a side of 16 triggers, 2 tiles each, behave (highlight, cursor, arrival)? Server decompile first, then a 2-area module. | Agent, then the maintainer in the game client | 2 h | 20 min |
 | S4 | Generation time and memory of one 32 by 32 piece with a 5-tile halo, and of a 16-piece export, on the build machine. | Agent | 1 h | none |
+
+## Spike results (2026-11-25)
+
+Throwaway code only, kept outside this repository. Client and server findings are from the game's own binaries (build
+8193.37-17, Linux); addresses are the files' own (objdump), and each says whether it was read in the code, run, or is still
+inferred. Machine: the maintainer's desktop, an Intel Core i3-8100 (4 cores) with a GeForce GTX 1050 (2 GB), which was also
+running his desktop, a game client and a stream while the numbers were taken.
+
+### S1: the editor's frame cost on a GPU
+
+A page built from today's `js/view.js`, `js/area.js` and `js/tools.js` (`main` 51a6213), with a made-up landscape and texture
+array like the library's (8 layers, 512 a side). A Raise stroke of 8 m goes round a circle, one stamp a frame, as the editor's loop
+runs it. Headless Chromium on the GPU (`ANGLE (NVIDIA GeForce GTX 1050, OpenGL 4.5)`, not SwiftShader), 1600 by 900 pixels.
+"Whole" uploads as today; "range" sends only the changed rows of each buffer and of the paint texture (option 1A's fourth change).
+
+| Case | Triangles | Idle frame | Sculpt frame, whole (median / p95) | Upload a frame, whole | Sculpt frame, range | Upload, range | GPU time, whole / range | GPU memory | JS heap | Real fps, whole / range |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Today's 32×32 | 0.53 M | 4.4 ms | 10.3 / 13.2 ms | 12.7 MB | 5.4 / 9.5 ms | 0.74 MB | 3.6 / 2.3 ms | 33 MB | 45 MB | 60 / 60 |
+| 1A: 48×48 window + 128×128 at a quarter | 1.63 M | 8.8 ms | 21.0 / 29.7 ms | 31.6 MB | 9.8 / 20.7 ms | 1.15 MB | 15.5 / 6.6 ms | 78 MB | 95 MB | 60 / 60 |
+| 1A's canvas sculpt: 128×128 at a quarter | 0.52 M | 5.2 ms | 8.4 / 12.6 ms | 6.3 MB | 5.7 / 9.5 ms | 0.37 MB | 3.0 / 2.9 ms | 31 MB | 66 MB | 60 / 60 |
+| 1B: whole 100×100 at full detail | 5.13 M | 14.0 ms | 53.1 / 74.2 ms | 123 MB | 15.5 / 30.0 ms | 2.31 MB | 45.5 / 8.5 ms | 219 MB | 248 MB | 20 / 60 |
+
+GPU memory is what the page allocated in buffers and textures (counted at each WebGL call), not the driver's figure. Opening the
+100 by 100 case took 6.7 s.
+
+- **Question 1: the recommendation (1A) holds**, and its fourth change, uploads of the changed range only, is required, not a
+  nicety. Without it the window still drew 60 frames a second here, but each frame cost 21 ms of work when waited for (30 ms at
+  the 95th percentile): no headroom on this card, none at all on a slower one. With it, 1A sculpts at 10 ms on an entry-level
+  card from 2016. ("Sculpt frame" waits for the GPU to finish; "real fps" is the editor's own loop, which overlaps the two.)
+- **1B is possible on this card with ranged uploads** (15.5 ms), but it holds 219 MB on the GPU and 248 MB of page memory,
+  idles at 14 ms a frame, and a laptop's integrated GPU has less of both. It stays the alternative, not the plan.
+- The issue's figure of 11.6 MB a stroke frame at 32 by 32 is confirmed (12.7 MB measured), so step 1 of the build helps today's
+  areas as much as the design said: about half the frame time and a seventeenth of the upload.
+- A one-click copy of the page is kept for the maintainer to run in his own browser, which is the check this headless run cannot
+  make (a real screen, a real compositor).
+
+### S2: how the client draws edges, and the overhang
+
+The client's code (`nwmain-linux`) settles most of it:
+
+- **Which model goes where.** Already known: each border cell's key is the boundary tile's corners and edge, never the cell's
+  depth, so one model repeats 5 deep. A model per boundary position is possible (this engine already writes a unique edge type
+  per boundary tile); **a model per ring is not**, whatever the files say.
+- **Culling.** Every mesh of a tile is filed in the scene's BSP by its own bounding box, and each frame a mesh is dropped only when
+  that box is wholly outside one of the camera's planes (`PartOutside(PartTriMesh*)`, 0x47a130). So **geometry outside a tile's
+  own 10 m cell is drawn whenever it is on screen**, whatever happens to the cell.
+- **Reach.** The scene's BSP covers the area and 5 cells around it (`Scene::InitBSP(W, H, 5, ...)`, called at 0x70e7da). A mesh
+  reaching further falls into a border node whose test is approximate: beyond 50 m it may be culled early (inferred). The
+  overhang's 50 m is inside.
+- **Edge models lose everything but meshes.** The 4th argument of `Scene::SpawnTile`, 1 for edge models, makes
+  `ProcessStaticParts` delete every part that is not a mesh (0x470abc-0x470af1): lights, emitters, the rest. An area tile keeps
+  them. So edge scenery can never carry a light or a particle effect; an overhang, being part of an area tile, can.
+- **Lights.** The area's tile light colours reach area tiles only (`CNWCTile::SetMainLightColor` calls `Scene::SetTileLights`; the
+  border loader never does). An overhang is lit by what lights its own tile (inferred: same tile, same lights).
+- **Copies never stack.** Each border cell is its own position; models overlap only where an area tile's mesh reaches into a cell
+  that also gets an edge model. Hence the empty edge rows on the sides an overhang covers.
+- **Switches.** Edge models appear only with the player's edge-tile option on and the area's border not disabled (an area flag
+  the server sends; read at 0x710353). An overhang is area-tile geometry, so it shows even to a player who turned edge tiles off
+  (inferred: the switch only skips the border loader).
+- **Fog.** How far the client draws is the area's fog clip distance (inferred, not traced). The Landscaper's areas use 45 m, so a
+  50 m overhang is about all a player sees anyway.
+
+**The options for a known neighbour, best first:**
+
+1. **The overhang (option 3A), on every side with canvas beyond it; today's extruded edge on the canvas's outer border.**
+   Real ground out to 50 m at a quarter of the detail, corners included, lit and culled with its tile. Cost for a 32 by 32 piece:
+   about 24,000 more triangles over 124 boundary tiles, about 1.5 MB more models in the hak and 0.7 MB fewer edge models (the
+   test's 50 m strip added 10 KB to a boundary tile, 55 KB with a corner block); no new files, no extra load time to speak of. Risks:
+   its paint has to come from the halo (bake the halo's paint and shade into the boundary tile's texture, or give the overhang
+   its own texture); it has no walkmesh, shadows or minimap (scenery only); a piece with overhang on all four sides can switch its
+   border off (`TileBrdrDisabled`) instead of emptying edge rows.
+2. **A mix of 3A and 3B:** the overhang for the first ring or two, edge models beyond. Not possible as such: every ring of a row
+   gets the same model, so an edge model beyond an overhang repeats under it. Only "overhang 50 m, nothing beyond" works.
+3. **3B, per-position edge models from the neighbour's first 10 m:** possible without a spike, but repeats every 10 m.
+4. **3C, today's extruded profile:** the fallback, and the canvas's outer border.
+5. **Placeables standing on the boundary tiles, carrying the neighbour's ground:** drawn and culled by their own box too, but they
+   count as objects (server traffic, object lists), are lit as objects not as tiles, and add nothing the overhang lacks.
+
+The 4 by 4 test (west side 50 m of overhang, east side 100 m, north and south as today, fog clip 150 m) loads on a server and
+renders as intended; what remains is one look in the game client: is the overhang drawn, lit like its tile, and kept when its
+tile leaves the screen, and does the 100 m side fail past 50 m?
+
+### S3: walking into a crossing
+
+From the server's code (`nwserver-linux`) and a run of a two-area test module on a bare server:
+
+- **Walking in only runs OnEnter.** Entering a trigger signals event 0xc; `CNWSTrigger::EventHandler` (0x5e3380) runs the
+  trigger's OnEnter script (or its trap) and nothing else. **A transition fires on event 0x1e**, which the walk sends only when
+  the trigger is what the creature was told to walk to (a click) and it is in use range; that runs OnClick, or the game's
+  `nw_g0_transition` when there is none.
+- **The click script works on enter.** Both events store the creature in the same field, and `GetEnteringObject` returns it for a
+  trigger, so `GetClickingObject` (which the game documents as the same) works in OnEnter. In the server run, a creature walking
+  into a trigger whose OnEnter is `nw_g0_transition` arrived in the other area at the waypoint; one walking into a trigger with no
+  OnEnter stood in it and stayed.
+- **Arrival facing.** Jumping to a waypoint takes the waypoint's orientation (`CNWSCreature::AIActionJumpToObject`, 0x4b28b0);
+  the run arrived facing east at an east-facing waypoint. So "facing the way the player walked" is just the waypoint's facing.
+- **Depth.** Creatures reached 0.35 m from the area's edge, well inside a 1.5 m trigger.
+
+**Question 5: the recommendation (automatic crossings) holds, with one addition:** each crossing trigger gets a small OnEnter
+script that sends a player to the target, or walking across a cut does nothing. A click keeps working as on any transition.
+Still for the game client: the look of 16 triggers side by side (highlight, cursor), and the feel of the load screen at each
+crossing.
+
+### S4: export time and memory
+
+`landscaper export` on rolling ground with a lake and four textures, on the 4-core desktop, one run at a time:
+
+| Area | Wall time | CPU time | Peak memory | Notes |
+|---|---|---|---|---|
+| 32×32 | 131-144 s | 390 s | 2.6 GB | two runs; about 90 % of the per-tile work is the texture bake, 7 % the shadow map |
+| 42×42 (a 32×32 piece's 5-tile halo, built as tiles) | 256 s to the hak, about 270 s whole | 670 s | 1.5 GB to the hak | needs the 32-tile limit raised in this engine and in Moonglow's area writer; the minimap step refused 42, so its memory is missing |
+| `check` 32×32 / 42×42 | 8.9 s / 20.5 s | | 0.35 / 0.6 GB | |
+
+A second 42 by 42 run took 393 s with the machine busy with other work; the runs of 16 in a row were stopped there. Each
+export is its own process and uses every core, so a row of exports simply adds up: **16 pieces take about 40 minutes** (16 ×
+2.5 min) the first time on this desktop. Building the halo as tiles would make it 72 minutes; the design reads the halo
+without building it, which adds mostly shadow-map work (33 s of CPU time at 32 by 32, 61 s at 42 by 42), so a few seconds a
+piece.
+
+What this changes: question 9's rule (re-export only changed pieces and their neighbours) matters more than the design said. A
+piece whose only change is in its halo should not rebake every tile: only its boundary tiles' shade changes, so the bake of the
+others can be kept (a per-tile cache keyed by the tile's inputs). That is a step-4 detail, not a new question. Peak memory of
+2.6 GB a piece means exports stay one at a time on a small server.
 
 ## Build order
 
@@ -504,7 +638,8 @@ optional crossing script that keeps the player's exact offset along the cut.
 
 ## What this design could not check
 
-- Nothing was measured on a GPU. The GPU upload and triangle columns are scaled from the issue's 32 by 32 figure.
-- Whether the client draws tile geometry beyond the tile's cell (S2), and whether walking into a transition trigger moves a player
-  (S3), are open. The server analysis so far covers walking into doors, not triggers.
+- The GPU figures in "Measured" were scaled; spike S1 measured them on one desktop card, headless. A laptop's integrated GPU is
+  still unmeasured.
+- The overhang (S2) and the crossings (S3) are settled in the code and on a server, but not yet seen in the game client: the
+  overhang's look, lighting and culling on screen, and 16 triggers side by side.
 - The memory per sample at 128 by 128 is the sum of the editor's typed arrays, not a browser measurement.
