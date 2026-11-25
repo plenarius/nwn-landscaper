@@ -5,8 +5,8 @@ You need Neverwinter Nights: Enhanced Edition, installed and started once (the f
 
 ## Start it
 
-- **Windows:** double-click `landscaper.exe`. Windows SmartScreen may say it protected your PC, because the program isn't signed:
-  click **More info**, then **Run anyway**.
+- **Windows:** double-click `landscaper.exe`. The program is signed, so SmartScreen sees a verified publisher. If it still says
+  it protected your PC, click **More info**, then **Run anyway**.
 - **macOS:** double-click `landscaper`. The program is signed and notarized by Apple, so macOS only asks the first time whether
   to open a program downloaded from the internet: click **Open**.
 - **Linux:** run `./landscaper` in this folder.
