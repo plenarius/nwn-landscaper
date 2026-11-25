@@ -1,15 +1,16 @@
 name: Release
 
 # Downloads to unzip and start: on a version tag (v0.1.1), builds the Landscaper for Linux (x86-64, in a Debian 12 container, so it
-# runs on glibc 2.36 and newer), Windows (x86-64) and macOS (one universal binary for Apple silicon and Intel), packs each with the
-# editor (nwn-landscaper-web at the same tag) in web/ beside the program, starts each package on its own system to check that it
-# serves the editor (scripts/release-smoke.sh), and makes a DRAFT GitHub release with the archives, SHA256SUMS and the complete
-# source with every dependency vendored, as the GPL asks. The release is published by hand.
+# runs on glibc 2.36 and newer), Windows (x86-64) and macOS (one universal binary for Apple silicon and Intel, signed with a
+# Developer ID and notarized by Apple), packs each with the editor (nwn-landscaper-web at the same tag) in web/ beside the program,
+# starts each package on its own system to check that it serves the editor (scripts/release-smoke.sh), and makes a DRAFT GitHub
+# release with the archives, SHA256SUMS and the complete source with every dependency vendored, as the GPL asks. The release is
+# published by hand.
 #
 # Run by hand (workflow_dispatch), or on a pull request that changes how the releases are made, it builds, packs and checks the
 # same way, with the editor's branch or tag given (default main), and keeps the archives as the run's artifacts; it makes no
-# release. (GitHub offers workflow_dispatch only for a workflow already on the default branch: the pull request runs test it
-# before then.)
+# release, and its macOS build has only an ad-hoc signature. (GitHub offers workflow_dispatch only for a workflow already on the
+# default branch: the pull request runs test it before then.)
 #
 # GitHub's own runners only: this repository is public, and a public repository must never run on a self-hosted runner.
 on:
@@ -72,7 +73,10 @@ jobs:
 
   macos:
     runs-on: macos-latest
-    timeout-minutes: 90
+    # Apple's notary service can take a while, the first submissions of an account most of all.
+    timeout-minutes: 150
+    # The signing secrets live in the release environment, which only v* tags may use; other runs get no environment.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust (stable, both targets)
@@ -85,9 +89,60 @@ jobs:
           cargo build --release --locked --target x86_64-apple-darwin
           mkdir -p universal
           lipo -create -output universal/landscaper target/aarch64-apple-darwin/release/landscaper target/x86_64-apple-darwin/release/landscaper
-          # Not signed with a developer certificate; an ad-hoc signature, which Apple silicon needs to run it at all.
+          # Apple silicon runs nothing unsigned: test builds keep this ad-hoc signature, a version tag replaces it below.
           codesign --force --sign - universal/landscaper
           lipo -info universal/landscaper
+      - name: Sign with the Developer ID and notarize (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+          TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          security create-keychain -p "$keychain_password" "$keychain"
+          # No auto-lock while the notary service is waited for.
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          # Lets codesign use the key without a prompt no one is there to answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          # codesign finds the G2 intermediate only in a keychain on the search list.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk -v team="($TEAM_ID)\"" '/"Developer ID Application: / && index($0, team) { print $2; exit }')
+          [ -n "$identity" ] || { echo "no Developer ID Application identity for team $TEAM_ID in the certificate" >&2; exit 1; }
+          # Hardened runtime and a secure timestamp: notarization refuses a binary without them.
+          codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$identity" universal/landscaper
+          codesign --verify --strict --verbose=2 universal/landscaper
+          codesign --display --verbose=2 universal/landscaper 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
+
+          # A bare binary can't be stapled: Gatekeeper asks Apple for the ticket online at the first start.
+          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          ditto -c -k --keepParent universal/landscaper "$RUNNER_TEMP/landscaper-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/landscaper-notarize.zip" \
+            --key "$RUNNER_TEMP/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --wait --timeout 1h --output-format json > "$RUNNER_TEMP/notary.json" || true
+          cat "$RUNNER_TEMP/notary.json"; echo
+          # notarytool's exit code doesn't always tell a refusal; the status does.
+          status=$(plutil -extract status raw -o - "$RUNNER_TEMP/notary.json" 2>/dev/null || echo none)
+          if [ "$status" != Accepted ]; then
+            id=$(plutil -extract id raw -o - "$RUNNER_TEMP/notary.json" 2>/dev/null || true)
+            [ -z "$id" ] || xcrun notarytool log "$id" --key "$RUNNER_TEMP/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" || true
+            echo "notarization: $status" >&2
+            exit 1
+          fi
+      - name: Remove the signing keychain and keys
+        if: always() && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8" "$RUNNER_TEMP/landscaper-notarize.zip"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-macos-universal
@@ -237,9 +292,9 @@ jobs:
             Download the archive for your system, unpack it and start the program: the editor opens in your browser
             (QUICKSTART.txt in the archive). It holds the engine and the editor of this release (nwn-landscaper-web, same tag).
 
-            The builds are not signed. On macOS, the first start is refused: System Settings, Privacy & Security, Open Anyway (on
-            macOS 14 and older, right-click the program, Open; or `xattr -dr com.apple.quarantine` on the folder). On Windows, SmartScreen: More info,
-            Run anyway. Check a download against SHA256SUMS.
+            The macOS build is signed with a Developer ID and notarized by Apple: the first start only asks whether to open a
+            program downloaded from the internet. The Windows build is not signed yet: if SmartScreen says it protected your PC,
+            More info, Run anyway. Check a download against SHA256SUMS.
 
             Needs a legally obtained Neverwinter Nights: Enhanced Edition install; ships none of its content. The source is
             GPL-3.0-or-later and the binaries include Moonglow (GPL-3.0-only), so they are under GPL-3.0; the editor is MIT. The
