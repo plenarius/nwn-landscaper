@@ -15,8 +15,8 @@
 use std::fmt::Write as _;
 
 use super::{
-    Grid, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, normal_z, paint, tile_level, tiles_x,
-    tiles_y, tileset_name, trimesh, trimesh_with,
+    Grid, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, normal_z, paint, shared, tile_level,
+    tiles_x, tiles_y, tileset_name, trimesh, trimesh_with,
 };
 
 /// A side of a tile (or of the area), by compass direction.
@@ -204,6 +204,7 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
     let hm = heightmap::current();
     let mut by_material: std::collections::BTreeMap<u8, Vec<[u32; 3]>> = Default::default();
     let mut water = Grid { verts: Vec::new(), tris: Vec::new() };
+    let mut chasm = Vec::new();
     for i in 0..steps {
         let (a, b) = (3 * i as u32, 3 * i as u32 + 3);
         let quad = [
@@ -214,6 +215,11 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
         ];
         let mid = side.along(centre, [0.0, -TILE / 2.0 + (i as f32 + 0.5) * step, 0.0]);
         let (bx, by) = side.boundary(mid);
+        // A chasm on the boundary carries on out, black.
+        if hm.as_ref().is_some_and(|h| h.in_chasm(bx, by)) {
+            chasm.extend(quad);
+            continue;
+        }
         let m = painter.map_or(0, |p| p.nearest(bx, by));
         by_material.entry(m).or_default().extend(quad);
         // Water carried out where the boundary is under it.
@@ -250,6 +256,9 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
             trimesh(&mut s, &format!("{name}_g{n}"), &name, &bitmap(painter, *m), &g, faces, uv);
         }
     }
+    if !chasm.is_empty() {
+        trimesh(&mut s, &format!("{name}_ch"), &name, shared::BLACK, &g, &chasm, |v| [v[0], v[1]]);
+    }
     if !water.tris.is_empty() {
         let wuv = |v: [f32; 3]| [side.along(centre, v) / WATER_METRES, v[0] / 5.0];
         trimesh_with(&mut s, &format!("{name}_wat"), &name, WATER_TEXTURE, "  transparencyhint 1\n", &water, &water.tris, wuv);
@@ -271,7 +280,10 @@ fn corner_model(k: usize, painter: Option<&Painter>) -> String {
     let mut s = header(&name);
     let g = quad(z);
     let m = painter.map_or(0, |p| p.nearest(x, y));
-    if painter.is_some_and(|p| p.imported(m)) {
+    if heightmap::current().is_some_and(|h| h.in_chasm(x, y)) {
+        // A chasm at the corner: black.
+        trimesh(&mut s, &format!("{name}_g"), &name, shared::BLACK, &g, &g.tris, |v| [v[0] / 5.0, v[1] / 5.0]);
+    } else if painter.is_some_and(|p| p.imported(m)) {
         // The corner tile's outer 5 m square, mirrored both ways (a 3 x 3 grid, so it can fold at the middle).
         let mut g3 = Grid { verts: Vec::new(), tris: Vec::new() };
         for j in 0..3 {

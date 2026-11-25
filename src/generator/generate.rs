@@ -214,9 +214,10 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             }
             owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::DDS, dds));
             owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));
-            for (mat, text) in mtrs {
-                owned.push((ResRef::from_str(&mat)?, ResType::MTR, text.into_bytes()));
-            }
+        }
+        // (with shadows off, a chasm's walls still have theirs: the fade)
+        for (mat, text) in mtrs {
+            owned.push((ResRef::from_str(&mat)?, ResType::MTR, text.into_bytes()));
         }
         if let Some(dds) = baked_dds {
             if dump {

@@ -471,6 +471,7 @@ mod tests {
             interior: false,
             roof: None,
             ceiling: vec![],
+            rim: vec![],
             serial: 0,
         }
     }
@@ -683,6 +684,7 @@ mod entrance_door_tests {
             interior: false,
             roof: None,
             ceiling: vec![],
+            rim: vec![],
             serial: 0,
         };
         let u = update_installed(&installed, &fresh, "lsdoor", "lsdoor", None, &ground, &Changes::default()).unwrap();

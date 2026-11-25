@@ -9,16 +9,29 @@ needs the toolset.
    look at and change) or *Import* an existing area to rework, or upload your own `.mod` or `.erf` and import areas from it.
    Several areas can share a module. Areas are 3 to 32 tiles (10 m each) a side; a bigger one can't be imported. A new area
    never replaces one of the same name without asking.
-2. **Shape and paint the ground.** Raise, Lower, Smooth, Flatten, Paint, Water, Entrance (cave mouths), Scatter and Place (props and
-   baked scenery), and for caves and interiors Dig and Room (passages and chambers cut out of the rock), Ramp (a ramp or stairs
-   between two levels) and Descent (a whole switchback descent at once); see *Caves, interiors and descents* below. The editor shows
-   what will be walkable and flags ground creatures would struggle with.
+2. **Shape and paint the ground.** Raise, Lower, Smooth, Flatten, Paint, Water, Chasm (a bottomless drop, see *Chasms* below),
+   Entrance (cave mouths), Scatter and Place (props and baked scenery), and for caves and interiors Dig and Room (passages and
+   chambers cut out of the rock), Ramp (a ramp or stairs between two levels) and Descent (a whole switchback descent at once); see
+   *Caves, interiors and descents* below. The editor shows what will be walkable and flags ground creatures would struggle with.
 3. **Put things in it** (the Things tool, below).
 4. **Set the area up:** its name, tag, scripts, flags, weather, lighting, music and ambient sound, load screen and variables.
 5. **Check** (live, and again when you publish).
 6. **Export to NWN.** This builds the area into a module and hak in your NWN user folder (on a team server, your workspace) that
    you can open in the toolset or the game.
 7. **Hand it over:** *Publish* (pull requests, with a review service) or *Package for your module* (a zip to commit yourself).
+
+## Chasms
+
+The toolset's outdoor tilesets block the way only with what rises: trees, mountains, walls, water. A chasm drops away: a canyon
+rim nobody climbs down, a gap between two ledges, a plateau or an island standing over nothing.
+
+- **Chasm** opens one under the brush; Shift-drag fills it in, the ground as it was. *Along the whole edge* opens one the brush
+  size wide all round the area, and the scenery the game draws beyond the edge carries it on.
+- The ground there drops 20 m under the rim (the nearest ground that isn't chasm), its walls fade to black from the rim down and
+  its floor is black, so no camera angle shows a bottom; the game's fog takes the rest. Nothing walks in it or on its edge, and
+  the path check sends no route into it. Water stops at it.
+- **To cross one**, leave a strip of ground across it at least 6 m wide, over the middle of a tile's edge, as for a cave passage.
+- For outdoor areas only.
 
 ## Caves, interiors and descents
 
