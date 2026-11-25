@@ -267,7 +267,8 @@ full detail, grafted into the boundary tiles. Seen in the game client (software 
   (every halo tile's baked texture and shadow map). The quarter-detail overhang above, with a small baked texture, is the one to
   build; its look still needs one more trial.
 
-The maintainer's look in the client picks among A, A with the fade, and either with trees.
+**Decided (2026-11-25): F**, the overhang with the neighbour's trees and the fade to the fog colour. Next, the same at a quarter
+of the detail with a small baked texture, built and looked at once before step 2.
 
 ### 4. Tile levels and path nodes
 
