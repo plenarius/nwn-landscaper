@@ -10,7 +10,7 @@ use mg_mdl::{Face, Mesh};
 use super::{
     ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
     WALKABLE_NZ, WATER_METRES, WATER_TEXTURE, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name,
-    mtr_name, normal_z, num, shadow_name, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
+    mtr_name, normal_z, num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
     trimesh_full, trimesh_listed, trimesh_with,
 };
 use crate::{heightmap, objects, paint, shared};
@@ -27,33 +27,36 @@ pub(super) fn tile_model(
 ) -> String {
     let (ox, oy) = (tx as f32 * TILE + TILE / 2.0, ty as f32 * TILE + TILE / 2.0);
     let base = tile_level(tx, ty) as f32 * TRANSITION;
-    let g = grid(tx, ty, RENDER_STEP);
-    let (mut ground, mut rock, mut void) = (Vec::new(), Vec::new(), Vec::new());
-    // A cave's rock tops (at its roof) are void: drawn black.
-    let cave = heightmap::current().filter(|h| h.underground && h.roof.is_some());
-    // (A vertex is void when it is at its ceiling: the roof's own height, or the one that follows the floor.)
-    let void_vertex = |v: u32| {
-        let [x, y, z] = g.verts[v as usize];
-        cave.as_ref().is_some_and(|h| h.roof_at(x + ox, y + oy).is_some_and(|r| z + base >= r - VOID_BELOW))
-    };
+    let mut g = grid(tx, ty, RENDER_STEP);
+    let hm = heightmap::current();
     // A chasm: how far each vertex is under its rim. Its floor is black (with the void); its walls fade to black going down.
     let chasm = heightmap::current().filter(|h| !h.rim.is_empty());
     let depth = |v: [f32; 3]| chasm.as_ref().map_or(0.0, |h| h.chasm_depth(v[0] + ox, v[1] + oy));
-    let mut walls = Vec::new();
+    let mut parts: [Vec<[u32; 3]>; 4] = Default::default();
     for &t in &g.tris {
-        let deep = t.map(|v| depth(g.verts[v as usize]));
-        let in_void = cave.is_some() && t.iter().all(|&v| void_vertex(v));
-        let on_floor = chasm.is_some() && deep.iter().all(|&d| d >= heightmap::CHASM_DEPTH - 0.01);
-        if in_void || on_floor {
-            void.push(t);
-        } else if deep.iter().any(|&d| d > heightmap::CHASM_BELOW) {
-            walls.push(t);
-        } else if normal_z(&g.verts, t) >= WALKABLE_NZ {
-            ground.push(t);
-        } else {
-            rock.push(t);
-        }
+        parts[part(hm.as_deref(), t.map(|v| g.verts[v as usize]), [ox, oy, base]) as usize].push(t);
     }
+    // Steep ground where its paint changes: cut so each piece has one sample's (split.rs).
+    if let Some(h) = hm.as_deref().filter(|h| painter.is_some() && h.painted()) {
+        let mut levels = std::collections::HashMap::new();
+        for (x, y) in (tx.saturating_sub(1)..=tx + 1).flat_map(|x| (ty.saturating_sub(1)..=ty + 1).map(move |y| (x, y))) {
+            levels.insert((x, y), if (x, y) == (tx, ty) { base } else { tile_level(x, y) as f32 * TRANSITION });
+        }
+        let level = |x: usize, y: usize| levels.get(&(x, y)).copied().unwrap_or_else(|| tile_level(x, y) as f32 * TRANSITION);
+        let centre = |t: usize| t as f32 * TILE + TILE / 2.0;
+        let area = split::Area {
+            step: RENDER_STEP,
+            tile: TILE,
+            tiles: (tiles_x(), tiles_y()),
+            spacing: h.spacing,
+            material: &|i, j| h.material(i, j),
+            height: &height,
+            base: &level,
+            steep: &|x, y, f| part(Some(h), f, [centre(x), centre(y), level(x, y)]) == Part::Rock,
+        };
+        split::split(&mut g, (tx, ty), &mut parts, Part::Rock as usize, &area);
+    }
+    let [ground, rock, void, walls] = parts;
     let mut s = format!(
         "newmodel {name}\nsetsupermodel {name} NULL\nclassification tile\nsetanimationscale 1\n\
          beginmodelgeom {name}\nnode dummy {name}\n  parent NULL\nendnode\n"
@@ -257,6 +260,39 @@ pub(super) fn tile_model(
     aabb_body(&mut s, w);
     let _ = writeln!(s, "endnode\nendmodelgeom {name}\ndonemodel {name}");
     s
+}
+
+/// What a face of a tile's ground is drawn as.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Part {
+    /// Walkable: the tile's texture.
+    Ground,
+    /// Too steep to walk: a library texture, the paint's nearest.
+    Rock,
+    /// A cave's rock top at its roof, or a chasm's floor: black.
+    Void,
+    /// A chasm's wall, fading to black going down.
+    Wall,
+}
+
+/// What face `t` (a tile's own coordinates; `origin` is the tile's middle and base in the area) is drawn as, in the terrain `hm`.
+fn part(hm: Option<&heightmap::Heightmap>, t: [[f32; 3]; 3], origin: [f32; 3]) -> Part {
+    let [ox, oy, base] = origin;
+    // (A vertex is void when it is at its ceiling: the roof's own height, or the one that follows the floor.)
+    let cave = hm.filter(|h| h.underground && h.roof.is_some());
+    let in_void = cave.is_some_and(|h| t.iter().all(|&[x, y, z]| h.roof_at(x + ox, y + oy).is_some_and(|r| z + base >= r - VOID_BELOW)));
+    let chasm = hm.filter(|h| !h.rim.is_empty());
+    let deep = t.map(|v| chasm.map_or(0.0, |h| h.chasm_depth(v[0] + ox, v[1] + oy)));
+    let on_floor = chasm.is_some() && deep.iter().all(|&d| d >= heightmap::CHASM_DEPTH - 0.01);
+    if in_void || on_floor {
+        Part::Void
+    } else if deep.iter().any(|&d| d > heightmap::CHASM_BELOW) {
+        Part::Wall
+    } else if normal_z(&t, [0, 1, 2]) >= WALKABLE_NZ {
+        Part::Ground
+    } else {
+        Part::Rock
+    }
 }
 
 /// Tile `name`'s walkmesh `w` as the text of a `.wok`.
