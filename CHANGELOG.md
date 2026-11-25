@@ -5,8 +5,12 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.6.0
 
+- **Released with the editor's 0.6.0**: painting a mix of textures, quick buttons that match whole words, and lighter undo,
+  browser copy and brush. The self-host image builds it (`WEB_REF`).
+- **Release notes from the changelogs.** A release's draft notes are this version's section of the engine's and the editor's
+  CHANGELOG.md, then how to get started; a tag without its section here fails the release.
 - **An entrance undone and redone between path checks keeps its id.** A check judged entrance ids by the last check's header in
   its scratch folder, not the last export's, so an entrance taken out by an undo and brought back by a redo looked like a
   taken-out entrance's id given to another: the check was refused and Live showed an error. A check now reads the last export's
