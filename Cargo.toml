@@ -75,6 +75,7 @@ serde_json = "1"
 # tiny_http_dh, the maintained fork of tiny_http, vendored with a patch of ours: a time limit on every read and write of a
 # connection, and size and time limits on a request's head, which no release has (vendor/tiny_http/LANDSCAPER.md). Without them
 # one client could hold an answer thread for as long as its connection stayed open, or fill the memory with one request line.
+# The patch also keeps the server taking connections after it runs out of file descriptors, which ended its accept thread.
 tiny_http = { package = "tiny_http_dh", path = "vendor/tiny_http" }
 png = "0.17"
 mg-image = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
@@ -83,10 +84,17 @@ glam = "0.30"
 base64 = "0.23"
 ureq = { version = "2", features = ["json"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
+# Writes the vendored tiny_http's warnings (connections dropped) to the server's log (`src/serve/open_files.rs`).
+log = "0.4"
 # A dry publish names the tile files by their git blob id (SHA-1).
 sha1 = "0.10"
 # An export's id and the hashes a trusted service checks its downloads by (docs/REVIEW-SERVICE.md, "Fetching exports").
 sha2 = "0.10"
+
+# Raises the server's limit on open files at its start (`src/serve/open_files.rs`): safe calls to `getrlimit`/`setrlimit`, capped
+# by macOS's own per-process limit.
+[target.'cfg(unix)'.dependencies]
+rlimit = "0.11"
 
 [lints]
 workspace = true

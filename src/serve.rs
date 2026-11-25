@@ -13,6 +13,7 @@ mod dialogs;
 mod export;
 mod files;
 mod import;
+mod open_files;
 mod previews;
 mod query;
 mod scripts;
@@ -178,6 +179,8 @@ pub fn serve(bind: &str, port: u16, web: &Path, reload_on_rebuild: bool) -> Resu
     if crate::review::active() {
         crate::review::read_kept_areas();
     }
+    open_files::raise_limit();
+    open_files::log_connection_drops();
     let server = Server::http_with_limits((bind, port), CONNECTIONS, LIMITS).map_err(|e| anyhow::anyhow!("{e}"))?;
     // (`--port 0` takes a free port: the one it got is the one printed below and checked against `Host`.)
     let port = server.server_addr().to_ip().map_or(port, |a| a.port());

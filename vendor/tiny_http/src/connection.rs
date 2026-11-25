@@ -51,35 +51,37 @@ pub(crate) enum Connection {
     #[cfg(unix)]
     Unix(unix_net::UnixStream),
 }
-impl std::io::Read for Connection {
+// (Landscaper patch: on `&Connection`, as std has them on `&TcpStream` and `&UnixStream`, so a connection's reading and
+// writing halves share one socket instead of each holding a copy of its file descriptor; `RefinedTcpStream`.)
+impl std::io::Read for &Connection {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Tcp(s) => s.read(buf),
+        match *self {
+            Connection::Tcp(s) => (&mut &*s).read(buf),
             #[cfg(unix)]
-            Self::Unix(s) => s.read(buf),
+            Connection::Unix(s) => (&mut &*s).read(buf),
         }
     }
 }
-impl std::io::Write for Connection {
+impl std::io::Write for &Connection {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Tcp(s) => s.write(buf),
+        match *self {
+            Connection::Tcp(s) => (&mut &*s).write(buf),
             #[cfg(unix)]
-            Self::Unix(s) => s.write(buf),
+            Connection::Unix(s) => (&mut &*s).write(buf),
         }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Tcp(s) => s.flush(),
+        match *self {
+            Connection::Tcp(s) => (&mut &*s).flush(),
             #[cfg(unix)]
-            Self::Unix(s) => s.flush(),
+            Connection::Unix(s) => (&mut &*s).flush(),
         }
     }
 }
 impl Connection {
     /// Gets the peer's address. Some for TCP, None for Unix sockets.
-    pub(crate) fn peer_addr(&mut self) -> std::io::Result<Option<SocketAddr>> {
+    pub(crate) fn peer_addr(&self) -> std::io::Result<Option<SocketAddr>> {
         match self {
             Self::Tcp(s) => s.peer_addr().map(Some),
             #[cfg(unix)]
@@ -130,6 +132,11 @@ impl Connection {
         }
     }
 
+    #[cfg(any(
+        feature = "ssl-openssl",
+        feature = "ssl-rustls",
+        feature = "ssl-native-tls"
+    ))]
     pub(crate) fn try_clone(&self) -> std::io::Result<Self> {
         match self {
             Self::Tcp(s) => s.try_clone().map(Self::from),

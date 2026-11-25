@@ -29,6 +29,13 @@ doesn't use), and both read a request's head whole, however long it is. On a tea
 - hold an answer thread for 30 s with a request refused without reading its body (413, 429, the gate's 403): throwing the body
   away read it, on that thread, until the connection's timeout.
 
+And running out of file descriptors stopped the server for good. On 2026-11-25 the Forge's team server, under Docker's default
+limit of 1,024 open files, ran out as every open editor tab reconnected at once after an update. tiny_http ended its accept thread
+on the first accept that failed for any reason but a connection aborted, so the process ran on and answered no one until it was
+restarted. Each connection also took four file descriptors (its socket copied three times with `try_clone`), and a copy that
+failed panicked the connection's thread (`refined_tcp_stream.rs`, `try_clone().unwrap()`; tiny_http's issue 195, open since
+2021). Neither tiny_http nor the fork has a fix released.
+
 ## The patch
 
 Every change is marked `Landscaper patch` in a comment. `git log -p vendor/tiny_http` shows it: the commit before it is the
@@ -49,6 +56,24 @@ crate unchanged.
   was read as the next request before. `EqualReader` (`src/util/equal_reader.rs`) and a chunked body's reader (`src/request.rs`)
   say how much was left; `TestRequest` still throws it away itself, through the fork's fixed buffer.
 
+- The accept thread never ends on an error (`src/lib.rs`). A connection aborted or reset before it was accepted is passed over;
+  any other error (no file descriptor left, EMFILE or ENFILE; no memory for a socket) drops the connection waiting, and the accept
+  is tried again after a pause, 5 ms doubled up to 1 s while it keeps failing, as Go's `net/http` does. The accept thread starts
+  with `thread::Builder`, so one that can't start fails `Server`'s start instead of panicking.
+- Connections dropped because the server can't take them (an accept that failed, every thread busy and the queue full, a thread
+  that couldn't start) are logged once a burst, through `log::warn!`, by `DropLog` (`src/util/drop_log.rs`): when it starts, at
+  most every 10 s while it lasts, with how many, and when a connection is taken again. The fork logged a full pool once a
+  connection.
+- A connection's reading and writing halves share its socket (`Arc<Connection>`, `src/util/refined_tcp_stream.rs`; `Read` and
+  `Write` on `&Connection`, `src/connection.rs`) in place of copies of it: one file descriptor a connection, not four, and no
+  copy to fail. `Connection::try_clone` is kept for TLS only.
+- `TaskPool::spawn` (`src/util/task_pool.rs`) says why it dropped a task (`Refused`: the queue full, or a thread that couldn't
+  start, for want of memory or of the processes a container may run) in place of `false`; a thread that can't start was a panic
+  in the accept thread.
+- The notice that a request is answered (`src/request.rs`) and a request's turn on its connection (`src/util/sequential.rs`)
+  can't panic: a send to a connection's thread that is gone is ignored, and a turn that never comes is an error that closes the
+  connection. Neither can happen as the code stands; a panic there would end an answering thread, which the Landscaper doesn't
+  replace.
 - `rustfmt.toml`: rustfmt's defaults, which the fork is formatted with, in place of the repository's (`cargo fmt --all` in the
   repository formats this folder too). The patch is formatted the fork's way.
 
@@ -60,7 +85,8 @@ To move to a new tiny_http_dh release: replace the folder's files (not this one)
 crates.io (`Cargo.toml.orig` as `Cargo.toml`), in one commit, then apply the patch again in the next: `git diff` of the last
 such pair of commits, applied with `patch -p3`, and by hand where the fork changed the same lines. Read the fork's changelog
 for anything that changes what the Landscaper relies on (its connection pool, its timeouts). Then run the Landscaper's tests:
-`src/serve.rs` tests the limits, the bodies left unread and request smuggling on a real socket.
+`src/serve.rs` tests the limits, the bodies left unread and request smuggling on a real socket, and `src/serve/open_files.rs` a
+server that runs out of file descriptors (Linux and macOS).
 
 ## Licence
 
