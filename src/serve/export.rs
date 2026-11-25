@@ -224,9 +224,12 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     std::fs::create_dir_all(&dir)?;
     // The ground the installed module was last built on, so its objects can follow the terrain's changes.
     let old = previous_heights(&dir, &name);
+    // The last export's header, a check's too: the scratch copy is only the last check's, by which an entrance undone and
+    // redone between checks looked like a taken-out entrance's id given again.
     // (Freshly imported, not exported since: the installed module has never had this light, whatever the header says.)
-    let old_header =
-        std::fs::read_to_string(dir.join(format!("{name}.json"))).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+    let old_header = std::fs::read_to_string(exports_dir().join(format!("{name}.json")))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
     let just_imported = old_header.as_ref().is_some_and(|h| h["imported"].as_bool() == Some(true));
     // The entrances (each with its id) and the area's next entrance id, which never goes down: an id is never given twice.
     let entrances = extra.get("entrances").cloned().unwrap_or_default();
