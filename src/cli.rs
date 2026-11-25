@@ -207,6 +207,39 @@ pub enum Textures {
     },
     /// List the library
     List,
+    /// Install a texture pack: its id in the list of packs, a URL or a .zip (docs/TEXTURE-PACKS.md)
+    Get {
+        /// A pack's id, a URL or a .zip file
+        pack: String,
+        /// The list of packs to look the id up in [default: LANDSCAPER_PACKS_URL, else the Landscaper's own]
+        #[arg(long, value_name = "URL")]
+        index: Option<String>,
+    },
+    /// List the installed texture packs and those available
+    ListPacks {
+        /// The list of packs [default: LANDSCAPER_PACKS_URL, else the Landscaper's own]
+        #[arg(long, value_name = "URL")]
+        index: Option<String>,
+    },
+    /// Remove an installed texture pack (refused while an area paints with one of its textures)
+    RemovePack {
+        /// The pack's id
+        id: String,
+        /// Remove it even so: those areas then don't export until it is installed again
+        #[arg(long)]
+        force: bool,
+    },
+    /// Make a texture pack's zip from a list of pictures (docs/TEXTURE-PACKS.md, "Making a pack")
+    Pack {
+        /// The JSON list of the pack's fields and pictures
+        list: PathBuf,
+        /// The folder the zip goes in
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
+        /// An index file to add the pack to (made if missing)
+        #[arg(long, value_name = "FILE")]
+        index: Option<PathBuf>,
+    },
 }
 
 #[cfg(test)]

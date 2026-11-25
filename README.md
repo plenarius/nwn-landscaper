@@ -124,7 +124,12 @@ landscaper textures init                          # the starter set again, addin
 landscaper textures add my-textures.json          # the game's or your haks' textures, by name
 landscaper textures build ~/pictures/ground --category Grass --surface 3
 landscaper textures list
+landscaper textures list-packs                    # texture packs: installed, and on offer
+landscaper textures get some-pack                 # install one (its id, a URL or a .zip)
+landscaper textures remove-pack some-pack
 ```
+
+Texture packs are described in [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md), with how to make one (`textures pack`).
 
 ### marker
 
@@ -151,6 +156,7 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 - [docs/TEAM-SERVER.md](docs/TEAM-SERVER.md): the team server.
 - [docs/REVIEW-SERVICE.md](docs/REVIEW-SERVICE.md): the calls a review service answers, to write one.
 - [docs/DEBUGGING.md](docs/DEBUGGING.md): the `LS_*` debugging switches.
+- [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): texture packs: installing them, their format, the index, making one.
 - [MOONGLOW.md](MOONGLOW.md): the Moonglow version the Landscaper is pinned to, and how to move it.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each version.
 - [SECURITY.md](SECURITY.md): reporting a security problem.

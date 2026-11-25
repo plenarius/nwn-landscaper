@@ -279,6 +279,8 @@ fn routes() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         p("POST", "/api/package?name={}"),
         p("POST", "/api/version?name={}"),
         p("POST", "/api/pick-texture?name={}&x=1&y=1"),
+        p("POST", "/api/textures/packs/install?id={}"),
+        p("POST", "/api/textures/packs/remove?id={}"),
         ("POST", "/api/upload?file={}", b"MOD V1.0".to_vec()),
         ("POST", "/api/upload?file={}.mod", b"MOD V1.0".to_vec()),
         p("POST", "/api/upload-delete?file={}"),
@@ -1374,4 +1376,86 @@ fn a_builder_deletes_only_their_own_areas_and_only_while_they_may_work_on_them()
     assert_eq!(s.raw("DELETE", &format!("/api/area?name=a1&base={}", versions[0]), &bob, b"").0, 200);
     let (st, b) = s.raw("PUT", "/api/save?name=fresh&new=1", &bob, &area_json("fresh", 1, None));
     assert_eq!(st, 200, "{b}");
+}
+
+/// A pack of one texture (`tpMoss`) and the index listing it, made by `landscaper textures pack` in `dir`; the index's path.
+fn sample_pack(dir: &Path) -> PathBuf {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir).unwrap();
+    let file = std::io::BufWriter::new(std::fs::File::create(dir.join("moss.png")).unwrap());
+    let mut e = png::Encoder::new(file, 64, 64);
+    e.set_color(png::ColorType::Rgb);
+    e.set_depth(png::BitDepth::Eight);
+    e.write_header().unwrap().write_image_data(&[90u8; 64 * 64 * 3]).unwrap();
+    std::fs::write(
+        dir.join("list.json"),
+        r#"{ "id": "test-pack", "version": "1", "name": "Test pack", "licence": "CC0-1.0", "prefix": "tp",
+             "textures": [{ "id": "tpMoss", "name": "Moss", "category": "Grass", "picture": "moss.png" }] }"#,
+    )
+    .unwrap();
+    let index = dir.join("out/index.json");
+    let made = Command::new(env!("CARGO_BIN_EXE_landscaper"))
+        .args(["textures", "pack"])
+        .arg(dir.join("list.json"))
+        .arg("--out")
+        .arg(dir.join("out"))
+        .arg("--index")
+        .arg(&index)
+        .env("XDG_DATA_HOME", dir.join("xdg"))
+        .output()
+        .unwrap();
+    assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
+    index
+}
+
+#[test]
+fn on_a_team_server_only_admins_install_or_remove_texture_packs() {
+    let src = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("serve_guard-packsrc-{}", std::process::id()));
+    let index = sample_pack(&src);
+    let env = [
+        ("LANDSCAPER_AUTH", "headers"),
+        ("LANDSCAPER_ALLOWED_GROUPS", "*"),
+        ("LANDSCAPER_ADMIN_USERS", "alice"),
+        ("LANDSCAPER_ADMIN_GROUPS", "none"),
+        ("LANDSCAPER_PUBLIC_HOST", "landscaper.test"),
+        ("LANDSCAPER_INSECURE", "1"),
+        ("LANDSCAPER_PACKS_URL", index.to_str().unwrap()),
+    ];
+    let s = Server::start("packs", &env, true);
+    let as_user = |user: &str, method: &str, target: &str| {
+        s.raw(method, target, &[("Host", "landscaper.test"), ("X-Landscaper", "1"), ("X-Forwarded-User", user)], b"")
+    };
+    let catalog = || std::fs::read_to_string(s.data().join("textures/catalog.json")).unwrap();
+    // A builder sees what is on offer (not where it downloads from), and may change nothing.
+    let (st, b) = as_user("bob", "GET", "/api/textures/packs");
+    assert_eq!(st, 200, "{b}");
+    assert!(b.contains(r#""manage":false"#) && b.contains(r#""id":"test-pack""#) && !b.contains(r#""url""#), "{b}");
+    for route in ["/api/textures/packs/install?id=test-pack", "/api/textures/packs/remove?id=test-pack"] {
+        let (st, b) = as_user("bob", "POST", route);
+        assert_eq!(st, 403, "{route}: {b}");
+    }
+    assert!(!catalog().contains("tpMoss"));
+    // The admin installs it, in the background, and the job says when it is done.
+    let (st, b) = as_user("alice", "POST", "/api/textures/packs/install?id=test-pack");
+    assert_eq!(st, 202, "{b}");
+    let started = Instant::now();
+    let job = loop {
+        let (_, b) = as_user("alice", "GET", "/api/textures/packs/job");
+        if b.contains(r#""running":false"#) {
+            break b;
+        }
+        assert!(started.elapsed() < Duration::from_secs(60), "the install didn't end: {b}");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert!(job.contains(r#""step":"done""#) && job.contains(r#""name":"Test pack""#), "{job}");
+    assert!(catalog().contains("tpMoss") && s.data().join("textures/tpMoss_128.png").is_file());
+    // A pack the index doesn't list can't be asked for.
+    assert_eq!(as_user("alice", "POST", "/api/textures/packs/install?id=..%2F..%2Fetc").0, 400);
+    assert_eq!(as_user("alice", "POST", "/api/textures/packs/install?id=not-listed").0, 404);
+    // Still refused to the builder; removed by the admin.
+    assert_eq!(as_user("bob", "POST", "/api/textures/packs/remove?id=test-pack").0, 403);
+    let (st, b) = as_user("alice", "POST", "/api/textures/packs/remove?id=test-pack");
+    assert_eq!(st, 200, "{b}");
+    assert!(!catalog().contains("tpMoss") && !s.data().join("textures/tpMoss.png").exists());
+    let _ = std::fs::remove_dir_all(&src);
 }

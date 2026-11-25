@@ -35,7 +35,12 @@ guess shows at once.
 
 The library lives in `textures/` in the data folder (`XDG_DATA_HOME`). It is built from the game's files the first time there is none;
 `landscaper textures init | add <list.json> | build <folder> [--category NAME] [--surface N] | list` fill it otherwise (see
-SELF-HOSTING.md, "Textures").
+SELF-HOSTING.md, "Textures"). Texture packs add to it ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)):
+
+| Variable | What it is | Default |
+|----------|------------|---------|
+| `LANDSCAPER_PACKS_URL` | The list of texture packs on offer (a URL or a file); a pack's `url` in it may be relative to it | the `texture-packs` release of nwn-landscaper on GitHub |
+| `LANDSCAPER_PACK_MAX_MB` | The largest pack downloaded, in MB | 512 |
 
 ## Running it for yourself
 

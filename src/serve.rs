@@ -14,6 +14,7 @@ mod export;
 mod files;
 mod import;
 mod open_files;
+mod packs;
 mod previews;
 mod query;
 mod scripts;
@@ -510,8 +511,9 @@ struct Ask<'a> {
 
 /// The API's areas, asked in turn: each answers the requests that are its own and returns `None` for the rest. No two
 /// match the same request; anything left is a file of the editor (GET) or refused with 405.
-const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 9] = [
+const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 10] = [
     team::route,
+    packs::route,
     areas::route,
     underlay::route,
     export::route,
