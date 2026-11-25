@@ -31,7 +31,8 @@ The first start:
 - **macOS:** the program is signed with a Developer ID and notarized by Apple, so the first start only asks whether to open a
   program downloaded from the internet. (Releases up to 0.4.0 aren't signed: open System Settings, Privacy & Security, and click
   **Open Anyway**.)
-- **Windows:** the program isn't signed yet, so SmartScreen may say it protected your PC. Click **More info**, then **Run anyway**.
+- **Windows:** the program is signed, so SmartScreen sees a verified publisher. (Releases up to 0.6.0 aren't signed: if
+  SmartScreen says it protected your PC, click **More info**, then **Run anyway**.)
 
 To build it from source instead, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) and "Development" below.
 
