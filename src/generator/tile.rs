@@ -13,7 +13,7 @@ use super::{
     normal_z, num, shadow_mtr, shadow_name, tile_level, tile_name, tiles_x, tiles_y, tileset_name, trimesh, trimesh_full, trimesh_listed,
     trimesh_with,
 };
-use crate::{heightmap, objects, paint};
+use crate::{heightmap, objects, paint, shared};
 
 /// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`).
 pub(super) fn tile_model(
@@ -36,9 +36,18 @@ pub(super) fn tile_model(
         let [x, y, z] = g.verts[v as usize];
         cave.as_ref().is_some_and(|h| h.roof_at(x + ox, y + oy).is_some_and(|r| z + base >= r - VOID_BELOW))
     };
+    // A chasm: how far each vertex is under its rim. Its floor is black (with the void); its walls fade to black going down.
+    let chasm = heightmap::current().filter(|h| !h.rim.is_empty());
+    let depth = |v: [f32; 3]| chasm.as_ref().map_or(0.0, |h| h.chasm_depth(v[0] + ox, v[1] + oy));
+    let mut walls = Vec::new();
     for &t in &g.tris {
-        if cave.is_some() && t.iter().all(|&v| void_vertex(v)) {
+        let deep = t.map(|v| depth(g.verts[v as usize]));
+        let in_void = cave.is_some() && t.iter().all(|&v| void_vertex(v));
+        let on_floor = chasm.is_some() && deep.iter().all(|&d| d >= heightmap::CHASM_DEPTH - 0.01);
+        if in_void || on_floor {
             void.push(t);
+        } else if deep.iter().any(|&d| d > heightmap::CHASM_BELOW) {
+            walls.push(t);
         } else if normal_z(&g.verts, t) >= WALKABLE_NZ {
             ground.push(t);
         } else {
@@ -114,6 +123,32 @@ pub(super) fn tile_model(
     }
     if !void.is_empty() {
         trimesh(&mut s, &format!("{name}_void"), name, ENTRANCE_DARK, &g, &void, |v| [v[0], v[1]]);
+    }
+    // A chasm's walls: one mesh in the texture painted nearest most of them (one material more a tile at most: an MTR's resref
+    // is the tile's plus `m` and a number, and 16 characters is all a resref has), darkened by the fade in place of the shadow map
+    // (a wall is a line seen from above, where the shadow map lies) by how far under the rim each vertex is.
+    if !walls.is_empty() {
+        let mut count: std::collections::BTreeMap<u8, usize> = Default::default();
+        for &t in &walls {
+            let c = t.map(|v| g.verts[v as usize]);
+            let (cx, cy) = ((c[0][0] + c[1][0] + c[2][0]) / 3.0 + ox, (c[0][1] + c[1][1] + c[2][1]) / 3.0 + oy);
+            *count.entry(painter.map_or(0, |p| p.nearest(cx, cy))).or_default() += 1;
+        }
+        let m = count.iter().max_by_key(|(_, n)| **n).map_or(0, |(m, _)| *m);
+        // (an import's ground: its tileset's cliff texture there, as its steep faces take, else the tile's picture)
+        let bitmap = match painter {
+            Some(p) if p.imported(m) => p.textures[m as usize]
+                .tiles
+                .as_ref()
+                .and_then(|t| t.cliffs.get(ty * t.width + tx).cloned().flatten())
+                .unwrap_or_else(|| baked_name(tx, ty)),
+            Some(p) => paint::resref(&p.hm.palette[m as usize]),
+            None => "ttr01_rock00".to_string(),
+        };
+        let fade = |v: [f32; 3]| [shared::chasm_fade_u(depth(v) / heightmap::CHASM_DEPTH), 0.5];
+        let mat = format!("{name}m{}", mtrs.len());
+        mtrs.push((mat.clone(), shadow_mtr(&bitmap, shared::CHASM_FADE)));
+        trimesh_full(&mut s, &format!("{name}_cw"), name, &bitmap, &format!("  materialname {mat}\n"), &g, &walls, &side, Some(&fade));
     }
     // Entrances whose mouth is in this tile: the roof's top in the hill's paint, its rock (underside and lip; shadowed, so dark
     // inside), the dark back.
