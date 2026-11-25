@@ -620,6 +620,37 @@ impl Heightmap {
         let b = h(ix, iy + 1) + (h(ix + 1, iy + 1) - h(ix, iy + 1)) * tx;
         a + (b - a) * ty
     }
+
+    /// The ground's unit normal at area coordinates (x east, y north, z up), smooth across the whole area: each sample's slope
+    /// between its neighbours (clamped at the area's edge), blended bilinearly between samples. The editor's view gives its
+    /// ground the same normals (js/view.js, `updateNormals`), so slopes are textured alike in both ([`crate::triplanar`]).
+    pub fn normal(&self, x: f32, y: f32) -> [f32; 3] {
+        let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
+        let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
+        let (ix, iy) = ((fx.floor() as usize).min(self.width - 2), (fy.floor() as usize).min(self.height - 2));
+        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
+        let mut n = [0.0; 3];
+        for (i, j, w) in
+            [(ix, iy, (1.0 - tx) * (1.0 - ty)), (ix + 1, iy, tx * (1.0 - ty)), (ix, iy + 1, (1.0 - tx) * ty), (ix + 1, iy + 1, tx * ty)]
+        {
+            let s = self.sample_normal(i, j);
+            for k in 0..3 {
+                n[k] += s[k] * w;
+            }
+        }
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        n.map(|c| c / len)
+    }
+
+    /// Sample (i, j)'s unit normal: its rise per metre east and north, between its neighbours.
+    fn sample_normal(&self, i: usize, j: usize) -> [f32; 3] {
+        let h = |i: usize, j: usize| self.data[j * self.width + i];
+        let (w, e, s, n) = (i.saturating_sub(1), (i + 1).min(self.width - 1), j.saturating_sub(1), (j + 1).min(self.height - 1));
+        let east = (h(e, j) - h(w, j)) / ((e - w) as f32 * self.spacing);
+        let north = (h(i, n) - h(i, s)) / ((n - s) as f32 * self.spacing);
+        let len = (east * east + north * north + 1.0).sqrt();
+        [-east / len, -north / len, 1.0 / len]
+    }
 }
 
 #[cfg(test)]
@@ -789,6 +820,47 @@ mod tests {
         assert_eq!(hm.at(5.0, 0.0), 0.5);
         assert_eq!(hm.at(0.0, 15.0), 2.0); // halfway between 0 (row 1) and 4 (row 2)
         assert_eq!(hm.at(100.0, 100.0), 6.0); // clamped
+    }
+
+    #[test]
+    fn a_plane_s_normal_is_the_same_everywhere_on_it_edges_and_all() {
+        // Rising 1 m a metre east and 2 m a metre north (samples 1 m apart): the normal (-1, -2, 1), made unit.
+        let data = (0..4).flat_map(|j| (0..4).map(move |i| i as f32 + 2.0 * j as f32)).collect();
+        let hm = Heightmap { spacing: 1.0, width: 4, height: 4, data, ..plain() };
+        let want = [-1.0, -2.0, 1.0].map(|c: f32| c / 6.0f32.sqrt());
+        for (x, y) in [(0.0, 0.0), (1.5, 2.25), (3.0, 3.0), (2.0, 0.5)] {
+            let n = hm.normal(x, y);
+            assert!(n.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-5), "({x}, {y}): {n:?}");
+        }
+    }
+
+    /// A flat 3 x 3 terrain of nothing else, for tests to change.
+    fn plain() -> Heightmap {
+        Heightmap {
+            name: "t".into(),
+            tiles: 1,
+            tiles_y: 1,
+            spacing: 5.0,
+            width: 3,
+            height: 3,
+            data: vec![0.0; 9],
+            materials: vec![],
+            palette: vec![],
+            atmosphere: None,
+            things: vec![],
+            settings: None,
+            originals: None,
+            water: vec![],
+            shadow: None,
+            entrances: vec![],
+            objects: vec![],
+            underground: false,
+            interior: false,
+            roof: None,
+            ceiling: vec![],
+            rim: vec![],
+            serial: 0,
+        }
     }
 
     #[test]

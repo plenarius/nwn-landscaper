@@ -28,14 +28,14 @@ pub(crate) use self::analyse::{check, describe, export, sim_area};
 pub(crate) use self::entrance::{DOOR_MARK, door_mark};
 pub(crate) use self::generate::generate;
 pub(crate) use self::install::Before;
-use self::mdl::{Grid, aabb_body, grid, normal_z, num, trimesh, trimesh_full, trimesh_listed, trimesh_with};
+use self::mdl::{Grid, Mapping, aabb_body, grid, normal_z, num, terrain_mesh, trimesh, trimesh_full, trimesh_listed, trimesh_with};
 use self::painter::{
-    MINIMAP, Painter, SHADOW_MAP_FINE, bake_size, entrance_rock, minimap, shadow_map, shadow_mtr, shadow_name, shadow_strength,
+    MINIMAP, Painter, SHADOW_MAP_FINE, bake_size, entrance_rock, minimap, mtr_name, shadow_map, shadow_name, shadow_strength, tile_mtr,
 };
 use self::plan::{CROSSING_LIMIT, choose_path_nodes, plan_digest, sim_area_of, simulate_all, tile_crossings_for, tile_mesh, walkmesh_raw};
 pub(crate) use self::plan::{Walk, area_plan, in_parallel, in_parallel_on, walkmesh};
 pub(crate) use self::terrain::{CLIFF_OVERRIDE, FLAT_OVERRIDE, RUGGED_OVERRIDE, blocked, height};
-use self::terrain::{TRANSITION, flat, in_void, rugged, tile_level};
+use self::terrain::{TRANSITION, flat, ground_normal, in_void, rugged, tile_level};
 use self::tile::{crlf, set_file, surfaced, tile_model, tile_wok};
 use crate::{heightmap, paint, shared};
 

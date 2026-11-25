@@ -15,8 +15,8 @@
 use std::fmt::Write as _;
 
 use super::{
-    Grid, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, normal_z, paint, shared, tile_level,
-    tiles_x, tiles_y, tileset_name, trimesh, trimesh_with,
+    Grid, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, mtr_name, normal_z, paint, shared,
+    tile_level, tile_mtr, tiles_x, tiles_y, tileset_name, trimesh, trimesh_with,
 };
 
 /// A side of a tile (or of the area), by compass direction.
@@ -183,7 +183,7 @@ fn upward(g: &Grid, t: [u32; 3]) -> [u32; 3] {
 }
 
 /// Strip cell `k` of `side`: the boundary's profile at 0.625 m steps, carried across the cell (local x, outward or inward alike).
-fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
+fn strip_model(side: Side, k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, String)>) -> String {
     let name = strip_name(side, k);
     let (tx, ty) = side.tile(k);
     let base = tile_level(tx, ty) as f32 * TRANSITION;
@@ -233,6 +233,8 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
     }
     let mut s = header(&name);
     // Along the boundary as the area's tiles have it (4 m repeats); across, a whole number of repeats a cell so the five copies join.
+    // (For viewers without the game's shaders: the game draws a library texture from three sides at the world position, so it runs
+    // on from the area's ground into every copy.)
     let uv = |v: [f32; 3]| [side.along(centre, v) / paint::TEXTURE_METRES, v[0] / 5.0];
     for (n, (m, faces)) in by_material.iter().enumerate() {
         if painter.is_some_and(|p| p.imported(*m)) {
@@ -253,7 +255,8 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
             };
             trimesh(&mut s, &format!("{name}_g{n}"), &name, &baked_name(tx, ty), &g, faces, square);
         } else {
-            trimesh(&mut s, &format!("{name}_g{n}"), &name, &bitmap(painter, *m), &g, faces, uv);
+            let props = triplanar(&name, &bitmap(painter, *m), mtrs);
+            trimesh_with(&mut s, &format!("{name}_g{n}"), &name, &bitmap(painter, *m), &props, &g, faces, uv);
         }
     }
     if !chasm.is_empty() {
@@ -268,7 +271,7 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>) -> String {
 }
 
 /// Corner block `k` (south-west, north-west, south-east, north-east): flat ground at the area corner's height, with its water.
-fn corner_model(k: usize, painter: Option<&Painter>) -> String {
+fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, String)>) -> String {
     let name = corner_name(k);
     let (lx, ly) = (tiles_x() - 1, tiles_y() - 1);
     let (sx, sy) = (tiles_x() as f32 * TILE, tiles_y() as f32 * TILE);
@@ -306,7 +309,8 @@ fn corner_model(k: usize, painter: Option<&Painter>) -> String {
         };
         trimesh(&mut s, &format!("{name}_g"), &name, &baked_name(tx, ty), &g3, &g3.tris, uv);
     } else {
-        trimesh(&mut s, &format!("{name}_g"), &name, &bitmap(painter, m), &g, &g.tris, |v| [v[0] / 5.0, v[1] / 5.0]);
+        let props = triplanar(&name, &bitmap(painter, m), mtrs);
+        trimesh_with(&mut s, &format!("{name}_g"), &name, &bitmap(painter, m), &props, &g, &g.tris, |v| [v[0] / 5.0, v[1] / 5.0]);
     }
     if let Some(level) = heightmap::current().and_then(|hm| hm.water_at(x, y)) {
         let w = quad(level - base);
@@ -318,16 +322,28 @@ fn corner_model(k: usize, painter: Option<&Painter>) -> String {
     s
 }
 
-/// Every edge model: (resref, ASCII model).
-pub fn models(painter: Option<&Painter>) -> Vec<(String, String)> {
+/// A material drawing library texture `bitmap` from three sides by the slope ([`crate::triplanar`]), as the area's tiles draw it, for
+/// model `model`; its `materialname` line.
+fn triplanar(model: &str, bitmap: &str, mtrs: &mut Vec<(String, String)>) -> String {
+    let mat = mtr_name(model, mtrs.len());
+    mtrs.push((mat.clone(), tile_mtr(bitmap, None, true)));
+    format!("  materialname {mat}\n")
+}
+
+/// Every edge model: (resref, ASCII model, its materials as (resref, MTR)).
+pub fn models(painter: Option<&Painter>) -> Vec<(String, String, Vec<(String, String)>)> {
     let mut out = Vec::new();
     for side in Side::ALL {
         for k in 0..side.cells() {
-            out.push((strip_name(side, k), strip_model(side, k, painter)));
+            let mut mtrs = Vec::new();
+            let text = strip_model(side, k, painter, &mut mtrs);
+            out.push((strip_name(side, k), text, mtrs));
         }
     }
     for k in 0..4 {
-        out.push((corner_name(k), corner_model(k, painter)));
+        let mut mtrs = Vec::new();
+        let text = corner_model(k, painter, &mut mtrs);
+        out.push((corner_name(k), text, mtrs));
     }
     out
 }

@@ -15,6 +15,14 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   while an area paints with the pack's textures. The list of packs is `LANDSCAPER_PACKS_URL` (default: an asset of the
   `texture-packs` release); `landscaper textures pack` makes a pack and its index entry from a list of pictures. On a team
   server only admins install or remove. [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md).
+- **Textures keep their size on every slope.** A library texture on the ground is drawn from three sides at once (from above,
+  along x and along y), blended by which way the ground faces: triplanar texturing, in a third shader made from the game's
+  `fslit` at run time, `ls_tp_fs`. Steep ground took its texture from the side along x + y, so a slope facing north-east or
+  south-west smeared it into streaks; walkable slopes took it from above, 1.6 times stretched at 50 degrees. A tile painted with
+  several textures bakes the same blend into its picture. Library meshes now always have a material (MTR), shadowed or not, and
+  the edge scenery's too; their own texture coordinates, for viewers without the game's shaders (Moonglow, nwn-bake), give each
+  face the one side of eight it faces most. Tiles carry the ground's own normals, so light no longer steps at tile and mesh edges.
+  Needs the editor of the same release to show it the same way.
 - **The macOS build is signed and notarized.** The release's macOS program is signed with a Developer ID and notarized by Apple,
   so it starts without Privacy & Security's Open Anyway. The Windows build is not signed yet.
 - **Running out of open files no longer stops the server for good.** When `landscaper serve` had no file descriptor left for a

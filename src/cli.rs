@@ -19,7 +19,7 @@ Research commands (for working on the Landscaper itself; they print what they fi
   generate [OUT]                       Generate the test area into OUT (default: out); also writes landscaper.hak and
                                        ls_textures.hak into the user folder's hak/
   decompile <MODEL>                    Print a game model as ASCII MDL
-  shaders <OUT>                        Write the shared hak's two shaders, as built from the game's, into OUT
+  shaders <OUT>                        Write the shared hak's three shaders, as built from the game's, into OUT
   check-tiles [LIMIT]                  Check every tile's walkmesh against the planner's work limit (default 200000)
   validate-pathnodes [TILESET]         Compare the path node table with a tileset's tiles (default ttr01)
   wok-stats <TILESET>...               Count walkmesh faces per tile of game tilesets

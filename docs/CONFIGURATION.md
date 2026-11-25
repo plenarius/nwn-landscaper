@@ -15,7 +15,7 @@ after any command (the same names as nwn-bake's options):
 
 | Variable | What | Default |
 |---|---|---|
-| `NWN_ROOT`, `NWN_HOME` | The game install and the user folder (haks, modules, tlk). A script check compiles against the install's `ovr/nwscript.nss`, so a module whose scripts need functions added to it (NWNX, say) needs that file there. The install must be the game itself, not the dedicated server's download: the shared hak's shadow shaders are made from the game's own `fslit` and `vslit` shaders, which the server download lacks | found like the game finds them |
+| `NWN_ROOT`, `NWN_HOME` | The game install and the user folder (haks, modules, tlk). A script check compiles against the install's `ovr/nwscript.nss`, so a module whose scripts need functions added to it (NWNX, say) needs that file there. The install must be the game itself, not the dedicated server's download: the shared hak's tile shaders are made from the game's own `fslit` and `vslit` shaders, which the server download lacks | found like the game finds them |
 | `XDG_DATA_HOME` | Where the Landscaper keeps its data (workspaces, exports, the texture library) | `~/.local/share` (folder `landscaper`); on Windows `%LOCALAPPDATA%` |
 | `LANDSCAPER_WEB` (or `--web`) | The editor's files (the `nwn-landscaper-web` repository) | `web/` beside the program, `./nwn-landscaper-web`, `./landscaper-web`, `../nwn-landscaper-web`, `../landscaper-web` |
 | `LANDSCAPER_MODULE_REPO` | A checkout of your module's source as JSON (what `nwn_gff` or nasher write): areas, blueprints, conversations, scripts and `module.ifo.json` | `./nwn-module` |

@@ -156,9 +156,11 @@ impl Painter {
         ]
     }
 
-    /// The ground's colour at (x, y): the four samples' textures blended, as the editor shows it.
-    /// `decals`: the ones on its tile.
+    /// The ground's colour at (x, y): the four samples' textures blended, each drawn from three sides by the ground's slope there
+    /// ([`paint::Texture::at`]), as the editor shows it and the game's shader draws a tile in one texture. `decals`: the ones on its
+    /// tile.
     fn ground(&self, x: f32, y: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
+        let (p, n) = ([x, y, self.hm.at(x, y)], self.hm.normal(x, y));
         let mut c = [0.0; 3];
         // (Corners of the same texture share its colour here: sampled once.)
         let mut last: Option<(u8, [f32; 3])> = None;
@@ -166,7 +168,7 @@ impl Painter {
             if w > 0.0 {
                 let t = match last {
                     Some((lm, t)) if lm == m => t,
-                    _ => self.textures[m as usize].ground(x, y),
+                    _ => self.textures[m as usize].at(p, n),
                 };
                 last = Some((m, t));
                 for k in 0..3 {
@@ -214,8 +216,8 @@ impl Painter {
         dds
     }
 
-    /// A digest of everything [`Painter::bake`] reads for tile (tx, ty): where it is, the paint under it and around it, the textures
-    /// that paint names, and the decals on it.
+    /// A digest of everything [`Painter::bake`] reads for tile (tx, ty): where it is, the paint and the heights under it and around
+    /// it (the heights give the slope its textures are drawn by), the textures that paint names, and the decals on it.
     fn bake_key(&self, tx: usize, ty: usize, size: u32) -> [u8; 20] {
         use sha1::Digest;
         let mut h = sha1::Sha1::new();
@@ -233,6 +235,13 @@ impl Painter {
                 let m = hm.material(i, j);
                 h.update([m]);
                 used.push(m);
+            }
+        }
+        // (The heights a pixel's normal reads: its corners' samples and their neighbours.)
+        for j in ty as i64 * k - 2..=(ty as i64 + 1) * k + 2 {
+            for i in tx as i64 * k - 2..=(tx as i64 + 1) * k + 2 {
+                let (i, j) = (i.clamp(0, hm.width as i64 - 1) as usize, j.clamp(0, hm.height as i64 - 1) as usize);
+                h.update(hm.data[j * hm.width + i].to_le_bytes());
             }
         }
         used.sort_unstable();
@@ -277,7 +286,8 @@ impl Painter {
 
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
-const BAKE_VERSION: u32 = 1;
+/// (2: drawn from three sides by the slope.)
+const BAKE_VERSION: u32 = 2;
 
 /// A picture's digest: its size and pixels.
 fn digest(img: &mg_image::Rgba) -> [u8; 20] {
@@ -693,21 +703,46 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
     })
 }
 
-/// The material of a shadowed mesh: our shaders, its texture, the shadow map.
-pub(super) fn shadow_mtr(bitmap: &str, shadow: &str) -> String {
-    format!(
-        "// NWN Landscaper: lit as usual, then the baked shadow map, then fog
-customshadervs ls_lm_vs
-customshaderfs ls_lm_fs
-texture0 {bitmap}
-texture7 {shadow}
-"
-    )
+/// The material of a tile's mesh: our shaders and its texture, with `texture7` (the tile's baked shadow map, or a chasm wall's fade)
+/// over it when given. `triplanar`: a library texture, drawn from three sides by the ground's slope ([`crate::triplanar`], shader
+/// `ls_tp_fs`); else at the mesh's own texture coordinates (`ls_lm_fs`, a picture over the tile's square).
+pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: bool) -> String {
+    let (fs, what) = if triplanar { ("ls_tp_fs", "drawn from three sides by the slope, ") } else { ("ls_lm_fs", "") };
+    let mut s = format!(
+        "// NWN Landscaper: {what}lit as usual, then the baked shadow map, then fog\ncustomshadervs ls_lm_vs\ncustomshaderfs {fs}\n\
+         texture0 {bitmap}\n"
+    );
+    if let Some(t) = texture7 {
+        s += &format!("texture7 {t}\n");
+    }
+    s
+}
+
+/// The resref of model `model`'s `k`th material: the model's plus `m` and one character (0-9, then a-z), as a tile's name (14
+/// characters at most) leaves room for one only. Past 36 it is too long, and the hak's writer says so.
+pub(super) fn mtr_name(model: &str, k: usize) -> String {
+    let c = char::from_digit(k as u32, 36).map_or_else(|| k.to_string(), String::from);
+    format!("{model}m{c}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn materials_are_named_one_character_past_the_model() {
+        assert_eq!(mtr_name("abcdefghi_0102", 0), "abcdefghi_0102m0");
+        assert_eq!(mtr_name("abcdefghi_0102", 10), "abcdefghi_0102ma");
+        assert_eq!(mtr_name("abcdefghi_0102", 35), "abcdefghi_0102mz");
+    }
+
+    #[test]
+    fn a_library_texture_s_material_draws_it_triplanar_and_a_picture_s_does_not() {
+        let tp = tile_mtr("ls_grass", Some("a_0102s"), true);
+        assert!(tp.contains("customshaderfs ls_tp_fs\n") && tp.contains("texture0 ls_grass\n") && tp.contains("texture7 a_0102s\n"));
+        let lm = tile_mtr("a_0102t", None, false);
+        assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7"), "{lm}");
+    }
 
     #[test]
     fn kept_files_go_least_recently_used_first_once_over_the_limit() {
