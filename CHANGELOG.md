@@ -5,8 +5,11 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
-## Unreleased
+## 0.5.0
 
+- **Released with the editor's 0.5.0**: Get more textures, folding texture categories, the module's hak placeables with Small
+  and Large plants, textures that keep their size on slopes, and objects that stand on their base. The self-host image builds it
+  (`WEB_REF`). The shared texture hak is rebuilt once, for the new `ls_tp_fs` shader.
 - **The module's haks' placeables in the editor.** The editor reads the game with the module's haks: on a team server the hak list the
   review service gives (`GET /api/v1/areas/module`), elsewhere `LANDSCAPER_HAKS` (or `--haks`): hak names in the module's order, or
   `module` for the checkout's `module.ifo.json`. Unset, it reads the game alone, as before. Placeables come from the haks' placeables.2da,
