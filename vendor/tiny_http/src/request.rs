@@ -98,7 +98,10 @@ impl<R: Write> Write for NotifyOnDrop<R> {
 }
 impl<R> Drop for NotifyOnDrop<R> {
     fn drop(&mut self) {
-        self.sender.send(()).unwrap();
+        // (Landscaper patch, here and below: `ok()`, not `unwrap()`. The notice goes to the connection's thread, which waits
+        // for it; if that thread were gone, answering a request would panic the answering thread, which the server doesn't
+        // replace.)
+        self.sender.send(()).ok();
     }
 }
 
@@ -511,7 +514,7 @@ impl Request {
     {
         let res = self.respond_impl(response);
         if let Some(sender) = self.notify_when_responded.take() {
-            sender.send(()).unwrap();
+            sender.send(()).ok();
         }
         res
     }
@@ -567,7 +570,7 @@ impl Drop for Request {
             let response = Response::empty(500);
             let _ = self.respond_impl(response); // ignoring any potential error
             if let Some(sender) = self.notify_when_responded.take() {
-                sender.send(()).unwrap();
+                sender.send(()).ok();
             }
         }
     }
@@ -603,6 +606,8 @@ mod tests {
             None,
             body.as_bytes(),
             std::io::sink(),
+            // (Landscaper patch: the patch's argument, which this test was left without.)
+            None,
         )
     }
 

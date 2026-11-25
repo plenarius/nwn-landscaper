@@ -125,7 +125,9 @@ impl<R: Read + Send> Read for SequentialReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         let mut reader = match self.inner {
             SequentialReaderInner::MyTurn(ref mut reader) => return reader.read(buf),
-            SequentialReaderInner::Waiting(ref mut recv) => recv.recv().unwrap(),
+            // (Landscaper patch, here and below: an error, not a panic, if the request before this one was dropped without
+            // handing the connection on; that can't happen, and if it could, it would close the connection, not panic.)
+            SequentialReaderInner::Waiting(ref mut recv) => recv.recv().map_err(|_| turn_lost())?,
             SequentialReaderInner::Empty => unreachable!(),
         };
 
@@ -138,7 +140,7 @@ impl<R: Read + Send> Read for SequentialReader<R> {
 impl<W: Write + Send> Write for SequentialWriter<W> {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         if let Some(v) = self.trigger.as_mut() {
-            v.recv().unwrap()
+            v.recv().map_err(|_| turn_lost())?
         }
         self.trigger = None;
 
@@ -147,7 +149,7 @@ impl<W: Write + Send> Write for SequentialWriter<W> {
 
     fn flush(&mut self) -> IoResult<()> {
         if let Some(v) = self.trigger.as_mut() {
-            v.recv().unwrap()
+            v.recv().map_err(|_| turn_lost())?
         }
         self.trigger = None;
 
@@ -167,8 +169,9 @@ where
                 self.next.send(reader).ok();
             }
             SequentialReaderInner::Waiting(recv) => {
-                let reader = recv.recv().unwrap();
-                self.next.send(reader).ok();
+                if let Ok(reader) = recv.recv() {
+                    self.next.send(reader).ok();
+                }
             }
             SequentialReaderInner::Empty => (),
         }
@@ -182,4 +185,12 @@ where
     fn drop(&mut self) {
         self.on_finish.send(()).ok();
     }
+}
+
+/// Landscaper patch: the error for a turn on the connection that never came (see `SequentialReader`'s `read`).
+fn turn_lost() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::BrokenPipe,
+        "the request before this one let go of the connection without handing it on",
+    )
 }

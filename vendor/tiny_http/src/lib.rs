@@ -194,6 +194,11 @@ pub struct ServerConfig {
 /// Default value of [`ServerConfig::tls_handshake_timeout`].
 pub const DEFAULT_TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 
+// Landscaper patch: how long the accept thread waits after an accept fails before it tries again (see the accept thread), first
+// and at most. Go's `net/http` waits the same: 5 ms, doubled up to 1 s.
+const ACCEPT_PAUSE_FIRST: Duration = Duration::from_millis(5);
+const ACCEPT_PAUSE_MOST: Duration = Duration::from_secs(1);
+
 impl Default for ServerConfig {
     fn default() -> Self {
         ServerConfig {
@@ -512,7 +517,7 @@ impl Server {
             feature = "ssl-native-tls"
         )))]
         let _ = tls_handshake_timeout;
-        thread::spawn(move || {
+        let accept_thread = move || {
             // a tasks pool is used to dispatch the connections into threads
             let tasks_pool = util::TaskPool::new(
                 pool_config.min_threads,
@@ -520,10 +525,15 @@ impl Server {
                 pool_config.max_queue,
             );
 
+            // (Landscaper patch: connections dropped in a burst are logged once, `DropLog`.)
+            let drops = util::DropLog::default();
+            let mut pause = ACCEPT_PAUSE_FIRST;
+
             log::debug!("Running accept thread");
             while !inside_close_trigger.load(Relaxed) {
                 match server.accept() {
                     Ok((sock, _)) => {
+                        pause = ACCEPT_PAUSE_FIRST;
                         let messages = inside_messages.clone();
                         let ssl = ssl.clone();
                         let mut sock = Some(sock);
@@ -598,39 +608,59 @@ impl Server {
                                 messages.push(rq.with_notify_sender(sender.clone()).into());
                                 pending_responses += 1;
                                 if secure {
-                                    receiver.recv().unwrap();
+                                    // (Landscaper patch: `ok()`, not `unwrap()`: `sender` is held here, so this can't
+                                    // fail, and if it could, the connection would close rather than its thread panic.)
+                                    receiver.recv().ok();
                                     pending_responses -= 1;
                                 }
                             }
                             // Ensure every response, including the last one, has actually
                             // been written before forcing the connection closed below.
                             for _ in 0..pending_responses {
-                                receiver.recv().unwrap();
+                                receiver.recv().ok();
                             }
                             rx.force_close_read();
                             tx.force_close_write();
                         }));
 
-                        if !accepted {
-                            log::warn!("Task pool saturated, dropping connection");
+                        match accepted {
+                            Ok(()) => drops.taken(),
+                            Err(e) => drops.dropped(&e),
                         }
                     }
 
+                    // (Landscaper patch: no error ends the accept thread. It ended on any error but a connection
+                    // aborted before it was accepted, handing the error to one `recv` and taking no connection again,
+                    // the process left running: no file descriptor left for the next connection (EMFILE, ENFILE) or no
+                    // memory for it (ENOBUFS, ENOMEM) stopped the server for good. Those pass once connections close, so
+                    // the accept is tried again after a pause, doubled up to a second while it keeps failing: without it,
+                    // the connection waiting in the listener's queue would fail the accept again at once, on one core,
+                    // for as long as the shortage lasts.)
                     Err(e) => {
-                        if e.kind() == IoErrorKind::ConnectionAborted {
-                            // A non-fatal error.  Log it, and try to accept
-                            // a new connection.
-                            log::warn!("Error accepting new client: {}", e);
-                        } else {
-                            log::error!("Error accepting new client: {}", e);
-                            inside_messages.push(e.into());
+                        if inside_close_trigger.load(Relaxed) {
                             break;
                         }
+                        if matches!(
+                            e.kind(),
+                            IoErrorKind::ConnectionAborted
+                                | IoErrorKind::ConnectionReset
+                                | IoErrorKind::Interrupted
+                        ) {
+                            // A client that gave up before its connection was accepted, or a signal: at once.
+                            continue;
+                        }
+                        drops.dropped(&format_args!("accepting a connection: {e}"));
+                        thread::sleep(pause);
+                        pause = (pause * 2).min(ACCEPT_PAUSE_MOST);
                     }
                 }
             }
             log::debug!("Terminating accept thread");
-        });
+        };
+        // (Landscaper patch: a thread that can't start fails the server's start, as a port in use does, not with a panic.)
+        thread::Builder::new()
+            .name("tiny_http accept".into())
+            .spawn(accept_thread)?;
 
         // result
         Ok(Server {

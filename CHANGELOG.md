@@ -9,6 +9,18 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 - **The macOS build is signed and notarized.** The release's macOS program is signed with a Developer ID and notarized by Apple,
   so it starts without Privacy & Security's Open Anyway. The Windows build is not signed yet.
+- **Running out of open files no longer stops the server for good.** When `landscaper serve` had no file descriptor left for a
+  new connection (EMFILE: the Forge's team server under Docker's default limit of 1,024, as every open editor tab reconnected after
+  an update), its thread that accepts connections ended. The process ran on and answered no one, and the proxy in front answered
+  502, until a restart. Now the server drops the connections it can't take, tries again after a pause of 5 ms, doubled up to 1 s,
+  and answers again once connections close. The log says so once a burst ("dropping connections: ..."), at most every 10 s while
+  it lasts, and once when it ends ("taking connections again: ..."), where it printed a panic for every connection before.
+- **A connection is one open file, not four.** The vendored tiny_http copied each connection's socket three times, and a copy that
+  failed for want of a file descriptor panicked that connection's thread. Its halves now share the one socket.
+- **The server raises its own limit on open files** (`RLIMIT_NOFILE`) to the hard limit at its start, on Linux and macOS, as
+  servers commonly do: the soft limit is often 1,024 (Docker) or 256 (macOS). Under 2,048 it prints a warning that says how to
+  raise the hard limit (Docker: `--ulimit nofile=65536:65536`); the self-host `compose.example.yml` sets 65,536. Windows is
+  unchanged.
 
 ## 0.4.0
 

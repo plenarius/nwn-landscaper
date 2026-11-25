@@ -82,7 +82,8 @@ impl TaskPool {
         };
 
         for _ in 0..min_threads {
-            pool.add_thread(None)
+            // (Landscaper patch: one that can't start is started later, when a task needs it.)
+            let _ = pool.add_thread(None);
         }
 
         pool
@@ -94,7 +95,9 @@ impl TaskPool {
     /// Otherwise the task is queued and picked up by the next thread that frees up, unless
     /// the queue is already at `max_queue`, in which case the task is dropped and `false`
     /// is returned so the caller can react (e.g. by closing the connection it came from).
-    pub fn spawn(&self, code: Box<dyn FnOnce() + Send>) -> bool {
+    ///
+    /// (Landscaper patch: `Err` says why it was dropped, the queue full or a thread that couldn't start, in place of `false`.)
+    pub fn spawn(&self, code: Box<dyn FnOnce() + Send>) -> Result<(), Refused> {
         let mut queue = self.sharing.todo.lock().unwrap();
         self.dispatch(&mut queue, code)
     }
@@ -103,7 +106,7 @@ impl TaskPool {
         &self,
         queue: &mut VecDeque<Box<dyn FnOnce() + Send>>,
         code: Box<dyn FnOnce() + Send>,
-    ) -> bool {
+    ) -> Result<(), Refused> {
         // Jobs already sitting in the queue reserve an idle worker just as much as this
         // one would: a woken worker only decrements `waiting_tasks` once it actually runs,
         // so a burst of spawns can read the same stale idle count repeatedly and believe
@@ -114,23 +117,27 @@ impl TaskPool {
             self.sharing.active_tasks.load(Ordering::Acquire) < self.sharing.max_threads;
 
         if no_thread_idle && below_max {
-            self.add_thread(Some(code));
-            return true;
+            return self.add_thread(Some(code)).map_err(Refused::NoThread);
         }
 
         if queue.len() >= self.sharing.max_queue {
-            return false;
+            return Err(Refused::Full {
+                threads: self.sharing.max_threads,
+                queue: self.sharing.max_queue,
+            });
         }
 
         queue.push_back(code);
         self.sharing.condvar.notify_one();
-        true
+        Ok(())
     }
 
-    fn add_thread(&self, initial_fn: Option<Box<dyn FnOnce() + Send>>) {
+    // (Landscaper patch: a thread that can't start, for want of memory or of the processes the system allows (a container's
+    // `pids` limit), is an error, which drops that one task, not a panic in the accept thread, which stopped the server.)
+    fn add_thread(&self, initial_fn: Option<Box<dyn FnOnce() + Send>>) -> std::io::Result<()> {
         let sharing = self.sharing.clone();
 
-        thread::spawn(move || {
+        thread::Builder::new().spawn(move || {
             let sharing = sharing;
             let _active_guard = Registration::new(&sharing.active_tasks);
 
@@ -179,7 +186,29 @@ impl TaskPool {
 
                 task();
             }
-        });
+        })?;
+        Ok(())
+    }
+}
+
+/// Landscaper patch: why [`TaskPool::spawn`] dropped a task.
+#[derive(Debug)]
+pub enum Refused {
+    /// Every thread busy and the queue full.
+    Full { threads: usize, queue: usize },
+    /// A new thread couldn't start.
+    NoThread(std::io::Error),
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refused::Full { threads, queue } => write!(
+                f,
+                "every connection thread is busy ({threads}) and the queue is full ({queue})"
+            ),
+            Refused::NoThread(e) => write!(f, "starting a connection thread: {e}"),
+        }
     }
 }
 
@@ -229,7 +258,7 @@ mod tests {
         let pool = TaskPool::new(0, 4, 4);
         let (tx, rx) = channel();
 
-        assert!(pool.spawn(Box::new(move || tx.send(()).unwrap())));
+        assert!(pool.spawn(Box::new(move || tx.send(()).unwrap())).is_ok());
 
         rx.recv_timeout(Duration::from_secs(1))
             .expect("spawned task did not run");
@@ -242,10 +271,13 @@ mod tests {
         let (release_tx, release_rx) = channel::<()>();
 
         // occupies the pool's single worker thread until released
-        assert!(pool.spawn(Box::new(move || {
-            started_tx.send(()).unwrap();
-            release_rx.recv().unwrap();
-        })));
+        assert!(
+            pool.spawn(Box::new(move || {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            }))
+            .is_ok()
+        );
         started_rx
             .recv_timeout(Duration::from_secs(1))
             .expect("first task did not start");
@@ -253,7 +285,10 @@ mod tests {
         // the pool is saturated (1/1 threads busy, none idle): this must be
         // queued rather than spawning a second thread past max_threads
         let (second_tx, second_rx) = channel();
-        assert!(pool.spawn(Box::new(move || second_tx.send(()).unwrap())));
+        assert!(
+            pool.spawn(Box::new(move || second_tx.send(()).unwrap()))
+                .is_ok()
+        );
         assert!(
             second_rx.recv_timeout(Duration::from_millis(100)).is_err(),
             "queued task ran before the worker thread was freed"
@@ -273,19 +308,22 @@ mod tests {
         let (release_tx, release_rx) = channel::<()>();
 
         // occupies the pool's single worker thread until released
-        assert!(pool.spawn(Box::new(move || {
-            started_tx.send(()).unwrap();
-            release_rx.recv().unwrap();
-        })));
+        assert!(
+            pool.spawn(Box::new(move || {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            }))
+            .is_ok()
+        );
         started_rx
             .recv_timeout(Duration::from_secs(1))
             .expect("first task did not start");
 
         // fills the one available queue slot (max_queue = 1)
-        assert!(pool.spawn(Box::new(|| {})));
+        assert!(pool.spawn(Box::new(|| {})).is_ok());
 
         // the queue is now full: further tasks must be rejected, not queued
-        assert!(!pool.spawn(Box::new(|| {})));
+        assert!(pool.spawn(Box::new(|| {})).is_err());
 
         release_tx.send(()).unwrap();
     }
@@ -314,7 +352,7 @@ mod tests {
         for _ in 0..(min_threads + 2) {
             let started_tx = started_tx.clone();
             let release = release.clone();
-            pool.dispatch(
+            let _ = pool.dispatch(
                 &mut queue,
                 Box::new(move || {
                     started_tx.send(()).unwrap();

@@ -11,6 +11,10 @@ services:
       # args: { WEB_REF: main }   # the editor's tag or branch; default: the release of this engine's version
       #                           # (docs/SELF-HOSTING.md, "As a team server on your domain")
     restart: unless-stopped
+    # Each connection is one open file. The server raises its soft limit to the hard one at its start; this sets both, so the
+    # host's defaults (often 1,024) don't decide.
+    ulimits:
+      nofile: 65536
     environment:
       LANDSCAPER_AUTH: headers                 # X-Forwarded-User from the proxy
       LANDSCAPER_ALLOWED_GROUPS: "*"           # everyone who can sign in may build

@@ -1,6 +1,7 @@
 use std::io::Result as IoResult;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr};
+use std::sync::Arc;
 
 use crate::connection::Connection;
 #[cfg(any(
@@ -11,7 +12,9 @@ use crate::connection::Connection;
 use crate::ssl::SslStream;
 
 pub(crate) enum Stream {
-    Http(Connection),
+    // (Landscaper patch: shared, not copied with `try_clone`. Each copy took a file descriptor, four a connection, and a copy
+    // that failed for want of one (EMFILE) panicked the connection's thread.)
+    Http(Arc<Connection>),
     #[cfg(any(
         feature = "ssl-openssl",
         feature = "ssl-rustls",
@@ -23,7 +26,7 @@ pub(crate) enum Stream {
 impl Clone for Stream {
     fn clone(&self) -> Self {
         match self {
-            Stream::Http(tcp_stream) => Stream::Http(tcp_stream.try_clone().unwrap()),
+            Stream::Http(tcp_stream) => Stream::Http(Arc::clone(tcp_stream)),
             #[cfg(any(
                 feature = "ssl-openssl",
                 feature = "ssl-rustls",
@@ -36,7 +39,7 @@ impl Clone for Stream {
 
 impl From<Connection> for Stream {
     fn from(tcp_stream: Connection) -> Self {
-        Stream::Http(tcp_stream)
+        Stream::Http(Arc::new(tcp_stream))
     }
 }
 
@@ -95,7 +98,7 @@ impl Stream {
 impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.read(buf),
+            Stream::Http(tcp_stream) => (&**tcp_stream).read(buf),
             #[cfg(any(
                 feature = "ssl-openssl",
                 feature = "ssl-rustls",
@@ -109,7 +112,7 @@ impl Read for Stream {
 impl Write for Stream {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.write(buf),
+            Stream::Http(tcp_stream) => (&**tcp_stream).write(buf),
             #[cfg(any(
                 feature = "ssl-openssl",
                 feature = "ssl-rustls",
@@ -121,7 +124,7 @@ impl Write for Stream {
 
     fn flush(&mut self) -> IoResult<()> {
         match self {
-            Stream::Http(tcp_stream) => tcp_stream.flush(),
+            Stream::Http(tcp_stream) => (&**tcp_stream).flush(),
             #[cfg(any(
                 feature = "ssl-openssl",
                 feature = "ssl-rustls",
