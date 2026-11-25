@@ -84,7 +84,8 @@ fn module_index(game: &GameData, kind: ObjectKind) -> Index {
 
 /// The game's (base game and haks) blueprints of a kind (read once).
 fn game_index(game: &GameData, kind: ObjectKind) -> Index {
-    let key = ext(kind);
+    // (Per opened game: the stand-in without haks has other blueprints than the game with them.)
+    let key = format!("{}:{}", crate::models::game_key(game), ext(kind));
     if let Some(i) = GAME.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(|m| m.get(&key)) {
         return i.clone();
     }

@@ -96,6 +96,10 @@ sha2 = "0.10"
 [target.'cfg(unix)'.dependencies]
 rlimit = "0.11"
 
+# The tests' own small games (a placeables.2da in a hak over the game's) need an empty talk table.
+[dev-dependencies]
+mg-tlk = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+
 [lints]
 workspace = true
 

@@ -121,6 +121,18 @@ fn whole_of(minimaps: &[mg_image::Rgba]) -> mg_image::Rgba {
     whole
 }
 
+/// An exported module's haks, first highest: `ours` (the area's and the shared one), then `original`'s (an imported area's
+/// module's), then the editor's (`editor`), each once (the first place a name comes, whatever its case).
+pub(crate) fn module_haks(ours: &[String], original: impl IntoIterator<Item = String>, editor: Vec<String>) -> Vec<String> {
+    let mut list: Vec<String> = Vec::new();
+    for h in ours.iter().cloned().chain(original).chain(editor) {
+        if !list.iter().any(|l| l.eq_ignore_ascii_case(&h)) {
+            list.push(h);
+        }
+    }
+    list
+}
+
 /// Generates the loaded area's tileset, hak and module into `out_dir`, on the export's threads. `test` is the module's test
 /// script (`test_path`): None, the built-in walks; `Some("")`, none (an export to build on, not for `mg test`).
 pub(crate) fn generate(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
@@ -130,7 +142,9 @@ pub(crate) fn generate(out_dir: &std::path::Path, test: Option<&str>) -> Result<
 /// [`generate`]'s work, run as an export (on every core unless `--jobs` says otherwise).
 fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let gen_start = std::time::Instant::now();
-    let game = models::open_game(nwn_bake::game::Haks::None, nwn_bake::game::Tlk::None)?;
+    // The editor's game, with its haks: the object-mode placeables' blueprints and the things' come from them, as the editor
+    // showed them.
+    let game = models::game()?;
     let mut owned: Vec<(ResRef, ResType, Vec<u8>)> = Vec::new();
 
     let lap = |what: &str| {
@@ -330,7 +344,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
 
     // The module: one area on the generated tileset, each cell its own tile.
     let mut rng = fastrand::Rng::with_seed(1);
-    let mut m = new_module(&game, "Landscaper", &mut rng)?;
+    let mut m = new_module(game, "Landscaper", &mut rng)?;
     let tileset = Tileset::parse(set.as_bytes(), game.codepage())?;
     // Named after the area: several of them can share a module.
     let area_name = heightmap::current().map_or_else(|| "Landscape".to_string(), |h| h.name.clone());
@@ -339,7 +353,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         // Control: BioWare's rural tiles, water painted down the middle
         // (corners x=2, y=2..4), dry land to the south to walk around it.
         let spec = AreaSpec { name: "Landscape".into(), tileset: ResRef::from_str("ttr01")?, width: 4, height: 4 };
-        let area = mg_module::new::add_area(&mut m, &game, &spec, &mut rng)?;
+        let area = mg_module::new::add_area(&mut m, game, &spec, &mut rng)?;
         let key = ResKey { resref: area, restype: ResType::ARE };
         let mut are = m.gff(&key).context("no area")??;
         let set_data = game.resman.get(&ResKey { resref: ResRef::from_str("ttr01")?, restype: ResType::SET })?;
@@ -385,7 +399,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         println!("control module (ttr01 + water): {}", names.join(" "));
         return Ok(());
     }
-    let area = add_area_of(&mut m, &game, &spec, &tileset, &mut rng)?;
+    let area = add_area_of(&mut m, game, &spec, &tileset, &mut rng)?;
     let are_key = ResKey { resref: area, restype: ResType::ARE };
     let mut are = m.gff(&are_key).context("no area")??;
     let tiles = are.root.list_mut("Tile_List").context("no Tile_List")?;
@@ -440,7 +454,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     }
     m.set_gff(are_key, &are)?;
     // Object-mode placeables, to use and script.
-    let placeables = objects::instances(&game)?;
+    let placeables = objects::instances(game)?;
     if !placeables.is_empty() {
         let git_key = ResKey { resref: area, restype: ResType::GIT };
         let mut git = m.gff(&git_key).context("no GIT")??;
@@ -450,7 +464,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         m.set_gff(git_key, &git)?;
     }
     // The things the editor placed: creatures, doors, triggers, waypoints, sounds...
-    let things = things::instances(&game)?;
+    let things = things::instances(game)?;
     if !things.is_empty() {
         let git_key = ResKey { resref: area, restype: ResType::GIT };
         let mut git = m.gff(&git_key).context("no GIT")??;
@@ -462,7 +476,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         m.set_gff(git_key, &git)?;
     }
     // Entrances' doors, to link in the toolset.
-    let doors = entrance::doors(&game)?;
+    let doors = entrance::doors(game)?;
     if !doors.is_empty() {
         let git_key = ResKey { resref: area, restype: ResType::GIT };
         let mut git = m.gff(&git_key).context("no GIT")??;
@@ -472,14 +486,17 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         m.set_gff(git_key, &git)?;
     }
     let mut info = m.info()?;
-    // (An imported area's module haks after ours: its objects come from them.)
-    let mut list = vec![hak_name(), shared::HAK.to_string()];
-    list.extend(original.iter().flat_map(|o| o.haks.iter().cloned()));
+    // (An imported area's module haks after ours: its objects come from them. Then the editor's haks: the placeables placed
+    // and baked from them, their rows, models and textures, are there only with them.)
+    let list =
+        module_haks(&[hak_name(), shared::HAK.to_string()], original.iter().flat_map(|o| o.haks.iter().cloned()), models::game_haks());
     let haks = mg_module::attach::hak_list(&info.root, &list);
     info.root.set("Mod_HakList", haks);
     if let Some(t) = original.as_ref().and_then(|o| o.tlk.as_ref()) {
         info.root.set("Mod_CustomTlk", Value::String(t.as_bytes().to_vec()));
     }
+    // (Else the editor's, with its haks: their placeables' names are rows of it.)
+    models::give_tlk(&mut info.root);
     m.set_info(&info)?;
     m.set_start(area, start_point(), std::f32::consts::FRAC_PI_2)?;
     // The minimaps drawn from above by nwn-bake, buildings and all, once the hak and the area are there (LS_MINIMAP=terrain: the
@@ -533,4 +550,16 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     std::fs::write(&mod_path, m.to_archive_bytes()?)?;
     println!("module: {} (area {area})", mod_path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// Ours first, then the imported area's module's, then the editor's; each hak once, where it first comes.
+    #[test]
+    fn an_exported_module_lists_ours_then_the_originals_then_the_editors_haks() {
+        let s = |v: &[&str]| v.iter().map(|h| (*h).to_string()).collect::<Vec<_>>();
+        let list = super::module_haks(&s(&["lsa_x", "ls_textures"]), s(&["Orig_Tiles", "plc"]), s(&["PLC", "cacti", "lsa_x"]));
+        assert_eq!(list, s(&["lsa_x", "ls_textures", "Orig_Tiles", "plc", "cacti"]));
+        assert_eq!(super::module_haks(&s(&["lsa_x", "ls_textures"]), Vec::new(), Vec::new()), s(&["lsa_x", "ls_textures"]));
+    }
 }

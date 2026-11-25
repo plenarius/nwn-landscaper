@@ -68,7 +68,8 @@ pub fn add_area_of(installed: &Path, fresh: &Path, area: mg_core::ResRef, hak: &
         Some(list) => list.push(entry),
         None => info.root.set("Mod_Area_list", Value::List(vec![entry])),
     }
-    info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &haks(hak)));
+    info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &installed_haks(&info.root, hak)));
+    crate::models::give_tlk(&mut info.root);
     m.set_info(&info)?;
     crate::atomic::write(installed, &m.to_archive_bytes()?)?;
     Ok(name)
@@ -77,6 +78,13 @@ pub fn add_area_of(installed: &Path, fresh: &Path, area: mg_core::ResRef, hak: &
 /// An area's haks: its own, then the shared one.
 fn haks(hak: &str) -> [String; 2] {
     [hak.to_string(), crate::shared::HAK.to_string()]
+}
+
+/// The hak list of a module the area `hak` is installed in (its `module.ifo` root `info`): the area's and the shared hak first,
+/// the module's own after them in its order, then the editor's haks it lacks: the placeables placed and baked from them (their
+/// rows, models and textures) are there in the game only with them.
+fn installed_haks(info: &Struct, hak: &str) -> Vec<String> {
+    crate::generator::module_haks(&haks(hak), mg_module::haks_of(info), crate::models::game_haks())
 }
 
 /// The first export after an import: the installed area takes the fresh one's objects (the original's, and landscaper's), its identity
@@ -428,11 +436,18 @@ pub fn update_installed(
     }
     anyhow::ensure!(!out.areas.is_empty(), "{} has no area on the tileset {tileset}", installed.display());
 
-    // The haks, in front of any the builder added.
-    let listed = m.haks()?;
-    if !haks(hak).iter().all(|h| listed.iter().any(|l| l.eq_ignore_ascii_case(h))) {
-        let mut info = m.info()?;
-        info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &haks(hak)));
+    // The haks, in front of any the builder added; the editor's after the module's own.
+    let mut info = m.info()?;
+    let listed = mg_module::haks_of(&info.root);
+    let want = installed_haks(&info.root, hak);
+    let has = |h: &String| listed.iter().any(|l| l.eq_ignore_ascii_case(h));
+    let tlk_before = info.root.get("Mod_CustomTlk").cloned();
+    crate::models::give_tlk(&mut info.root);
+    let tlk_given = info.root.get("Mod_CustomTlk") != tlk_before.as_ref();
+    if !want.iter().all(has) {
+        info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &want));
+    }
+    if !want.iter().all(has) || tlk_given {
         m.set_info(&info)?;
     }
     let bytes = m.to_archive_bytes()?;

@@ -24,8 +24,11 @@
 //!   core for an export, half the machine's cores (at least 1) for an import or a check; see [`threads`], [`export_threads`].
 //! - `LANDSCAPER_REVIEW_URL`, `LANDSCAPER_REVIEW_KEY`: the review service a team server gets the module from and publishes
 //!   through (docs/REVIEW-SERVICE.md); see [`review_service`].
+//! - `LANDSCAPER_HAKS` (or `--haks`): the haks the editor's placeables, models, blueprints and textures come from, in the
+//!   module's order, or `module` for the module checkout's own list; see [`haks`]. Default: on a team server the module's hak
+//!   list from the review service, else none (the game's own).
 //!
-//! The command line's `--root`, `--user`, `--tlk` and `--jobs` win over their variables: [`set_given`].
+//! The command line's `--root`, `--user`, `--tlk`, `--haks` and `--jobs` win over their variables: [`set_given`].
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -39,6 +42,8 @@ pub struct Given {
     pub user: Option<PathBuf>,
     /// `--tlk`: the module's talk table.
     pub tlk: Option<String>,
+    /// `--haks`: the haks the editor reads the game with.
+    pub haks: Option<String>,
     /// `--jobs`: how many threads the heavy jobs work on.
     pub jobs: Option<usize>,
 }
@@ -67,6 +72,42 @@ pub fn game_user() -> Option<PathBuf> {
 /// The custom talk table: `--tlk`, else `LANDSCAPER_TLK`; None finds the only one in the user folder.
 pub fn tlk() -> Option<String> {
     given().tlk.clone().or_else(|| var("LANDSCAPER_TLK"))
+}
+
+/// Which haks the editor reads the game with (its placeables, models, blueprints and textures), as `--haks` or
+/// `LANDSCAPER_HAKS` give it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Haks {
+    /// Not given: the review service's module haks on a team server, else none.
+    Unset,
+    /// These, first highest (as a module lists them).
+    List(Vec<String>),
+    /// The module checkout's own list (`Mod_HakList` of its `module.ifo.json`).
+    Module,
+}
+
+/// The setting that names the editor's haks.
+pub const HAKS: &str = "LANDSCAPER_HAKS";
+
+/// `--haks`, else `LANDSCAPER_HAKS` ([`haks_from`]).
+pub fn haks() -> Haks {
+    haks_from(given().haks.clone().or_else(|| var(HAKS)).as_deref())
+}
+
+/// A hak setting's value: hak names separated by commas or spaces (`.hak` may be added), or `module`. Blank is unset.
+pub fn haks_from(v: Option<&str>) -> Haks {
+    let Some(v) = v.map(str::trim).filter(|v| !v.is_empty()) else { return Haks::Unset };
+    if v.eq_ignore_ascii_case("module") {
+        return Haks::Module;
+    }
+    let mut out: Vec<String> = Vec::new();
+    for name in v.split([',', ' ', '\t', '\n']).map(str::trim).filter(|n| !n.is_empty()) {
+        let name = if name.to_ascii_lowercase().ends_with(".hak") { &name[..name.len() - 4] } else { name };
+        if !out.iter().any(|h| h.eq_ignore_ascii_case(name)) {
+            out.push(name.to_string());
+        }
+    }
+    Haks::List(out)
 }
 
 /// The review service's address and key: `LANDSCAPER_REVIEW_URL` and `LANDSCAPER_REVIEW_KEY`. None unless both are set.
@@ -435,6 +476,21 @@ pub fn team_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::{Haks, haks_from};
+
+    #[test]
+    fn the_hak_setting_is_names_in_order_or_module() {
+        let list = |v: &[&str]| Haks::List(v.iter().map(|s| (*s).to_string()).collect());
+        assert_eq!(haks_from(None), Haks::Unset);
+        assert_eq!(haks_from(Some("  ")), Haks::Unset);
+        assert_eq!(haks_from(Some("module")), Haks::Module);
+        assert_eq!(haks_from(Some(" Module ")), Haks::Module);
+        // The module's order, first highest; `.hak` dropped, a name given twice kept once (the first), commas or spaces between.
+        assert_eq!(haks_from(Some("my_plc, my_tex.hak,my_plc  extra.HAK")), list(&["my_plc", "my_tex", "extra"]));
+        assert_eq!(haks_from(Some("a\nb\tc")), list(&["a", "b", "c"]));
+        assert_eq!(haks_from(Some(",, ,")), list(&[]));
+    }
+
     #[test]
     fn the_jobs_limit_is_a_whole_number_of_one_or_more() {
         assert_eq!(jobs_from(None), Ok(None));

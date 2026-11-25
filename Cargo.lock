@@ -882,6 +882,7 @@ dependencies = [
  "mg-script",
  "mg-set",
  "mg-tiles",
+ "mg-tlk",
  "nwn-bake",
  "png 0.17.16",
  "rlimit",
