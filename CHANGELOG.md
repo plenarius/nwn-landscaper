@@ -5,6 +5,12 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **The editor shows which version is running.** `/api/me` gives the engine's version as `version`, and `landscaper
+  --version` and the start line say the same: Cargo.toml's, with `+dev` after it in a build from master after that release
+  (when CHANGELOG.md starts with `## Unreleased`).
+
 ## 0.6.1
 
 - **Released with the editor's 0.6.1**, which is unchanged. The self-host image builds it (`WEB_REF`).

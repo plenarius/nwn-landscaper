@@ -33,7 +33,7 @@ Debugging switches (LS_*) are listed in docs/DEBUGGING.md; the ones that are set
 
 /// Paint terrain, get a Neverwinter Nights area with its own generated tileset.
 #[derive(Parser, Debug)]
-#[command(name = "landscaper", version, about, after_help = RESEARCH, subcommand_required = true, arg_required_else_help = true)]
+#[command(name = "landscaper", version = crate::version::text(), about, after_help = RESEARCH, subcommand_required = true, arg_required_else_help = true)]
 pub struct Cli {
     /// Where the game is and how many threads to use, before or after any command.
     #[command(flatten)]
