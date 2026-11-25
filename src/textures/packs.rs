@@ -694,17 +694,28 @@ fn areas_using_in(roots: &[(String, PathBuf)], ids: &[String]) -> Vec<String> {
 /// Reads an index: `{ "format": 1, "packs": [...] }` at a URL or in a file. Each pack's `url` comes back absolute (a relative
 /// one is beside the index).
 pub fn fetch_index(url: &str) -> Result<Vec<Value>> {
-    let text = match Source::parse(url) {
+    let (text, beside) = match Source::parse(url) {
         Source::Url(u) => {
             let resp = agent().get(&u).call().map_err(|e| http_error(&u, &e))?;
             let mut b = Vec::new();
             resp.into_reader().take(MAX_MANIFEST + 1).read_to_end(&mut b)?;
-            b
+            (b, None)
         }
-        Source::File(p) => std::fs::read(&p).with_context(|| format!("reading {}", p.display()))?,
+        Source::File(p) => (std::fs::read(&p).with_context(|| format!("reading {}", p.display()))?, p.parent().map(Path::to_path_buf)),
     };
     ensure!(text.len() as u64 <= MAX_MANIFEST, "the index is over {} MB", MAX_MANIFEST >> 20);
-    parse_index(&text, url)
+    let mut packs = parse_index(&text, url)?;
+    // A file's packs are files beside it (the folder as the system writes it: a Windows path has no `/` to cut at).
+    if let Some(dir) = beside {
+        let raw: Value = serde_json::from_slice(&text)?;
+        for p in &mut packs {
+            let given = raw["packs"].as_array().into_iter().flatten().find(|r| r["id"] == p["id"]).and_then(|r| r["url"].as_str());
+            if let Some(at) = given.map(str::trim).filter(|a| !a.contains("://") && !Path::new(a).is_absolute()) {
+                p["url"] = dir.join(at).to_string_lossy().into_owned().into();
+            }
+        }
+    }
+    Ok(packs)
 }
 
 fn parse_index(text: &[u8], url: &str) -> Result<Vec<Value>> {
@@ -1025,7 +1036,7 @@ mod tests {
         // One category of two textures: both shown.
         assert_eq!(entries[0]["swatches"].as_array().unwrap().len(), 2);
         assert!(entries[0]["swatches"][0].as_str().unwrap().starts_with("data:image/png;base64,"));
-        assert!(entries[0]["url"].as_str().unwrap().ends_with("out/demo-1.0.zip"));
+        assert_eq!(Path::new(entries[0]["url"].as_str().unwrap()), src.join("out").join("demo-1.0.zip"));
 
         let (source, expect) = find_in_index(&entries, "demo").unwrap();
         let steps = std::cell::RefCell::new(Vec::new());
