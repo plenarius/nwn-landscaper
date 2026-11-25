@@ -114,9 +114,26 @@ pub(super) fn short_name_ok(name: &str) -> bool {
     !name.is_empty() && name.len() <= 16 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// A model's or texture's name as the game's files have them: 1-16 ASCII letters, digits, `_` or `-` (haks have textures such as
+/// `des_cactus-01`, which the game loads). Names the Landscaper makes keep to [`short_name_ok`].
+pub(super) fn resource_name_ok(name: &str) -> bool {
+    !name.is_empty() && name.len() <= 16 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_resource_name_may_have_a_hyphen_a_short_name_may_not() {
+        for ok in ["des_cactus-01", "grs_bush-03", "plc_rock", "a"] {
+            assert!(resource_name_ok(ok), "{ok}");
+        }
+        for bad in ["", "../x", "a.b", "a b", "seventeen_chars_x", "x%2f"] {
+            assert!(!resource_name_ok(bad), "{bad}");
+        }
+        assert!(!short_name_ok("des_cactus-01"));
+    }
 
     #[test]
     fn an_escape_is_two_hex_digits_and_nothing_else() {

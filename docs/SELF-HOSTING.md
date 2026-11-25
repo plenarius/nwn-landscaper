@@ -15,7 +15,9 @@ workspace. Both need the same ingredients.
   that runs it. (A team server writes into each person's workspace instead, and can mount the user folder read-only.)
 - **Rust 1.98 or newer** (`rustup update`), a C++ compiler and cmake, to build it from source.
 - **Your haks and talk table**, if your module uses custom content: put the `.hak` files in `NWN_HOME/hak/` and the custom
-  `.tlk` in `NWN_HOME/tlk/` (or name it with `LANDSCAPER_TLK`).
+  `.tlk` in `NWN_HOME/tlk/` (or name it with `LANDSCAPER_TLK`). To place your haks' placeables, name the haks with
+  `LANDSCAPER_HAKS` in your module's order (`my_plc,my_tex`), or set it to `module` to read the list from your module checkout's
+  `module.ifo.json`. Without it the Place and Scatter panels offer the game's own placeables.
 - **`nwn_gff`** from [neverwinter.nim](https://github.com/niv/neverwinter.nim) on your `PATH` (it converts game files to and
   from JSON).
 - **The editor's files**: the `nwn-landscaper-web` repository, next to the program (see `LANDSCAPER_WEB`).

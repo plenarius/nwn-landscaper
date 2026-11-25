@@ -6,7 +6,7 @@
 //! (an unknown command, a missing argument, `--port abc`) is reported with the usage and exit status 2; a command that fails
 //! exits with 1.
 //!
-//! The game options are `--root`, `--user`, `--tlk` and `--jobs` (the same names as nwn-bake's options). Each goes before or
+//! The game options are `--root`, `--user`, `--tlk`, `--haks` and `--jobs` (nwn-bake's names, `--haks` aside). Each goes before or
 //! after the command, and wins over its environment variable (docs/CONFIGURATION.md).
 
 use std::path::PathBuf;
@@ -56,6 +56,10 @@ pub struct GameArgs {
     /// one .tlk in the user folder]
     #[arg(long, global = true, value_name = "TLK")]
     pub tlk: Option<String>,
+    /// The haks the editor's placeables, models, blueprints and textures come from, in the module's order (comma separated), or
+    /// `module` for the module checkout's list [default: LANDSCAPER_HAKS, then the review service's module haks on a team server]
+    #[arg(long, global = true, value_name = "HAKS")]
+    pub haks: Option<String>,
     /// Threads an import, an export or a check works on [default: LANDSCAPER_JOBS, then every core for an export and half the
     /// cores for the others]
     #[arg(long, global = true, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
@@ -281,7 +285,7 @@ mod tests {
         assert!(at("serve") < at("Research commands"));
         assert!(at("import") < at("Research commands") && at("export") < at("Research commands") && at("check ") < at("Research"));
         assert!(at("Research commands") < at("sim-line"));
-        for flag in ["--root", "--user", "--tlk", "--jobs"] {
+        for flag in ["--root", "--user", "--tlk", "--haks", "--jobs"] {
             at(flag);
         }
     }

@@ -7,6 +7,18 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **The module's haks' placeables in the editor.** The editor reads the game with the module's haks: on a team server the hak list the
+  review service gives (`GET /api/v1/areas/module`), elsewhere `LANDSCAPER_HAKS` (or `--haks`): hak names in the module's order, or
+  `module` for the checkout's `module.ifo.json`. Unset, it reads the game alone, as before. Placeables come from the haks' placeables.2da,
+  and their models, textures and blueprints from the haks: a module of 57 haks gives 6,259 models where the game alone gives 1,304.
+  `/api/placeables` gives each row's `source` (the hak its model is in, `game`, or null for a model that is nowhere). An export lists
+  those haks in the module it builds, and adds the ones a module lacks when it installs an area in it: a placed or baked object from a
+  hak, its row, model and textures, is there in the game only with them. With that module's haks the first `/api/placeables` takes 0.16 s
+  against 0.10 s (the game opened and the table read) and the server holds 108 MB against 76 MB; the haks are mapped, not read.
+- **Plant groups.** `/api/placeable-groups`: the plants among the placeables (by the words of their names), each with its model's height
+  and width, and whether it is large (1.5 m tall or more), measured once on first request (0.17 s for that module's 367: 274 small, 93
+  large).
+- **Textures with a hyphen.** `/api/texture/` and `/api/model/` take a hyphen in a name (`des_cactus-01`), as the game does.
 - **Texture packs.** Optional sets of textures a user downloads into the library: `landscaper textures get <id | URL | zip>`,
   `list-packs` and `remove-pack`, and `/api/textures/packs` for the editor's Get more textures dialog (install in the background
   with its progress, remove). A pack is one zip of `pack.json` and the library's own pictures; an install checks its size, the

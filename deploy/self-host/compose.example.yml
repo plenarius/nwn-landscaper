@@ -24,6 +24,7 @@ services:
       LANDSCAPER_PROXY_SECRET: ${LANDSCAPER_PROXY_SECRET}
       LANDSCAPER_PROJECT: ${LANDSCAPER_PROJECT:-the module}
       # LANDSCAPER_MODULE_REPO: /module          # a checkout of your module (see SELF-HOSTING.md), mounted below
+      # LANDSCAPER_HAKS: my_plc,my_tex           # your haks' placeables in the editor, in your module's order (or `module`)
     volumes:
       - landscaper-data:/data
       - ${NWN_GAME_DIR}:/nwn/game:ro            # your NWN:EE install (the files in it, not the game running)

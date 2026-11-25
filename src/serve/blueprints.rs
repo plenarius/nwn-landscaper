@@ -155,7 +155,15 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             }
         },
         (Method::Get, "/api/placeables") => match crate::models::game().and_then(crate::models::placeables) {
-            Ok(list) => json_response(200, &serde_json::json!({ "placeables": list })),
+            Ok(list) => json_response(200, &serde_json::json!({ "placeables": &*list })),
+            Err(e) => fail(500, &e),
+        },
+        // The plants among them, measured once: the Place and Scatter panels' Small plants and Large plants (plants.rs).
+        (Method::Get, "/api/placeable-groups") => match crate::models::game().and_then(crate::plants::plants) {
+            Ok(list) => json_response(
+                200,
+                &serde_json::json!({ "large_from": crate::plants::LARGE_FROM, "max_width": crate::plants::MAX_WIDTH, "plants": &*list }),
+            ),
             Err(e) => fail(500, &e),
         },
         // Every door look there is: the generic doors (genericdoors.2da) and the tile doors (doortypes.2da).
@@ -169,7 +177,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             let imported = name
                 .strip_prefix(crate::paint::IMPORT)
                 .is_some_and(|r| r.len() <= 24 && r.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':'));
-            if !imported && !super::query::short_name_ok(&name) {
+            if !imported && !super::query::resource_name_ok(&name) {
                 refuse(400, "bad resref")
             } else if p.starts_with("/api/model/") {
                 match crate::models::game().and_then(|g| crate::models::flat(g, &name)) {

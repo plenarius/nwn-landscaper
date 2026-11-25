@@ -35,6 +35,7 @@ mod occluders;
 mod oracle;
 mod paint;
 mod pathnode;
+mod plants;
 mod publish;
 mod quota;
 mod records;
@@ -86,7 +87,7 @@ fn quick_start() -> std::process::ExitCode {
         args.extend(["--user".into(), user.into_os_string()]);
     }
     let given = <cli::Cli as clap::Parser>::parse_from(&args);
-    config::set_given(config::Given { root: None, user: given.game.user.clone(), tlk: None, jobs: None });
+    config::set_given(config::Given { root: None, user: given.game.user.clone(), tlk: None, haks: None, jobs: None });
     let outcome = if models::game_folders().0.is_none() {
         say_folders();
         Err(anyhow::anyhow!("the Landscaper needs the game's files: set NWN_ROOT as above, then start it again"))
@@ -199,7 +200,7 @@ fn say_switches() {
 fn run(cli: cli::Cli) -> Result<()> {
     use cli::Command as C;
     let g = cli.game;
-    config::set_given(config::Given { root: g.root, user: g.user, tlk: g.tlk, jobs: g.jobs.map(|n| n as usize) });
+    config::set_given(config::Given { root: g.root, user: g.user, tlk: g.tlk, haks: g.haks, jobs: g.jobs.map(|n| n as usize) });
     say_switches();
     if let Some(p) = std::env::var_os("LS_HEIGHTMAP") {
         heightmap::load(std::path::Path::new(&p))?;

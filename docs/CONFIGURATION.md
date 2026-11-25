@@ -11,6 +11,7 @@ after any command (the same names as nwn-bake's options):
 | `--root DIR` | The game install | `NWN_ROOT`, then where the game is usually installed |
 | `--user DIR` | The game's user folder (`hak/`, `tlk/`, `modules/`) | `NWN_HOME`, then the game's own rule |
 | `--tlk TLK` | Your module's custom talk table: a file name in the user folder's `tlk/` or `hak/`, or a path | `LANDSCAPER_TLK` |
+| `--haks HAKS` | The haks the editor's placeables come from: hak names in your module's order, comma separated, or `module` | `LANDSCAPER_HAKS` |
 | `--jobs N` | How many threads an import, an export or a check works on | `LANDSCAPER_JOBS` |
 
 | Variable | What | Default |
@@ -23,6 +24,7 @@ after any command (the same names as nwn-bake's options):
 | `LANDSCAPER_AREAS_DIR`, `LANDSCAPER_BLUEPRINTS_DIR` (with `{ext}`: `utc`, `uti`, `dlg`, ...), `LANDSCAPER_SCRIPTS_DIR`, `LANDSCAPER_IFO`, `LANDSCAPER_AREA_FOLDER` | Override one place of the layout; `LANDSCAPER_AREA_FOLDER` is the group a new area's file goes in (inside the areas folder; empty for none) | from the layout |
 | `LANDSCAPER_AREA_TEMPLATE` | A JSON file of what a new area starts with (scripts, PvP, weather, music, ...); see `src/area_template.json` | a plain template |
 | `LANDSCAPER_TLK` (or `--tlk`) | Your module's custom talk table: a file name in the user folder's `tlk/` or `hak/`, or a path | the only `.tlk` there, when there is exactly one |
+| `LANDSCAPER_HAKS` (or `--haks`) | The haks the editor reads the game with: the Place and Scatter panels offer their placeables (placeables.2da's rows, from the haks' table when one has it), and their models, textures and blueprints are drawn, baked and placed from them. Hak names in your module's order, first highest, comma separated (`my_plc,my_tex`; `.hak` may be added), found in the user folder's `hak/`; or `module` for the `Mod_HakList` of the checkout's `module.ifo.json` (`LANDSCAPER_MODULE_REPO`). An export lists these haks in the module it builds, and adds the ones a module lacks when it installs an area in it, after the module's own: what was placed from them is there in the game only with them. The game with a module's haks opens once, when the editor first needs it (see "The editor's haks" below) | on a team server with a review service, the module's hak list from it (`GET /api/v1/areas/module`); otherwise none: the game's own placeables |
 | `LANDSCAPER_PROJECT` | What your module is called in messages | "the module" |
 | `LANDSCAPER_JOBS` (or `--jobs N`) | How many threads an import, an export or a check works on. What they make is the same whatever it is; fewer threads leave more of a shared server to everything else, more make them quicker. A team server started with it keeps that limit for every job | every core for an export; half the machine's cores (at least 1) for an import or a check |
 | `LANDSCAPER_LOG` | Set to anything: print every request (address, method, path, browser) to stderr | off |
@@ -30,6 +32,16 @@ after any command (the same names as nwn-bake's options):
 
 At start `landscaper serve` prints the game install, the user folder and the module it found, and where each came from, so a wrong
 guess shows at once.
+
+## The editor's haks
+
+The Landscaper opens the game once, when the editor first asks for a placeable, a model or a blueprint, and prints the haks it
+opened it with and any it couldn't find in the user folder's `hak/` or the game's `data/hk/`. A team server with a review service
+asks the service for the module's hak list; when the service doesn't answer then, the editor offers the game's own placeables
+and asks again on later requests until it does. A module that adds a hak later is read with it after the Landscaper restarts.
+
+The haks are mapped, not read whole, so their size costs little: with a module's 57 haks (16 GB, placeables.2da of 21,201 rows)
+the first list of placeables took 0.16 s against 0.10 s for the game alone, and the server held 108 MB against 76 MB.
 
 ## Textures
 

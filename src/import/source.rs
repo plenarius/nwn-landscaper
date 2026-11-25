@@ -105,12 +105,7 @@ fn default_haks() -> Vec<String> {
     if !from_api.is_empty() {
         return from_api;
     }
-    let ifo =
-        std::fs::read(crate::config::Layout::from_env().ifo_path()).ok().and_then(|d| serde_json::from_slice::<serde_json::Value>(&d).ok());
-    ifo.and_then(|v| {
-        v["Mod_HakList"]["value"].as_array().map(|a| a.iter().filter_map(|h| h["Mod_Hak"]["value"].as_str().map(str::to_string)).collect())
-    })
-    .unwrap_or_default()
+    models::checkout_haks()
 }
 
 /// The most tiles an area may have a side: the game's own limit, and what the editor and an export take (`heightmap::load`).
