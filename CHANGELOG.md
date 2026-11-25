@@ -9,6 +9,11 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 - **The Windows build is signed.** The release's Windows program has an Authenticode signature from Azure Artifact Signing, so
   SmartScreen and antivirus see a verified publisher.
+- **No dark teeth along river banks.** Steep ground took one texture a face, the paint nearest the face's middle, so where the
+  paint changed on a slope whole faces of one paint stood in the other: along a river, faces of the bed's mud rose above the
+  water out of the bank's sand. Steep faces are now cut where the paint changes, halfway between two samples, so each piece
+  takes the nearest sample's texture as the editor draws it. In a 20 by 20 test area with a river, the mud's vertices above the
+  water went from 291 (up to 0.47 m) to 130 (up to 0.24 m), for 3.5% more triangles.
 
 ## 0.6.0
 
