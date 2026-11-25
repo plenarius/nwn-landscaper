@@ -51,6 +51,7 @@ mod sim;
 mod switches;
 mod textures;
 mod things;
+mod triplanar;
 mod update;
 mod upload;
 mod validate;

@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use mg_image::Rgba;
 
+use crate::triplanar;
+
 /// Metres one texture repeat covers on the ground (the editor's too).
 pub const TEXTURE_METRES: f32 = 4.0;
 
@@ -125,6 +127,24 @@ impl Texture {
         let rows = t.pictures.len() / t.width.max(1);
         let (tx, ty) = (((x / 10.0) as usize).min(t.width - 1), ((y / 10.0) as usize).min(rows.max(1) - 1));
         Some((&t.pictures[ty * t.width + tx], tx, ty))
+    }
+
+    /// Colour at area point `p` (x, y and height) of ground facing `n`: a library texture drawn from three sides ([`triplanar`]), as
+    /// the game's shader and the editor draw it; an import's picture lies over its tile as [`Texture::ground`] has it.
+    pub fn at(&self, p: [f32; 3], n: [f32; 3]) -> [f32; 3] {
+        if self.tiles.is_some() {
+            return self.ground(p[0], p[1]);
+        }
+        let w = triplanar::weights(n);
+        let mut c = [0.0; 3];
+        for (axis, w) in w.into_iter().enumerate().filter(|(_, w)| *w > 0.0) {
+            let [u, v] = triplanar::uv(axis, p);
+            let s = self.sample(u, v);
+            for k in 0..3 {
+                c[k] += s[k] * w;
+            }
+        }
+        c
     }
 
     /// Colour at area point (x, y) on level ground.

@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use super::{TILE, TRANSITION, Walk, height, tile_level};
+use super::{TILE, TRANSITION, Walk, ground_normal, height, tile_level};
+use crate::triplanar;
 
 /// A grid of vertices over one tile, in the tile's own coordinates (centred: -5..5), and its triangles.
 pub(super) struct Grid {
@@ -119,41 +120,141 @@ pub(super) fn trimesh_full(
     if faces.is_empty() {
         return;
     }
+    let (verts, local) = used(g, faces);
+    let tverts: Vec<[f32; 2]> = verts.iter().map(|v| uv(*v)).collect();
+    let tverts1 = uv1.map(|f| verts.iter().map(|v| f(*v)).collect::<Vec<_>>());
+    write_node(out, name, root, bitmap, props, &verts, None, &tverts, tverts1.as_deref(), &local, &local);
+}
+
+/// How a tile's ground mesh takes its texture coordinates ([`terrain_mesh`]).
+pub(super) enum Mapping<'a> {
+    /// From each vertex (tile-centred, as [`Grid`] has it): a picture over the tile's square.
+    Vertex(&'a dyn Fn([f32; 3]) -> [f32; 2]),
+    /// A repeating library texture, box mapped: each face from the side it faces most ([`triplanar::box_projection`]), so no
+    /// face is stretched more than 1.6 times whichever way it faces. The game's shader blends the three sides over this (`ls_tp_fs`,
+    /// through the mesh's material); these coordinates are what a viewer without it draws (Moonglow, nwn-bake).
+    Boxed,
+}
+
+/// A trimesh of the ground faces `faces` of `g`, a tile's grid whose (0, 0, 0) is area point `origin`: the ground's own normals
+/// ([`ground_normal`]), so light and the triplanar blend run on smoothly across meshes and tiles where the game's smoothing stops
+/// at each mesh's edge; texture coordinates by `mapping`; second ones (`tverts1`) from each vertex by `uv1`, if given.
+pub(super) fn terrain_mesh(
+    out: &mut String,
+    name: &str,
+    root: &str,
+    bitmap: &str,
+    props: &str,
+    g: &Grid,
+    faces: &[[u32; 3]],
+    origin: [f32; 3],
+    mapping: Mapping<'_>,
+    uv1: Option<&dyn Fn([f32; 3]) -> [f32; 2]>,
+) {
+    if faces.is_empty() {
+        return;
+    }
+    let (verts, local) = used(g, faces);
+    let area = |v: [f32; 3]| [v[0] + origin[0], v[1] + origin[1], v[2] + origin[2]];
+    let normals: Vec<[f32; 3]> = verts.iter().map(|v| ground_normal(v[0] + origin[0], v[1] + origin[1])).collect();
+    // Texture vertices: one a vertex, or (box mapped) one a vertex and side, each face's corners on its own side's.
+    let mut tvert_of: Vec<u32> = Vec::new();
+    let (tverts, tfaces) = match mapping {
+        Mapping::Vertex(uv) => {
+            tvert_of = (0..verts.len() as u32).collect();
+            (verts.iter().map(|v| uv(*v)).collect(), local.clone())
+        }
+        Mapping::Boxed => {
+            let mut index: HashMap<(u32, usize), u32> = HashMap::new();
+            let mut tverts = Vec::new();
+            let tfaces = local
+                .iter()
+                .map(|f| {
+                    let axis = triplanar::box_projection(face_normal(f.map(|v| verts[v as usize])));
+                    f.map(|v| {
+                        *index.entry((v, axis)).or_insert_with(|| {
+                            tverts.push(triplanar::uv(axis, area(verts[v as usize])));
+                            tvert_of.push(v);
+                            (tverts.len() - 1) as u32
+                        })
+                    })
+                })
+                .collect();
+            (tverts, tfaces)
+        }
+    };
+    let tverts1 = uv1.map(|f| tvert_of.iter().map(|&v| f(verts[v as usize])).collect::<Vec<_>>());
+    write_node(out, name, root, bitmap, props, &verts, Some(&normals), &tverts, tverts1.as_deref(), &local, &tfaces);
+}
+
+/// The vertices of `g` that `faces` use, and the faces renumbered to them.
+fn used(g: &Grid, faces: &[[u32; 3]]) -> (Vec<[f32; 3]>, Vec<[u32; 3]>) {
     let mut remap = HashMap::new();
     let mut verts = Vec::new();
-    let mut local = Vec::with_capacity(faces.len());
-    for f in faces {
-        local.push(f.map(|v| {
-            *remap.entry(v).or_insert_with(|| {
-                verts.push(g.verts[v as usize]);
-                (verts.len() - 1) as u32
+    let local = faces
+        .iter()
+        .map(|f| {
+            f.map(|v| {
+                *remap.entry(v).or_insert_with(|| {
+                    verts.push(g.verts[v as usize]);
+                    (verts.len() - 1) as u32
+                })
             })
-        }));
-    }
+        })
+        .collect();
+    (verts, local)
+}
+
+/// A triangle's normal (not unit), counter-clockwise.
+fn face_normal([a, b, c]: [[f32; 3]; 3]) -> [f32; 3] {
+    let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]
+}
+
+/// Writes a trimesh node: `faces` index `verts` (and `normals`, if given), `tfaces` the texture vertices (`tverts`, and `tverts1`
+/// alike, if given).
+fn write_node(
+    out: &mut String,
+    name: &str,
+    root: &str,
+    bitmap: &str,
+    props: &str,
+    verts: &[[f32; 3]],
+    normals: Option<&[[f32; 3]]>,
+    tverts: &[[f32; 2]],
+    tverts1: Option<&[[f32; 2]]>,
+    faces: &[[u32; 3]],
+    tfaces: &[[u32; 3]],
+) {
     let _ = writeln!(
         out,
         "node trimesh {name}\n  parent {root}\n  ambient 1 1 1\n  diffuse 1 1 1\n  specular 0 0 0\n  shininess 1\n  \
          shadow 0\n{props}  bitmap {bitmap}"
     );
     let _ = writeln!(out, "  verts {}", verts.len());
-    for v in &verts {
+    for v in verts {
         let _ = writeln!(out, "    {} {} {}", num(v[0]), num(v[1]), num(v[2]));
     }
-    let _ = writeln!(out, "  tverts {}", verts.len());
-    for v in &verts {
-        let t = uv(*v);
+    if let Some(normals) = normals {
+        let _ = writeln!(out, "  normals {}", normals.len());
+        for n in normals {
+            let _ = writeln!(out, "    {} {} {}", num(n[0]), num(n[1]), num(n[2]));
+        }
+    }
+    let _ = writeln!(out, "  tverts {}", tverts.len());
+    for t in tverts {
         let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
     }
-    if let Some(uv1) = uv1 {
-        let _ = writeln!(out, "  tverts1 {}", verts.len());
-        for v in &verts {
-            let t = uv1(*v);
+    if let Some(tverts1) = tverts1 {
+        let _ = writeln!(out, "  tverts1 {}", tverts1.len());
+        for t in tverts1 {
             let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
         }
     }
-    let _ = writeln!(out, "  faces {}", local.len());
-    for f in &local {
-        let _ = writeln!(out, "    {} {} {} 1 {} {} {} 0", f[0], f[1], f[2], f[0], f[1], f[2]);
+    let _ = writeln!(out, "  faces {}", faces.len());
+    for (f, t) in faces.iter().zip(tfaces) {
+        let _ = writeln!(out, "    {} {} {} 1 {} {} {} 0", f[0], f[1], f[2], t[0], t[1], t[2]);
     }
     let _ = writeln!(out, "endnode");
 }
@@ -167,5 +268,50 @@ pub(super) fn aabb_body(out: &mut String, w: &Walk) {
     let _ = writeln!(out, "  faces {}", w.faces.len());
     for (f, m) in &w.faces {
         let _ = writeln!(out, "    {} {} {} 1 0 0 0 {m}", f[0], f[1], f[2]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The lines of `node`'s list `key` (`tverts`, `faces`...), split into words.
+    fn list(node: &str, key: &str) -> Vec<Vec<String>> {
+        let mut lines = node.lines().skip_while(|l| l.split_whitespace().next() != Some(key));
+        let n: usize = lines.next().and_then(|l| l.split_whitespace().nth(1)).and_then(|n| n.parse().ok()).unwrap_or(0);
+        lines.take(n).map(|l| l.split_whitespace().map(str::to_string).collect()).collect()
+    }
+
+    #[test]
+    fn box_mapping_gives_each_face_its_own_side_and_splits_the_vertices_between_them() {
+        // Two walls meeting at an edge: one facing along x, one along y. Their two shared vertices take a texture vertex each side.
+        let g = Grid { verts: vec![[0.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0], [4.0, 0.0, 0.0]], tris: vec![[0, 1, 2], [0, 2, 3]] };
+        let mut s = String::new();
+        let origin = [10.0, 20.0, 5.0];
+        terrain_mesh(&mut s, "t", "r", "ls_rock", "", &g, &g.tris, origin, Mapping::Boxed, Some(&|v: [f32; 3]| [v[0], v[1]]));
+        assert_eq!(list(&s, "verts").len(), 4);
+        assert_eq!(list(&s, "normals").len(), 4, "the ground's own normals, one a vertex");
+        let tverts = list(&s, "tverts");
+        assert_eq!(tverts.len(), 6);
+        assert_eq!(list(&s, "tverts1").len(), 6, "the second coordinates follow the first's vertices");
+        let faces = list(&s, "faces");
+        let uv = |f: usize, c: usize| -> [f32; 2] {
+            let t: usize = faces[f][4 + c].parse().unwrap();
+            [tverts[t][0].parse().unwrap(), tverts[t][1].parse().unwrap()]
+        };
+        // The wall facing x runs on along y and up (area y 20..24, z 5..9: 5..6 and 1.25..2.25 repeats).
+        assert_eq!([uv(0, 0), uv(0, 1), uv(0, 2)], [[5.0, 1.25], [6.0, 1.25], [5.0, 2.25]]);
+        // The wall facing y along x and up.
+        assert_eq!([uv(1, 0), uv(1, 1), uv(1, 2)], [[2.5, 1.25], [2.5, 2.25], [3.5, 1.25]]);
+    }
+
+    #[test]
+    fn a_vertex_mapping_keeps_one_texture_vertex_a_vertex() {
+        let g = Grid { verts: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 3.0]], tris: vec![[0, 1, 2]] };
+        let mut s = String::new();
+        terrain_mesh(&mut s, "t", "r", "pic", "", &g, &g.tris, [0.0; 3], Mapping::Vertex(&|v| [v[0], v[1]]), None);
+        assert_eq!(list(&s, "tverts").len(), 3);
+        assert!(list(&s, "tverts1").is_empty());
+        assert_eq!(list(&s, "faces")[0], ["0", "1", "2", "1", "0", "1", "2", "0"]);
     }
 }

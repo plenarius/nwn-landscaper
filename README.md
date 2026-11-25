@@ -206,8 +206,9 @@ release as the engine's (`tests/nwn_bake_split.rs` checks the engine's own copie
   [tiny_http](https://github.com/tiny-http/tiny-http), the HTTP server: in `vendor/tiny_http` with a patch of ours that limits
   how long a connection may wait and how large a request's head may be
   ([vendor/tiny_http/LANDSCAPER.md](vendor/tiny_http/LANDSCAPER.md)). MIT or Apache-2.0.
-- The shadow shaders in the hak the Landscaper builds are the game's stock lit shaders (`fslit` and `vslit`), read from your
-  install and changed at run time (`src/shared.rs`); no copy of them is in this repository or its releases.
+- The tile shaders in the hak the Landscaper builds (shadows, triplanar textures) are the game's stock lit shaders (`fslit` and
+  `vslit`), read from your install and changed at run time (`src/shared.rs`); no copy of them is in this repository or its
+  releases.
 
 ## Licence
 

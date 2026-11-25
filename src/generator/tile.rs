@@ -8,10 +8,10 @@ use std::fmt::Write as _;
 use mg_mdl::{Face, Mesh};
 
 use super::{
-    ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
+    ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
     WALKABLE_NZ, WATER_METRES, WATER_TEXTURE, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name,
-    normal_z, num, shadow_mtr, shadow_name, tile_level, tile_name, tiles_x, tiles_y, tileset_name, trimesh, trimesh_full, trimesh_listed,
-    trimesh_with,
+    mtr_name, normal_z, num, shadow_name, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
+    trimesh_full, trimesh_listed, trimesh_with,
 };
 use crate::{heightmap, objects, paint, shared};
 
@@ -65,39 +65,42 @@ pub(super) fn tile_model(
              fadingLight 1\n  flareradius 0\n  position 0 0 5\n  radius 14\n  multiplier 1\n  color 0 0 0\nendnode"
         );
     }
-    // Texture coordinates from area coordinates, so textures run on across
-    // tiles; steep faces take them from the side (along x + y and up).
-    let side = |v: [f32; 3]| [(v[0] + ox + v[1] + oy) / paint::TEXTURE_METRES, (v[2] + base) / paint::TEXTURE_METRES];
-    // Ground and steep meshes; shadowed, each its own material and the tile's square as second texture coordinates.
+    // The tile's (0, 0, 0) in the area, for texture coordinates from area coordinates, so textures run on across tiles.
+    let origin = [ox, oy, base];
+    // Ground and steep meshes, each with its own material when drawn triplanar (a library texture) or shadowed, and then the tile's
+    // square as second texture coordinates.
     let shadow_map = shadow_name(tx, ty);
     let square = |v: [f32; 3]| [(v[0] + TILE / 2.0) / TILE, (v[1] + TILE / 2.0) / TILE];
     // The shadow map's coordinates (tverts1): the tile's square, as the colour's. Checked in game 2026-10-20 with
     // LS_SHADOW_DEBUG=half: each tile's dark south half lay south of a pillar standing on a tile corner.
     let shadow_uv = square;
-    let mut lit = |s: &mut String, node: String, bitmap: &str, faces: &[[u32; 3]], uv: &dyn Fn([f32; 3]) -> [f32; 2]| {
-        if shadow && !faces.is_empty() {
-            let mat = format!("{name}m{}", mtrs.len());
-            mtrs.push((mat.clone(), shadow_mtr(bitmap, &shadow_map)));
-            trimesh_full(s, &node, name, bitmap, &format!("  materialname {mat}\n"), &g, faces, uv, Some(&shadow_uv));
-        } else {
-            trimesh_full(s, &node, name, bitmap, "", &g, faces, uv, None);
+    let mut lit = |s: &mut String, node: String, bitmap: &str, faces: &[[u32; 3]], mapping: Mapping<'_>| {
+        if faces.is_empty() {
+            return;
         }
+        let triplanar = matches!(mapping, Mapping::Boxed);
+        let props = if shadow || triplanar {
+            let mat = mtr_name(name, mtrs.len());
+            mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), triplanar)));
+            format!("  materialname {mat}\n")
+        } else {
+            String::new()
+        };
+        terrain_mesh(s, &node, name, bitmap, &props, &g, faces, origin, mapping, shadow.then_some(&shadow_uv));
     };
     match painter {
         None => {
-            lit(&mut s, format!("{name}_gnd"), "ttr01_grass02", &ground, &|v| [(v[0] + ox) / 5.0, (v[1] + oy) / 5.0]);
-            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, &side);
+            lit(&mut s, format!("{name}_gnd"), "ttr01_grass02", &ground, Mapping::Vertex(&|v| [(v[0] + ox) / 5.0, (v[1] + oy) / 5.0]));
+            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed);
         }
         Some(p) => {
             match p.tile_materials(tx, ty).as_slice() {
                 // An import's picture: baked like several textures.
-                _ if p.baked(tx, ty) => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, &square),
-                // One texture: the library's, repeating.
-                [m] => lit(&mut s, format!("{name}_gnd"), &paint::resref(&p.hm.palette[*m as usize]), &ground, &|v| {
-                    [(v[0] + ox) / paint::TEXTURE_METRES, (v[1] + oy) / paint::TEXTURE_METRES]
-                }),
-                // Several: the tile's own baked texture over its square.
-                _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, &square),
+                _ if p.baked(tx, ty) => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&square)),
+                // One texture: the library's, repeating, drawn from three sides.
+                [m] => lit(&mut s, format!("{name}_gnd"), &paint::resref(&p.hm.palette[*m as usize]), &ground, Mapping::Boxed),
+                // Several: the tile's own baked texture over its square (baked from three sides, as the one-texture tiles draw it).
+                _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&square)),
             }
             // Steep faces: the texture painted nearest each face's middle.
             let mut by_material: std::collections::BTreeMap<u8, Vec<[u32; 3]>> = Default::default();
@@ -112,11 +115,11 @@ pub(super) fn tile_model(
                     // front: the grid's slope fills what they don't cover.)
                     let Some(tiles) = p.textures[*m as usize].tiles.as_ref() else { continue };
                     match tiles.cliffs.get(ty * tiles.width + tx).cloned().flatten() {
-                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, &side),
-                        None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, &square),
+                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed),
+                        None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&square)),
                     }
                 } else {
-                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, &side);
+                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed);
                 }
             }
         }
@@ -146,9 +149,23 @@ pub(super) fn tile_model(
             None => "ttr01_rock00".to_string(),
         };
         let fade = |v: [f32; 3]| [shared::chasm_fade_u(depth(v) / heightmap::CHASM_DEPTH), 0.5];
-        let mat = format!("{name}m{}", mtrs.len());
-        mtrs.push((mat.clone(), shadow_mtr(&bitmap, shared::CHASM_FADE)));
-        trimesh_full(&mut s, &format!("{name}_cw"), name, &bitmap, &format!("  materialname {mat}\n"), &g, &walls, &side, Some(&fade));
+        // (a tile's own picture lies over its square; a texture, from three sides like the steep faces)
+        let picture = bitmap == baked_name(tx, ty);
+        let mat = mtr_name(name, mtrs.len());
+        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), !picture)));
+        let mapping = if picture { Mapping::Vertex(&square) } else { Mapping::Boxed };
+        terrain_mesh(
+            &mut s,
+            &format!("{name}_cw"),
+            name,
+            &bitmap,
+            &format!("  materialname {mat}\n"),
+            &g,
+            &walls,
+            origin,
+            mapping,
+            Some(&fade),
+        );
     }
     // Entrances whose mouth is in this tile: the roof's top in the hill's paint, its rock (underside and lip; shadowed, so dark
     // inside), the dark back.
@@ -184,8 +201,8 @@ pub(super) fn tile_model(
             trimesh_with(&mut s, &format!("{name}_e{k}top"), name, &hill, "", &top, &top.tris, flat);
             let rk = grid(&sc.rock);
             if shadow {
-                let mat = format!("{name}m{}", mtrs.len());
-                mtrs.push((mat.clone(), shadow_mtr(&rock, &shadow_map)));
+                let mat = mtr_name(name, mtrs.len());
+                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), false)));
                 trimesh_full(
                     &mut s,
                     &format!("{name}_e{k}rock"),

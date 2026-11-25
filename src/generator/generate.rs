@@ -143,7 +143,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let painter = Painter::load()?;
     lap("textures loaded");
     let strength = shadow_strength();
-    // The library textures, the entrance black and the shadow shaders are in the shared hak.
+    // The library textures, the entrance black and the tile shaders are in the shared hak.
     shared::ensure(&workspace::nwn_user_dir().context("no user dir")?.join("hak"))?;
     lap("shared hak");
     let (mut walk_faces, mut render_bytes, mut most, mut baked) = (0, 0, 0, 0);
@@ -215,7 +215,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::DDS, dds));
             owned.push((ResRef::from_str(&shadow_name(tx, ty))?, ResType::TXI, b"clamp 3\r\n".to_vec()));
         }
-        // (with shadows off, a chasm's walls still have theirs: the fade)
+        // (with shadows off, library textures and a chasm's walls still have theirs: the triplanar shader, the fade)
         for (mat, text) in mtrs {
             owned.push((ResRef::from_str(&mat)?, ResType::MTR, text.into_bytes()));
         }
@@ -257,12 +257,15 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     // (A cave has no edge scenery: its border is off, see generate's area.)
     let underground = heightmap::current().is_some_and(|h| h.underground);
     if std::env::var_os("LS_NO_EDGE").is_none() && !underground {
-        for (name, text) in edge::models(painter.as_ref()) {
+        for (name, text, mtrs) in edge::models(painter.as_ref()) {
             let compiled = mg_mdl::compile::compile(text.as_bytes(), &Default::default()).with_context(|| format!("compiling {name}"))?;
             if dump {
                 std::fs::write(out_dir.join(format!("{name}.mdl.txt")), &text)?;
             }
             owned.push((ResRef::from_str(&name)?, ResType::MDL, compiled.binary));
+            for (mat, text) in mtrs {
+                owned.push((ResRef::from_str(&mat)?, ResType::MTR, text.into_bytes()));
+            }
         }
         owned.push((ResRef::from_str(&format!("{}_edge", tileset_name()))?, ResType::TWODA, crlf(&edge::table())));
     }

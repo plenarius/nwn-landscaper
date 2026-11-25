@@ -130,6 +130,19 @@ pub(crate) fn height(x: f32, y: f32) -> f32 {
     hill * (1.0 - s) + cliff_height() * s
 }
 
+/// The ground's unit normal at area point (x, y): the painted terrain's ([`heightmap::Heightmap::normal`], as the editor has it), else
+/// the built-in test terrain's slope over 0.625 m each way.
+pub(crate) fn ground_normal(x: f32, y: f32) -> [f32; 3] {
+    if let Some(h) = heightmap::current() {
+        return h.normal(x, y);
+    }
+    let d = 0.625;
+    let east = (height(x + d, y) - height(x - d, y)) / (2.0 * d);
+    let north = (height(x, y + d) - height(x, y - d)) / (2.0 * d);
+    let len = (east * east + north * north + 1.0).sqrt();
+    [-east / len, -north / len, 1.0 / len]
+}
+
 /// The engine's height step between tile levels (the .set's Transition).
 pub(super) const TRANSITION: f32 = 5.0;
 

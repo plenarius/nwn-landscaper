@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The hak every landscaper module shares: the whole texture library (`ls_<id>`), the cave entrance black and the shadow shaders (made
+//! The hak every landscaper module shares: the whole texture library (`ls_<id>`), the cave entrance black and the tiles' shaders (made
 //! from the game's own lit shaders, see [`shaders`]). An area's own hak keeps only what is its own (tiles, walkmeshes, baked textures,
 //! minimaps, shadow maps); the shared one is listed after it.
 //!
@@ -100,33 +100,36 @@ fn stamp() -> Result<String> {
         }
     }
     shaders()?.hash(&mut h);
-    // (2: the chasm fade joined the black)
-    2u32.hash(&mut h);
+    // (2: the chasm fade joined the black; 3: the triplanar shader)
+    3u32.hash(&mut h);
     Ok(format!("{:016x}", h.finish()))
 }
 
-/// The shadow shaders, `ls_lm_vs` and `ls_lm_fs`: the game's stock lit pair (`vslit`, `fslit`) read from the install and changed
-/// here, so no copy of Beamdog's shaders is in this repository or in a release of it.
+/// The tiles' shaders, `ls_lm_vs`, `ls_lm_fs` and `ls_tp_fs`: the game's stock lit pair (`vslit`, `fslit`) read from the install and
+/// changed here, so no copy of Beamdog's shaders is in this repository or in a release of it.
 ///
 /// - `ls_lm_vs`: vslit, passing the second texture coordinates (MDL tverts1) on to the fragment shader.
 /// - `ls_lm_fs`: fslit, its colour darkened by the tile's baked shadow map (MTR texture7, at those coordinates) and then fogged.
 ///   Fog comes last so baked shadows fade into the distance like everything else; the stock shader would fog first, so `FOG` is
 ///   off and `ApplyFog` is called after the shadow. Without a texture7 the surface is drawn as fslit draws it.
+/// - `ls_tp_fs`: `ls_lm_fs` with its texture drawn from three sides by the slope ([`crate::triplanar`]), for library textures:
+///   see [`patch_triplanar`].
 ///
 /// An install without the two (the dedicated server's download has no shaders) or with a different shape of them is an error that
 /// says so: without them the area would draw wrong, not only without shadows.
-pub fn shaders() -> Result<[(&'static str, String); 2]> {
+pub fn shaders() -> Result<[(&'static str, String); 3]> {
     let game = crate::models::game()?;
     let stock = |name: &str| -> Result<String> {
         let data = game.resman.get_named(name, ResType::SHD).map_err(|e| {
             anyhow::anyhow!(
-                "the game's {name}.shd is not in the install ({e}): the shared hak's shadow shaders are made from it. Point NWN_ROOT \
+                "the game's {name}.shd is not in the install ({e}): the shared hak's tile shaders are made from it. Point NWN_ROOT \
                  (or --root) at the game itself; the dedicated server's download has no shaders"
             )
         })?;
         Ok(String::from_utf8_lossy(&data).into_owned())
     };
-    Ok([("ls_lm_vs", patch_vslit(&stock("vslit")?)?), ("ls_lm_fs", patch_fslit(&stock("fslit")?)?)])
+    let fs = patch_fslit(&stock("fslit")?)?;
+    Ok([("ls_lm_vs", patch_vslit(&stock("vslit")?)?), ("ls_tp_fs", patch_triplanar(&fs)?), ("ls_lm_fs", fs)])
 }
 
 /// Replaces the one line of `text` that reads `anchor` (spaces around it aside) with `with` (its indent kept). A stock shader with
@@ -196,7 +199,38 @@ fn patch_fslit(stock: &str) -> Result<String> {
     Ok(made_from("fslit") + &s)
 }
 
-/// `landscaper shaders <out>`: writes the two shaders as [`shaders`] makes them, to compare them with what a release had.
+/// `ls_lm_fs` (made by [`patch_fslit`]) drawing its texture from three sides by the slope ([`crate::triplanar`]): after the stock
+/// shader has read its inputs, the texture's colour is sampled again at the world position (from the view position and the
+/// camera's inverse view matrix, as the game's own keyhole shader finds it) along x, along y and from above, weighted by the vertex
+/// normal turned back into the world, and takes the place of the colour read at the mesh's texture coordinates. Lighting, the
+/// shadow map and fog then go on as before. (The stock read is wasted; the specular light's colour, which the stock shader takes
+/// from it, comes out of the same texture and differs only where the two readings do.)
+fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
+    use crate::triplanar::SHARPNESS;
+    let metres = paint::TEXTURE_METRES;
+    let pos = format!("highp vec3 lsP = (m_view_inv * vec4(vPosView, 1.0)).xyz / {metres:.1};");
+    let weights = format!("vec3 lsW = pow(abs(normalize(mat3(m_view_inv) * vVertexNormal)), vec3({:.1}));", f64::from(SHARPNESS));
+    let s = replace_line(
+        ls_lm_fs,
+        "fslit",
+        "SetupStandardShaderInputs();",
+        &[
+            "SetupStandardShaderInputs();",
+            "// The Landscaper's triplanar texture (its triplanar.rs): along x, along y and from above, by the slope.",
+            "if (texture0Bound != 0)",
+            "{",
+            &format!("    {pos}"),
+            &format!("    {weights}"),
+            "    lsW /= lsW.x + lsW.y + lsW.z;",
+            "    vec4 lsTex = texture2D(texUnit0, lsP.yz) * lsW.x + texture2D(texUnit0, lsP.xz) * lsW.y + texture2D(texUnit0, lsP.xy) * lsW.z;",
+            "    FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);",
+            "}",
+        ],
+    )?;
+    Ok(s)
+}
+
+/// `landscaper shaders <out>`: writes the three shaders as [`shaders`] makes them, to compare them with what a release had.
 pub fn write_shaders(out: &Path) -> Result<()> {
     std::fs::create_dir_all(out)?;
     for (name, text) in shaders()? {
@@ -220,7 +254,7 @@ mod tests {
     /// `inc_standard` include, `ApplyStandardShader();` and `gl_FragColor = FragmentColor;`), indented as the game's are.
     const VSLIT: &str = "#define MADE_UP 1\n#include \"inc_standard\"\n\nvoid main ()\n{\n    Before();\n    ApplyStandardShader();\n}\n";
     const FSLIT: &str = "#define MADE_UP 2\n#define FOG 1\n#include \"inc_standard\"\n\nvoid main ()\n{\n    Before();\n    \
-        gl_FragColor = FragmentColor;\n}\n";
+        SetupStandardShaderInputs();\n    gl_FragColor = FragmentColor;\n}\n";
 
     #[test]
     fn the_shadow_shaders_add_the_shadow_map_and_keep_the_rest() {
@@ -248,6 +282,7 @@ mod tests {
             "void main ()",
             "{",
             "Before();",
+            "SetupStandardShaderInputs();",
             "if (texture7Bound != 0)",
             "FragmentColor.rgb *= texture2D(texUnit7, vShadowUV).rgb;",
             "ApplyFog(FragmentColor);",
@@ -256,6 +291,20 @@ mod tests {
         ];
         assert_eq!(code(&patch_fslit(FSLIT).unwrap()), fs);
         assert!(patch_fslit(FSLIT).unwrap().contains("\n    ApplyFog(FragmentColor);\n"), "the indent is kept");
+    }
+
+    #[test]
+    fn the_triplanar_shader_replaces_the_texture_after_the_stock_read_and_keeps_the_shadow_and_fog() {
+        let tp = patch_triplanar(&patch_fslit(FSLIT).unwrap()).unwrap();
+        let lines = code(&tp);
+        let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{tp}"));
+        let read = at("SetupStandardShaderInputs();");
+        let replaced = at("FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);");
+        assert!(read < replaced && replaced < at("FragmentColor.rgb *= texture2D(texUnit7, vShadowUV).rgb;"));
+        assert!(at("ApplyFog(FragmentColor);") < at("gl_FragColor = FragmentColor;"));
+        // The projections and weights triplanar.rs has: 4 m repeats, along x (y, z), along y (x, z), from above (x, y), power 4.
+        assert!(tp.contains("/ 4.0;") && tp.contains("vec3(4.0)"), "{tp}");
+        assert!(tp.contains("texUnit0, lsP.yz) * lsW.x") && tp.contains("texUnit0, lsP.xz) * lsW.y") && tp.contains("lsP.xy) * lsW.z"));
     }
 
     #[test]
