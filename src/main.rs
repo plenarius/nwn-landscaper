@@ -56,6 +56,7 @@ mod triplanar;
 mod update;
 mod upload;
 mod validate;
+mod version;
 mod workspace;
 
 use anyhow::{Context, Result};
@@ -81,7 +82,7 @@ fn main() -> std::process::ExitCode {
 /// program has it) with the editor in `web/` beside the program, the browser opened at it. The window stays open while it serves; when it can't start, it says why and waits for
 /// Enter, so the message can be read before the window closes. Without a game install it stops and says what to set.
 fn quick_start() -> std::process::ExitCode {
-    println!("NWN Landscaper {}: the editor on this machine. (`landscaper --help` lists the commands.)\n", env!("CARGO_PKG_VERSION"));
+    println!("NWN Landscaper {}: the editor on this machine. (`landscaper --help` lists the commands.)\n", version::text());
     let mut args = vec!["landscaper".into(), "serve".into()];
     if let Some(user) = onedrive_user_folder() {
         args.extend(["--user".into(), user.into_os_string()]);

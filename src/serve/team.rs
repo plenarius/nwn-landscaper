@@ -16,6 +16,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
         (Method::Get, "/api/me") => json_response(
             200,
             &serde_json::json!({
+                "version": crate::version::text(),
                 "team": crate::workspace::team(),
                 "user": me.user,
                 "name": me.name,
