@@ -26,11 +26,12 @@ in the archive says the same, and what to set when it can't find the game.
 The archive holds the engine and the editor of the same release, so you need nothing else but the game. Check a download against
 `SHA256SUMS` on the release page.
 
-The builds are not signed:
+The first start:
 
-- **macOS** refuses the program the first time. Open System Settings, Privacy & Security, and click **Open Anyway**. On macOS 14 and
-  older, right-click the program and choose **Open**. Or run `xattr -dr com.apple.quarantine` on the unpacked folder.
-- **Windows** SmartScreen may say it protected your PC. Click **More info**, then **Run anyway**.
+- **macOS:** the program is signed with a Developer ID and notarized by Apple, so the first start only asks whether to open a
+  program downloaded from the internet. (Releases up to 0.4.0 aren't signed: open System Settings, Privacy & Security, and click
+  **Open Anyway**.)
+- **Windows:** the program isn't signed yet, so SmartScreen may say it protected your PC. Click **More info**, then **Run anyway**.
 
 To build it from source instead, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) and "Development" below.
 

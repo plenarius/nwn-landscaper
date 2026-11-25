@@ -45,7 +45,9 @@ for _ in $(seq 1 "$wait"); do
 done
 curl -fsS "$url/healthz"
 echo
-curl -fsS "$url/" | grep -q 'type="importmap"' || { echo "release-smoke: / is not the editor's page" >&2; exit 1; }
+# Read the whole page first: grep -q stops at the match, and under pipefail curl's broken pipe then fails the check.
+page=$(curl -fsS "$url/")
+grep -q 'type="importmap"' <<<"$page" || { echo "release-smoke: / is not the editor's page" >&2; exit 1; }
 curl -fsS -o /dev/null "$url/js/app.js"
 curl -fsS -o /dev/null "$url/vendor/three/three.module.js"
 echo "release-smoke: $url serves the editor"

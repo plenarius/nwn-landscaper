@@ -5,6 +5,11 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **The macOS build is signed and notarized.** The release's macOS program is signed with a Developer ID and notarized by Apple,
+  so it starts without Privacy & Security's Open Anyway. The Windows build is not signed yet.
+
 ## 0.4.0
 
 - **Chasms.** The editor's chasm (its 0.4.0) comes in the export as runs of samples, the header's new, optional `chasm`.
