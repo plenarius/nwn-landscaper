@@ -5,6 +5,13 @@ All notable changes to the Landscaper engine; the editor's are in
 [Semantic Versioning](https://semver.org/); before 1.0, a minor version may change the commands, the HTTP API between the engine
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog.
 
+## Unreleased
+
+- **An entrance undone and redone between path checks keeps its id.** A check judged entrance ids by the last check's header in
+  its scratch folder, not the last export's, so an entrance taken out by an undo and brought back by a redo looked like a
+  taken-out entrance's id given to another: the check was refused and Live showed an error. A check now reads the last export's
+  header, as the export does. An id an export took out still can't go to a new entrance.
+
 ## 0.5.0
 
 - **Released with the editor's 0.5.0**: Get more textures, folding texture categories, the module's hak placeables with Small

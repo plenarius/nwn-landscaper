@@ -59,16 +59,30 @@ fn start(root: &Path) -> Server {
 /// Exports area `ent` (3 by 3 tiles, a ridge rising east of x = 18 m, grass) with the entrances `ids` (each at y = 10 * id - 5
 /// on the ridge's foot), as the editor does; the export's report.
 fn export(s: &Server, ids: &[u32]) -> serde_json::Value {
+    let (status, report) = send(s, "export", ids, 0);
+    assert_eq!(status, 200, "{report}");
+    report
+}
+
+/// The editor's Check paths of area `ent` with the entrances `ids`, as [`export`] would export them: its answer's status and
+/// JSON.
+fn check(s: &Server, ids: &[u32]) -> (u16, serde_json::Value) {
+    send(s, "check", ids, 0)
+}
+
+/// Area `ent` with the entrances `ids`, each `shift` metres north of where [`export`] puts it, to `/api/<route>`: the answer's
+/// status and JSON.
+fn send(s: &Server, route: &str, ids: &[u32], shift: u32) -> (u16, serde_json::Value) {
     let n = 3 * 16 + 1;
     let heights: Vec<u8> = (0..n * n).flat_map(|k| (((k % n) as f32 * 0.625 - 18.0) * 1.2).clamp(0.0, 8.0).to_le_bytes()).collect();
     let mut body = heights;
     body.extend(vec![0u8; n * n]);
     let entrances: Vec<serde_json::Value> = ids
         .iter()
-        .map(|&id| serde_json::json!({ "id": id, "x": 19, "y": 10 * id - 5, "dir": 0, "width": 4, "depth": 4, "floor": 0 }))
+        .map(|&id| serde_json::json!({ "id": id, "x": 19, "y": 10 * id - 5 + shift, "dir": 0, "width": 4, "depth": 4, "floor": 0 }))
         .collect();
     body.extend(serde_json::json!({ "palette": ["grassMedium"], "entrances": entrances }).to_string().into_bytes());
-    let target = "/api/export?name=ent&tiles=3";
+    let target = format!("/api/{route}?name=ent&tiles=3");
     let mut c = TcpStream::connect(("127.0.0.1", s.port)).unwrap();
     c.set_read_timeout(Some(Duration::from_secs(900))).unwrap();
     let host = format!("127.0.0.1:{}", s.port);
@@ -83,8 +97,8 @@ fn export(s: &Server, ids: &[u32]) -> serde_json::Value {
     let mut out = String::new();
     c.read_to_string(&mut out).unwrap();
     let (head, json) = out.split_once("\r\n\r\n").unwrap();
-    assert!(head.starts_with("HTTP/1.1 200"), "{head}\n{json}");
-    serde_json::from_str(json).unwrap()
+    let status = head.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    (status, serde_json::from_str(json).unwrap_or_else(|_| json.into()))
 }
 
 /// The installed module's area `ent`: its doors' tags and north positions, sorted.
@@ -142,6 +156,37 @@ fn taking_out_the_middle_entrance_takes_out_its_door_and_nothing_else() {
     );
     // Again with nothing taken out: nothing removed.
     assert_eq!(export(&s, &[1, 3])["updated"]["doors_removed"], serde_json::json!([]));
+    drop(s);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+#[ignore = "needs the game's files: NWN_ROOT=<the game> cargo test --test entrance_doors -- --ignored"]
+fn an_entrance_undone_and_redone_between_checks_keeps_its_id() {
+    let root: PathBuf = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("entrance_checks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let s = start(&root);
+    // Never exported: added, checked; undone, checked; redone, checked, as Live does.
+    for ids in [&[1][..], &[], &[1]] {
+        let (status, answer) = check(&s, ids);
+        assert_eq!(status, 200, "a check of {ids:?}: {answer}");
+    }
+    // Exported with it, and the same again after an undo and a redo between checks.
+    export(&s, &[1]);
+    for ids in [&[][..], &[1]] {
+        let (status, answer) = check(&s, ids);
+        assert_eq!(status, 200, "a check of {ids:?} after the export: {answer}");
+    }
+    // Entrance 2 exported, then taken out by an export: its door's tag may be in transitions and scripts, so a different entrance
+    // can't take id 2, in a check or an export, while a new id is fine.
+    export(&s, &[1, 2]);
+    export(&s, &[1]);
+    for route in ["check", "export"] {
+        let (status, answer) = send(&s, route, &[1, 2], 3);
+        assert_eq!(status, 400, "{route}: {answer}");
+        assert!(answer.to_string().contains("entrance id 2 was an entrance's that has been taken out"), "{route}: {answer}");
+    }
+    assert_eq!(check(&s, &[1, 3]).0, 200);
     drop(s);
     let _ = std::fs::remove_dir_all(&root);
 }
