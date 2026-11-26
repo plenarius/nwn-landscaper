@@ -80,6 +80,11 @@ fn haks(hak: &str) -> Vec<String> {
     crate::generator::our_haks(hak, crate::skies::area_sky().is_some())
 }
 
+/// Whether the freshly generated module `generated` lists the skies' hak: its area has a Landscaper sky.
+fn has_sky(generated: &Module) -> bool {
+    generated.haks().unwrap_or_default().iter().any(|h| h.eq_ignore_ascii_case(crate::skies::HAK))
+}
+
 /// The hak list of a module the area `hak` is installed in (its `module.ifo` root `info`): the area's and the shared hak first,
 /// the module's own after them in its order, then the editor's haks it lacks: the placeables placed and baked from them (their
 /// rows, models and textures) are there in the game only with them.
@@ -428,6 +433,12 @@ pub fn update_installed(
                 && let Some(Ok(mut are)) = m.gff(&are_key)
             {
                 crate::settings::apply(&mut are.root, &mut git.root, sett)?;
+                // (A Landscaper sky wins over the settings' sky box, as in the export.)
+                if has_sky(&generated)
+                    && let Some(row) = gen_are.root.get("SkyBox")
+                {
+                    are.root.set("SkyBox", row.clone());
+                }
                 m.set_gff(are_key, &are)?;
             }
             m.set_gff(git_key, &git)?;
@@ -605,6 +616,25 @@ mod tests {
         let (are, git) = area_of(&installed, "cave1");
         assert_eq!(are.integer("SunFogColor"), Some(0x0000ff), "red, as the game stores it (BGR)");
         assert_eq!(find(&git, "Placeable List", "chest").unwrap().float("Z"), Some(3.0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A re-export of an area with a Landscaper sky keeps its row, though its settings name another sky box.
+    #[test]
+    fn a_landscaper_sky_wins_over_the_settings_sky_box_on_a_reexport() {
+        let dir = scratch("sky-row");
+        let (installed, fresh) = (dir.join("world.mod"), dir.join("fresh.mod"));
+        module(&installed, "lsupdt", 1, &[("SkyBox", Value::Byte(32))], &[]);
+        module(&fresh, "lsupdt", 2, &[("SkyBox", Value::Byte(32))], &[]);
+        let mut m = Module::open(&fresh).unwrap();
+        let mut info = m.info().unwrap();
+        info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &crate::generator::our_haks("lsupdt", true)));
+        m.set_info(&info).unwrap();
+        std::fs::write(&fresh, m.to_archive_bytes().unwrap()).unwrap();
+        let settings = serde_json::json!({ "skyBox": 1 });
+        let changes = Changes { settings: Some(&settings), ..Changes::default() };
+        update_installed(&installed, &fresh, "lsupdt", "lsupdt", None, &ground(1.0), &changes).unwrap();
+        assert_eq!(area_of(&installed, "lsupdt").0.integer("SkyBox"), Some(32));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
