@@ -16,8 +16,9 @@ pub fn free_port() -> u16 {
     PORTS.into_iter().find(|&p| std::net::TcpListener::bind(("127.0.0.1", p)).is_ok()).unwrap_or(PORTS.start)
 }
 
+/// The editor's address in the app: `?app` tells the editor it is inside the app (its Help menu, no "start the engine" link).
 pub fn engine_url(port: u16) -> String {
-    format!("http://127.0.0.1:{port}/")
+    format!("http://127.0.0.1:{port}/?app")
 }
 
 /// Whether the window may go to `url`: the engine's editor, or the app's own page. Anything else opens in the default browser.
@@ -70,6 +71,8 @@ mod tests {
     fn only_the_engine_and_the_apps_page_stay_in_the_window() {
         let url = |s: &str| Url::parse(s).unwrap();
         assert!(stays_inside(&url("http://127.0.0.1:8766/js/app.js"), 8766));
+        assert!(stays_inside(&url(&engine_url(8766)), 8766));
+        assert_eq!(engine_url(8767), "http://127.0.0.1:8767/?app");
         assert!(stays_inside(&url("tauri://localhost/index.html"), 8766));
         assert!(stays_inside(&url("http://tauri.localhost/index.html"), 8766));
         assert!(!stays_inside(&url("http://127.0.0.1:8765/"), 8766), "another engine's port");

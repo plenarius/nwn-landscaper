@@ -174,7 +174,9 @@ The documents below, with a step-by-step handbook for builders, are also a site:
 `scripts/check.sh` runs every check of the code and documentation standard, [STYLE.md](STYLE.md); run it before you push.
 
 The desktop app is `app/` (Tauri, [docs/DESIGN-desktop-app.md](docs/DESIGN-desktop-app.md)): the editor in a window of its own,
-with the engine inside it on 127.0.0.1:8766. `cargo run -p nwn-landscaper` starts it; outside a bundle it finds the editor as
+with the engine inside it on 127.0.0.1:8766, at `/?app` so the editor knows. Only there does the engine answer
+`POST /api/app/open` (`{"what": "data" | "log" | "folders"}`: 204, or `{"error": ...}` with 409), which the app answers
+through `serve_local`'s handler. `cargo run -p nwn-landscaper` starts it; outside a bundle it finds the editor as
 `landscaper serve` does (`LANDSCAPER_WEB`, or a `nwn-landscaper-web` checkout beside this one). On Linux it needs WebKitGTK's
 development files (`libwebkit2gtk-4.1-dev` and `libxdo-dev` on Debian and Ubuntu). Started from a terminal it prints there;
 otherwise to `landscaper.log` in the data folder, the start before kept as `landscaper.previous.log`.

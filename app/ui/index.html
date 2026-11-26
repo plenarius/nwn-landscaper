@@ -18,15 +18,17 @@
             <p class="note">The first start builds the texture library from the game's files, which takes a minute.</p>
         </section>
         <section id="setup" hidden>
-            <p>The Landscaper needs <strong>Neverwinter Nights: Enhanced Edition</strong>, and couldn't find it.</p>
+            <p id="needs">The Landscaper needs <strong>Neverwinter Nights: Enhanced Edition</strong>: where is it?</p>
             <label for="root">The game's folder (the one with <code>data/nwn_base.key</code> in it)</label>
             <div class="row"><input id="root" type="text" spellcheck="false"><button type="button" id="pickRoot">Choose…</button></div>
             <label for="user">Your user folder (with <code>hak</code>, <code>modules</code> and <code>tlk</code>; made when the game first starts)</label>
             <div class="row"><input id="user" type="text" spellcheck="false"><button type="button" id="pickUser">Choose…</button></div>
             <p class="note" id="mac" hidden>macOS will ask once whether NWN Landscaper may read your Documents folder, where the user
                 folder usually is: say OK.</p>
+            <p class="note" id="again" hidden>Saving other folders restarts the Landscaper.</p>
             <p class="problem" id="problem" hidden></p>
             <button type="button" id="go" class="primary">Start</button>
+            <button type="button" id="back" hidden>Back to the editor</button>
         </section>
         <section id="failed" hidden>
             <p>The Landscaper stopped:</p>

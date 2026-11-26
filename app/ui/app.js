@@ -25,6 +25,13 @@ async function poll() {
             $('root').value = s.root ?? '';
             $('user').value = s.user ?? '';
             $('mac').hidden = !navigator.userAgent.includes('Mac');
+            // Asked for again from the editor: a way back to it, and the change takes a restart.
+            if (s.back) {
+                $('back').hidden = false;
+                $('back').addEventListener('click', () => location.replace(s.back));
+                $('again').hidden = false;
+                $('go').textContent = 'Save and restart';
+            }
             if (s.problem) {
                 $('problem').textContent = s.problem;
                 $('problem').hidden = false;
