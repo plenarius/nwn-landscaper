@@ -132,6 +132,8 @@ impl Kind {
 pub struct Pack {
     pub kinds: Vec<Kind>,
     textures: Vec<(String, Vec<u8>)>,
+    /// Its `pack.json` as it is: the editor's Ambience palette (`/api/particles`).
+    pub json: serde_json::Value,
 }
 
 /// The particle pack built into the program (`packs/particles`, by build.rs): each file's path in the pack and its contents.
@@ -193,7 +195,7 @@ impl Pack {
             ensure!(!kinds.iter().any(|o| o.id == kind.id), "two kinds have the id {}", kind.id);
             kinds.push(kind);
         }
-        Ok(Pack { kinds, textures })
+        Ok(Pack { kinds, textures, json: j })
     }
 
     /// A kind by id.
