@@ -58,6 +58,12 @@ name = "real-skies"
 path = "scripts/real-skies.rs"
 test = true
 
+# The first sky pack (docs/PRESET-SKIES.md): made from the same download.
+[[example]]
+name = "preset-skies"
+path = "scripts/preset-skies.rs"
+test = true
+
 [dependencies]
 # A release of nwn-bake. To work on both at once, point a local, uncommitted
 # `[patch."https://github.com/plenarius/nwn-bake"]` at a checkout (README, "Development").

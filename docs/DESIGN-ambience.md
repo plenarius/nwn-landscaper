@@ -159,6 +159,9 @@ are new; *re-use* means Real Skies' pictures in other columns, with new models (
 A generated sky is a panorama the engine paints from the preset's fog colour at the horizon and its diffuse colour at the top, so
 it always matches. The trial's thick mist shows why that matters: ground fogged at 20 m under a sunny sky with clouds.
 
+Step 3 made the re-used and generated seven as the Preset skies pack ([PRESET-SKIES.md](PRESET-SKIES.md)), built from the
+user's own Real Skies download since Real Skies states no licence. Dawn haze names a preset, `dawn`, that step 4 adds.
+
 Considered and not chosen: **only the re-used skies**, leaving thick mist and swamp under a mismatched sky and dropping the two new
 presets that need art.
 
