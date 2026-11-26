@@ -1,6 +1,7 @@
 # Design: areas that look alive
 
-Status: design, not built. Written 2026-11-25 for the maintainer's review before any code.
+Status: design, not built. Written 2026-11-25 for the maintainer's review before any code; questions 1 and 5 decided the same
+day.
 
 Landscaper areas get skies that match their light, particles (mist, spray, fireflies, leaves, dust, light shafts) placed where
 the ground calls for them, and local light. All of it goes into the areas, so every builder's area gets it. Filming demos with
@@ -114,16 +115,23 @@ a bright sky with pink clouds over flat grey light, thick mist a sunny sky over 
 
 ## Questions to settle
 
-Each question lists the options with the recommendation first.
+Each open question lists the options with the recommendation first.
 
-### 1. Real Skies: replace the stock skies, or add rows?
+**Decided (2026-11-25):** Real Skies replaces the five stock skies module-wide, and the presets get new rows as well (question 1,
+the recommendation); particles are baked into the tiles, with placeables only for a kind a script must switch off (question 5,
+the recommendation). Questions 2, 3, 4 and 6 stand at their recommendations until the maintainer answers them.
 
-- **A. Both (recommended).** A re-encoded Real Skies replaces the five stock skies module-wide, in the team's own hak: every area
-  that uses a stock row, Landscaper's or not, looks better at once, and it needs no table. The Landscaper's own preset skies are
-  new rows. The textures become DDS DXT1 at 8,192 by 1,024; Real Skies' band mesh stays unless a flyover shows its open top.
-  Icy gets dawn, dusk and night from Winter_Clear, which Real Skies left stock.
-- **B. Rows only.** Real Skies' pictures used only in new rows; stock rows stay stock. Areas built elsewhere don't change.
-- **C. Replace only.** No new rows; the presets without a matching sky stay unmatched.
+### 1. Real Skies: replace the stock skies, and add rows
+
+**Decided: both.** A re-encoded Real Skies replaces the five stock skies module-wide, in the team's own hak: every area that uses a
+stock row, Landscaper's or not, looks better at once, and it needs no table. The Landscaper's own preset skies are new rows. The
+textures become DDS DXT1 at 8,192 by 1,024; Real Skies' band mesh stays unless a flyover shows its open top. Icy gets dawn, dusk
+and night from Winter_Clear, which Real Skies left stock.
+
+Considered and not chosen:
+
+- **Rows only.** Real Skies' pictures used only in new rows; stock rows stay stock. Areas built elsewhere wouldn't change.
+- **Replace only.** No new rows; the presets without a matching sky would stay unmatched.
 
 ### 2. Which skies to add
 
@@ -172,18 +180,21 @@ of 8,192 px and a `skyboxes.2da` row.
     `skyboxes.2da`; the export refuses otherwise and says which hak.
 - **B. One fixed hak with fixed rows** (say 200 to 220). Simpler, and wrong for any module whose table already uses those rows.
 
-### 5. Particles: placeables or baked into tiles?
+### 5. Particles: baked into tiles, placeables as the fallback
 
-- **A. Baked into the tiles (recommended).** The export writes each placement's emitter nodes into the tile under it, in the tile's
-  coordinates. No `placeables.2da` rows, no objects on the server, nothing sent per object. Day and night come from the tile's
-  `day` and `night` animations, as stock tiles key their lights and meshes (`ttr01_f13_01` keys a light's colour and two meshes'
-  alpha in `night`), once spike 0 finds why the trial's keyed emitters didn't draw. The cost: a script can't switch one off, and
-  changing one means exporting the area again.
-- **B. Placeables.** Each kind a `placeables.2da` row in the team's haks, placed as objects. Scripts can switch them, and the
-  toolset can move them. But the Landscaper can't add the rows (a team must merge them into its table), every placement is a game
-  object, and day and night need a script on a heartbeat or the area's enter event.
+**Decided: baked into the tiles.** The export writes each placement's emitter nodes into the tile under it, in the tile's
+coordinates. No `placeables.2da` rows, no objects on the server, nothing sent per object. Day and night come from the tile's `day`
+and `night` animations, as stock tiles key their lights and meshes (`ttr01_f13_01` keys a light's colour and two meshes' alpha in
+`night`), once spike 0 finds why the trial's keyed emitters didn't draw. The cost: a script can't switch one off, and changing one
+means exporting the area again.
 
-Option A for areas. The pack also carries each kind as a placeable model, for teams that add rows and for filming.
+**Placeables only as the fallback,** for a kind a script must switch off (a quest that clears the mist) or, if spike 0 says so,
+night-only kinds. The pack carries each kind as a placeable model too, with a sample `placeables.2da` row for teams to merge;
+filming uses them as well.
+
+Considered and not chosen: **placeables for everything.** Scripts could switch every kind and the toolset could move them, but the
+Landscaper can't add the rows (a team must merge them into its table), every placement would be a game object, and day and night
+would need a script on a heartbeat or the area's enter event.
 
 ### 6. Local light
 
@@ -269,7 +280,7 @@ Landscaper one in the client. If tile animations can't be made to play, night-on
 
 - **The tile's animation loops** switched by `SetTileAnimationLoops` from a small dusk and dawn script, if keyed emitters work at
   all once the cause is found.
-- **Night-only kinds as placeables**, switched by the same script (question 5, option B).
+- **Night-only kinds as placeables**, switched by the same script (question 5's fallback).
 
 ![Emitters and lights on a Landscaper tile: mist by day and by night, then the area at night with its tile lights black and
 lit orange](ambience-3-tile-emitters.png)
@@ -325,7 +336,8 @@ bearable. Films need the GPU but not the maintainer's desktop.
   order it knows; a module's own `.hak` list edited by hand later can still undo it.
 - **Emitters in many tiles**: a 32 by 32 area filled with mist could reach thousands of live particles. The Fill rule caps live
   particles per area, and the editor shows the count.
-- **Baked particles can't be switched by script.** A team that wants a quest to clear the mist needs the placeable version.
+- **Baked particles can't be switched by script.** A team that wants a quest to clear the mist places the placeable version
+  instead (question 5).
 - **Real Skies' pictures** come from free wallpapers stitched together; a re-encoded copy should keep its credit, and the
   re-encoding is a step outside the Landscaper.
 
@@ -342,7 +354,7 @@ maintainer's time is review and testing. "Client" marks a check in the game clie
 | 3 | The first sky pack: the re-used skies, and generated mist and swamp skies from preset colours | engine | 5 h | 30 min | 20 min: each preset with its sky |
 | 4 | Sky & fog panel: presets name skies, the Sky row, the view's background; the sample landscapes pick preset skies | web | 5 h | 30 min | no |
 | 5 | Baked emitters: the area's `ambience` list into tile emitter nodes and `day`/`night` keys | engine | 6 h | 30 min | 20 min: each kind, day and night |
-| 6 | The particle pack, first cut: eleven kinds written as ASCII emitters from the stock ones, tuned against client stills | engine (`packs/`) | 6 h | 1 h | 30 min |
+| 6 | The particle pack, first cut: eleven kinds written as ASCII emitters from the stock ones, tuned against client stills; each also as a placeable model with a sample `placeables.2da` row | engine (`packs/`) | 7 h | 1 h | 30 min |
 | 7 | The Ambience tool: Fill rules, brush, points in the view, live particle count | web | 10 h | 1 h | no |
 | 8 | Local light: the Light brush, self-illumination kept in baking | web + engine | 5 h | 30 min | 15 min: a village at night |
 | 9 | Baked shade on the sun or moon only, or a weaker shade at night | engine | 4 h | 30 min | 15 min: a torch in a tree's shadow |
@@ -350,7 +362,7 @@ maintainer's time is review and testing. "Client" marks a check in the game clie
 | 11 | nwn-director: films on a GPU off screen through VirtualGL | director | 3 h | 30 min | 20 min: one film on a GPU machine |
 | 12 | Docs: `docs/SKY-PACKS.md`, the builder workflow, the changelog | both | 2 h | 20 min | no |
 
-About 67 hours of agent time and 7.5 hours of the maintainer's, of which about 3 hours in the client. Steps 0, 1 and 10 can
+About 68 hours of agent time and 7.5 hours of the maintainer's, of which about 3 hours in the client. Steps 0, 1 and 10 can
 start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 and 6.
 
 **Work only an artist can do** (not in the hours above):
