@@ -167,6 +167,13 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 `cargo build --release` builds the engine, and `cargo test --workspace --locked` runs its tests. `scripts/check.sh` runs every
 check of the code and documentation standard, [STYLE.md](STYLE.md); run it before you push.
 
+A change that users would notice gets a changelog entry as a file of its own, `changelog.d/<short-name>.md`, holding the bullet
+(or bullets) it would have put under `## Unreleased` in CHANGELOG.md, in the same style, with links to our files written from
+`changelog.d/` (`../docs/X.md`). Don't edit CHANGELOG.md itself: each
+pull request's own file means two of them never conflict there. The release folds the files into its section
+(`scripts/changelog.sh`); `scripts/changelog.sh preview` shows them as that section, and `scripts/changelog.sh check` (run by
+CI) checks them.
+
 The tests that need the game's files are ignored by default, as CI has no game: the export, re-export and import cycle
 (`tests/game_cycle.rs`), an import into a folder of its own (`tests/import_dir.rs`), entrance doors (`tests/entrance_doors.rs`),
 packages in both module layouts (`tests/package_layouts.rs`), a conversation and a blueprint's fields. Where there is an install,
@@ -194,6 +201,12 @@ The engine and the editor (nwn-landscaper-web) change together, so each release 
 to check and publish by hand. The self-host image (`deploy/self-host/Dockerfile`) builds the editor
 of that tag by default (`WEB_REF`), and `tests/release.rs` fails when its default and `Cargo.toml`'s version disagree: bump both
 in the release's pull request, then tag the two repositories.
+
+The release's pull request in each repository also runs `scripts/changelog.sh release X.Y.Z`: `## Unreleased` and every
+`changelog.d/` file become the version's section, which is what the release's notes and the version beside the editor's title
+read. The release workflow fails if a `changelog.d/` file is left at the tag. Between releases CHANGELOG.md starts with
+`## Unreleased`, by which a build says `+dev`: the first pull request after a release puts the heading back, empty
+(`scripts/changelog.sh check` asks for it).
 
 When the engine moves to a new nwn-bake release (`Cargo.toml`'s tag), also run `scripts/shared-files.sh --pin vX.Y.Z` in
 nwn-landscaper-web with that tag, so its shared files (STYLE.md and the check configurations) stay pinned to the same nwn-bake

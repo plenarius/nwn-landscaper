@@ -69,6 +69,10 @@ jobs:
           done
           npm install -g --prefix "$HOME/.local" markdownlint-cli2@0.24.0
           pipx install reuse==6.3.0
+      # The changelog's fragments (changelog.d/): bullets, `## Unreleased` while they wait, and the fold's own test. In a pull
+      # request it warns when entries go into CHANGELOG.md instead of a fragment.
+      - name: scripts/changelog.sh check, tests/changelog.sh
+        run: scripts/changelog.sh check && tests/changelog.sh
       - name: scripts/check.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

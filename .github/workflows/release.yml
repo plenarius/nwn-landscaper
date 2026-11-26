@@ -329,11 +329,18 @@ jobs:
           ref: ${{ github.ref_name }}
           path: web
           persist-credentials: false
-      # The notes: this version's section of each changelog (the tag without its v), then how to get started.
+      # The notes: this version's section of each changelog (the tag without its v), then how to get started. A changelog entry
+      # still in a changelog.d/ file at the tag would be missing from them: the release's pull request folds every one into the
+      # version's section (scripts/changelog.sh release X.Y.Z in each repository).
       - name: Release notes
         env:
           VERSION: ${{ github.ref_name }}
         run: |
+          left=$(ls engine/changelog.d/*.md web/changelog.d/*.md 2> /dev/null || true)
+          if [ -n "$left" ]; then
+            echo "::error::not folded into ${VERSION#v}'s section (scripts/changelog.sh release ${VERSION#v}): $left"
+            exit 1
+          fi
           section() { awk -v v="## ${VERSION#v}" '$0 == v {f = 1; next} /^## / {if (f) exit} f' "$1"; }
           engine=$(section engine/CHANGELOG.md)
           web=$(section web/CHANGELOG.md)
