@@ -25,7 +25,7 @@ The mix brush paints a blend of textures in patches: grass with dry patches and 
 
 1. Switch the panel to **Mix**, or Shift-click a texture to start one.
 2. Click textures to put them in the mix or take them out. Shift-pick from the ground adds the texture under the cursor.
-3. Set **Patch size**: how large each texture's patches are.
+3. Each texture in the mix has a slider: its share of the mix. Set **Patch size**: how large each texture's patches are.
 4. Drag over the ground. The strength slider becomes **Cover**: how much of the ground under the brush the mix paints.
 
 - **Soft edge** thins the mix out toward the brush's rim, so a stroke has no hard edge.

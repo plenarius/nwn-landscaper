@@ -2,7 +2,7 @@
 
 Shape the ground with the sculpting tools, then add water, chasms and cave mouths.
 
-![An outdoor area with hills and a lake](../assets/handbook/terrain.webp)
+![A valley with a lake; the orange marks are the live path check](../assets/handbook/terrain.webp)
 
 ## Shape the ground
 
