@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The app's own page (ui/) only: the editor, served by the engine, gets no access to the app.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-status",
+    "allow-pick-folder",
+    "allow-use-folders"
+  ]
+}

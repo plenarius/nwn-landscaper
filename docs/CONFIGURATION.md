@@ -29,6 +29,7 @@ after any command (the same names as nwn-bake's options):
 | `LANDSCAPER_JOBS` (or `--jobs N`) | How many threads an import, an export or a check works on. What they make is the same whatever it is; fewer threads leave more of a shared server to everything else, more make them quicker. A team server started with it keeps that limit for every job | every core for an export; half the machine's cores (at least 1) for an import or a check |
 | `LANDSCAPER_PARTICLES` | Another particle pack's folder (its `pack.json`, `models/` and textures): the kinds an area's `ambience` placements bake into its tiles. A pack that fails its checks makes an export skip them and say why | the pack built into the program (`packs/particles`) |
 | `LANDSCAPER_LOG` | Set to anything: print every request (address, method, path, browser) to stderr | off |
+| `LANDSCAPER_WEBVIEW_SAFE` | The desktop app on Linux: `1` turns off WebKitGTK's DMA-BUF renderer and its compositing, for a window that stays blank or flickers | off; the DMA-BUF renderer alone is turned off when NVIDIA's own driver is loaded |
 | `LS_*` | Debugging switches; none is needed. Some change what an export writes, so the program names the ones that are set at start. [DEBUGGING.md](DEBUGGING.md) lists them | off |
 
 At start `landscaper serve` prints the game install, the user folder and the module it found, and where each came from, so a wrong

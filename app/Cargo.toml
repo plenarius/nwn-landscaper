@@ -1,0 +1,34 @@
+# The desktop app (docs/DESIGN-desktop-app.md): the editor in a window of its own, with the engine inside it. A member of the
+# root workspace, so one Cargo.lock, cargo-deny and cargo-about cover Tauri's crates; `cargo build` at the root still builds only
+# the engine (default-members).
+[package]
+name = "nwn-landscaper"
+version = "0.6.1"
+edition = "2024"
+rust-version = "1.98"
+license = "GPL-3.0-or-later"
+publish = false
+description = "NWN Landscaper: the editor in a window of its own, with the engine inside it"
+repository = "https://github.com/plenarius/nwn-landscaper"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+landscaper = { path = ".." }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+# What the engine prints goes to the log file: the app has no terminal (on Windows not even a console).
+stdio-override = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# The app's page built into the program, so `cargo build` makes a program that runs on its own (Tauri's CLI sets it as well).
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lints]
+workspace = true

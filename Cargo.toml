@@ -1,6 +1,10 @@
 # nwn-bake lives in its own repository (https://github.com/plenarius/nwn-bake) and comes in as a git dependency at a release tag.
 # Moonglow's `rev` below must stay the one that nwn-bake release pins (MOONGLOW.md; `tests/nwn_bake_split.rs` checks).
 [workspace]
+# The engine, and the desktop app (app/, docs/DESIGN-desktop-app.md). `cargo build` and `cargo run` mean the engine; the app needs
+# WebKitGTK's development files on Linux, so it builds only when asked (`-p nwn-landscaper`, `--workspace`).
+members = ["app"]
+default-members = ["."]
 # Vendored crates are dependencies, not members: they keep their own style and lints.
 exclude = ["vendor"]
 

@@ -16,6 +16,7 @@ path = [
     "**/*.yml",
     "**/*.hbs",
     "**/*.png",
+    "app/icons/**",
     "**/*.webp",
     "**/.gitignore",
     "**/.dockerignore",

@@ -130,9 +130,10 @@ fn quick_start() -> std::process::ExitCode {
 }
 
 /// The editor's server on this machine alone, for the desktop app: what `landscaper serve --port <port> --web <web>` does (with
-/// the OneDrive user folder a double-click also looks in), so the app and the command line can't drift apart. It serves until the
-/// process ends. A team server is never this: with `LANDSCAPER_TEAM` set it stops and says so.
-pub fn serve_local(port: u16, web: &std::path::Path) -> Result<()> {
+/// the OneDrive user folder a double-click also looks in), so the app and the command line can't drift apart. No `web` finds the
+/// editor as `serve` does. It serves until the process ends. A team server is never this: with `LANDSCAPER_TEAM` set it stops and
+/// says so.
+pub fn serve_local(port: u16, web: Option<&std::path::Path>) -> Result<()> {
     anyhow::ensure!(
         config::setting_os("LANDSCAPER_TEAM").is_none(),
         "LANDSCAPER_TEAM is set: a team server runs as `landscaper serve --team` behind its sign-in proxy, not in the app"
@@ -140,10 +141,39 @@ pub fn serve_local(port: u16, web: &std::path::Path) -> Result<()> {
     run(<cli::Cli as clap::Parser>::try_parse_from(local_args(port, web, onedrive_user_folder()))?)
 }
 
+/// The Landscaper's data folder (texture library, workspaces, exports, `settings.json`).
+pub fn data_dir() -> PathBuf {
+    paint::data_dir()
+}
+
+/// The game install and the user folder as the engine will find them, without a command line: the settings file's, else the
+/// environment's, else the usual places (and OneDrive's `Documents` on Windows). For the desktop app's first start.
+pub fn found_game() -> (Option<PathBuf>, Option<PathBuf>) {
+    let root = config::settings_root().or_else(|| mg_resman::GameInstall::detect().map(|g| g.root));
+    let user = config::settings_user().or_else(mg_resman::GameInstall::detect_user_dir).or_else(onedrive_user_folder);
+    (root, user)
+}
+
+/// Why `dir` isn't the game's folder (it lacks `data/nwn_base.key`, say), or None when it is.
+pub fn why_not_game(dir: &std::path::Path) -> Option<String> {
+    mg_resman::GameInstall::why_not(dir)
+}
+
+/// Keeps the game's folders in the settings file (`NWN_ROOT`, `NWN_HOME`; no user folder removes `NWN_HOME`), for every later
+/// start. Before the engine opens the game: it reads them once.
+pub fn save_game_folders(root: &std::path::Path, user: Option<&std::path::Path>) -> Result<()> {
+    let text = |p: &std::path::Path| p.to_str().map(str::to_string).with_context(|| format!("{} isn't valid Unicode", p.display()));
+    let root = text(root)?;
+    let user = user.map(text).transpose()?;
+    config::save_settings(&[("NWN_ROOT", Some(&root)), ("NWN_HOME", user.as_deref())])
+}
+
 /// [`serve_local`]'s command line.
-fn local_args(port: u16, web: &std::path::Path, user: Option<PathBuf>) -> Vec<std::ffi::OsString> {
+fn local_args(port: u16, web: Option<&std::path::Path>, user: Option<PathBuf>) -> Vec<std::ffi::OsString> {
     let mut args: Vec<std::ffi::OsString> = vec!["landscaper".into(), "serve".into(), "--port".into(), port.to_string().into()];
-    args.extend(["--web".into(), web.as_os_str().to_owned()]);
+    if let Some(web) = web {
+        args.extend(["--web".into(), web.as_os_str().to_owned()]);
+    }
     if let Some(user) = user {
         args.extend(["--user".into(), user.into_os_string()]);
     }
@@ -175,8 +205,8 @@ fn quick_port() -> QuickPort {
     QuickPort::None
 }
 
-/// Whether what listens on `port` is the Landscaper: its `/healthz` answers with an `X-Landscaper` header.
-fn is_landscaper(port: u16) -> bool {
+/// Whether what listens on `port` (on 127.0.0.1) is the Landscaper: its `/healthz` answers with an `X-Landscaper` header.
+pub fn is_landscaper(port: u16) -> bool {
     use std::io::{Read, Write};
     let ask = || -> std::io::Result<String> {
         let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
@@ -439,11 +469,14 @@ mod tests {
     fn the_apps_server_is_serve_on_this_machine_alone() {
         use clap::Parser;
         let web = std::path::Path::new("/opt/app/web");
-        let cli = crate::cli::Cli::try_parse_from(super::local_args(8766, web, Some("/u".into()))).unwrap();
+        let cli = crate::cli::Cli::try_parse_from(super::local_args(8766, Some(web), Some("/u".into()))).unwrap();
         let crate::cli::Command::Serve(s) = cli.command else { panic!("not serve") };
         assert_eq!((s.port, s.bind.as_str(), s.web.as_deref()), (8766, "127.0.0.1", Some(web)));
         assert!(!s.team && !s.allow_remote && !s.insecure && !s.reload_on_rebuild);
         assert_eq!(cli.game.user.as_deref(), Some(std::path::Path::new("/u")));
+        let cli = crate::cli::Cli::try_parse_from(super::local_args(8767, None, None)).unwrap();
+        let crate::cli::Command::Serve(s) = cli.command else { panic!("not serve") };
+        assert!(s.web.is_none() && cli.game.user.is_none() && s.port == 8767);
     }
 
     #[test]
