@@ -3,7 +3,7 @@
 A cave or an interior starts as solid rock. You cut rooms and passages out of it, and what is left is the wall. Start one with
 **New area**, *Cave* or *Interior*, or with a sample descent to change.
 
-![A cave with dug passages and rooms](../assets/handbook/cave.webp)
+![The sample descending cave: halls stepping down, joined by ramps](../assets/handbook/cave.webp)
 
 ## Dig passages
 

@@ -14,7 +14,7 @@ and costs the game no objects.
 - **Blocks walking:** creatures walk round what you scatter.
 - **Not on steep ground or water:** keeps trees off cliffs and out of lakes.
 
-![Scatter painting trees](../assets/handbook/scatter.webp)
+![Trees scattered round a lake](../assets/handbook/scatter.webp)
 
 ## Place
 

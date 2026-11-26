@@ -16,7 +16,7 @@ module in the toolset or the game.
 A module already there takes only the new tiles. The module before is kept as `<module>.mod.bak`, and a failed export leaves the
 module and the hak as they were. `report.json`, beside the module, holds the whole report.
 
-![The path check's markers after an export](../assets/handbook/export.webp)
+![The path check's markers: red where a route stops short, orange on a tile too winding](../assets/handbook/export.webp)
 
 ## Check without exporting
 

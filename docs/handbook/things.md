@@ -3,11 +3,11 @@
 **Things** (`t`) places what the game treats as objects: creatures, waypoints, triggers and transitions, sounds, encounters,
 stores, items, doors and placeables. Each comes from a blueprint: the module's, the game's, or one of your own.
 
-![The Things tool with a creature's properties](../assets/handbook/things.webp)
+![The Things tool: the kinds, and the creature blueprints to place](../assets/handbook/things.webp)
 
 ## Place one
 
-1. Pick **Things** and find a blueprint in the list by name, tag or resref.
+1. Pick **Things**, then the kind (Creature, Waypoint, Door and the rest), and find a blueprint in the list by name or resref.
 2. Click the ground to place it. For a trigger or an encounter, click its corners and press Enter (**Finish the outline**).
 3. Open **Properties** to set its tag, name, scripts and local variables.
 
