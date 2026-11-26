@@ -33,7 +33,8 @@ landscapes in *New area* pick one that fits their light.
 
 - **Sky packs** add skies: new rows of `skyboxes.2da` with their models and textures, installed as texture packs are. The export
   puts them in their own hak, `ls_skies.hak`. Setting one up is a job for whoever runs the Landscaper:
-  [Sky packs](../SKY-PACKS.md).
+  [Sky packs](../SKY-PACKS.md). The first, [Preset skies](../PRESET-SKIES.md), has a sky for each Sky & fog look that shows one,
+  made from your own download of Real Skies.
 - **Real Skies** replaces the game's five stock skies with photographed panoramas. It is a hak for the module, made by a script
   from your own download: [Real Skies for modules](../REAL-SKIES.md).
 

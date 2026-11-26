@@ -40,5 +40,5 @@ The view only sketches where the particles go. The game draws the particle pack'
 before you call an area done.
 
 !!! note "The particle pack"
-    The kinds come from the particle pack the engine serves. A team can ship its own pack (`LANDSCAPER_PARTICLES`, see
-    [Configuration](../CONFIGURATION.md)). If the kind list is empty, the engine has no pack.
+    The kinds come from the particle pack built into the engine. A team can ship its own pack instead
+    (`LANDSCAPER_PARTICLES`, see [Configuration](../CONFIGURATION.md)).

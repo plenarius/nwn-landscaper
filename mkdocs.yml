@@ -105,6 +105,7 @@ nav:
       - The review service: REVIEW-SERVICE.md
       - Real Skies for modules: REAL-SKIES.md
       - Sky packs: SKY-PACKS.md
+      - Preset skies: PRESET-SKIES.md
       - Texture packs: TEXTURE-PACKS.md
       - Debugging switches: DEBUGGING.md
   - Internals:
