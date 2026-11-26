@@ -36,7 +36,8 @@ pub(super) fn tile_model(
     for &t in &g.tris {
         parts[part(hm.as_deref(), t.map(|v| g.verts[v as usize]), [ox, oy, base]) as usize].push(t);
     }
-    // Steep ground where its paint changes: cut so each piece has one sample's (split.rs).
+    // Steep ground where its paint changes: cut so each piece has one texture, and each steep face's texture (split.rs).
+    let mut rock_paint = None;
     if let Some(h) = hm.as_deref().filter(|h| painter.is_some() && h.painted()) {
         let mut levels = std::collections::HashMap::new();
         for (x, y) in (tx.saturating_sub(1)..=tx + 1).flat_map(|x| (ty.saturating_sub(1)..=ty + 1).map(move |y| (x, y))) {
@@ -54,7 +55,7 @@ pub(super) fn tile_model(
             base: &level,
             steep: &|x, y, f| part(Some(h), f, [centre(x), centre(y), level(x, y)]) == Part::Rock,
         };
-        split::split(&mut g, (tx, ty), &mut parts, Part::Rock as usize, &area);
+        rock_paint = Some(split::split(&mut g, (tx, ty), &mut parts, Part::Rock as usize, &area));
     }
     let [ground, rock, void, walls] = parts;
     let mut s = format!(
@@ -105,12 +106,14 @@ pub(super) fn tile_model(
                 // Several: the tile's own baked texture over its square (baked from three sides, as the one-texture tiles draw it).
                 _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&square)),
             }
-            // Steep faces: the texture painted nearest each face's middle.
+            // Steep faces: each one's texture from split.rs, else the texture painted nearest the face's middle.
             let mut by_material: std::collections::BTreeMap<u8, Vec<[u32; 3]>> = Default::default();
-            for &t in &rock {
-                let c = t.map(|v| g.verts[v as usize]);
-                let (cx, cy) = ((c[0][0] + c[1][0] + c[2][0]) / 3.0 + ox, (c[0][1] + c[1][1] + c[2][1]) / 3.0 + oy);
-                by_material.entry(p.nearest(cx, cy)).or_default().push(t);
+            for (k, &t) in rock.iter().enumerate() {
+                let m = rock_paint.as_ref().and_then(|r| r.get(k).copied()).unwrap_or_else(|| {
+                    let c = t.map(|v| g.verts[v as usize]);
+                    p.nearest((c[0][0] + c[1][0] + c[2][0]) / 3.0 + ox, (c[0][1] + c[1][1] + c[2][1]) / 3.0 + oy)
+                });
+                by_material.entry(m).or_default().push(t);
             }
             for (k, (m, faces)) in by_material.iter().enumerate() {
                 if p.imported(*m) {
