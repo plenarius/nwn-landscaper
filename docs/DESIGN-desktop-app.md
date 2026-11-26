@@ -1,7 +1,7 @@
 # Design: the Landscaper as a desktop app
 
 Status: design, not built. Written 2026-11-26 for the maintainer's review before any code, with a prototype run on Linux,
-Windows and macOS.
+Windows and macOS; every question decided the same day.
 
 One signed download per system: Windows, macOS and Linux each get an installer. It starts the engine and shows the editor in a
 window of its own, with no browser and no terminal window. Builders on their own machine use it; a team server stays a browser
@@ -24,6 +24,7 @@ Words used here:
   drawing buffer, and then in 3 starts of 5 (Safari there showed no page at all), so **a real Mac must confirm macOS** ("The
   prototype"). None of these machines has a GPU:
   the prototype shows that the view draws, not how fast.
+- **Every question below is decided at its recommendation** (2026-11-26).
 - **The engine runs inside the app:** the shell calls the engine's `serve` on a thread, on 127.0.0.1 as today. One program to
   sign, no second process to leave behind, no terminal window. The prototype's sidecar left its engine running when the shell
   was killed (question 1).
@@ -122,11 +123,19 @@ on 2027-02-24: [run 45888476374](https://github.com/plenarius/nwn-landscaper/act
 
 ## Questions to settle
 
-Each question gives the recommendation first and the options not chosen after it.
+Each question gives the decision first and the options not chosen after it.
+
+**Decided (2026-11-26), every question at its recommendation:** the engine inside the app (question 1); the editor as a `web/`
+folder in the bundle (question 2); port 8766 of its own (question 3); NSIS, a `.dmg`, an AppImage and a `.deb` (question 4);
+signing through Tauri with today's identities (question 5); Tauri's updater (question 6); the engine's data folder unchanged
+(question 7); detection, then a folder picker and `settings.json` (question 8); all three webviews, with the Linux switch
+(question 9); team servers in the browser (question 10); the archives kept beside the installers (question 11); `app/` in this
+repository's workspace (question 12). The maintainer tries the prototype's `.dmg` on a real Mac. The build order below follows
+these.
 
 ### 1. How the app runs the engine
 
-**Recommended: inside the app, on a thread.** The engine becomes a library as well as a program: `src/lib.rs` holds today's
+**Decided: inside the app, on a thread.** The engine becomes a library as well as a program: `src/lib.rs` holds today's
 modules, and `src/main.rs` keeps the command line. The shell calls `serve::serve("127.0.0.1", port, web, false)` on a thread
 before it opens the window, and the window loads `http://127.0.0.1:<port>/` as the prototype does. The engine's request handling,
 `Host` check and `X-Landscaper` header stay as they are.
@@ -169,7 +178,7 @@ Considered and not chosen:
 
 ### 2. How the editor ships in the app
 
-**Recommended: a `web/` folder inside the bundle,** passed to `serve` as today. On Windows it sits beside the program in the
+**Decided: a `web/` folder inside the bundle,** passed to `serve` as today. On Windows it sits beside the program in the
 install folder, in `NWN Landscaper.app/Contents/Resources/web` on macOS (inside the signature), and in `/usr/lib/NWN Landscaper/web`
 in the `.deb` and AppImage. The release packs the editor at the same tag, as it packs `web/` now. The prototype's bundles found it
 in all three places.
@@ -183,7 +192,7 @@ Considered and not chosen:
 
 ### 3. Which address the window loads
 
-**Recommended: `http://127.0.0.1:8766/`, a fixed port of its own.** It differs from a double-click's 8765, so the app and a
+**Decided: `http://127.0.0.1:8766/`, a fixed port of its own.** It differs from a double-click's 8765, so the app and a
 browser session keep separate storage and can run together. A second start of the app brings its window forward instead of
 starting another engine (Tauri's single-instance plugin), so with the engine inside the app nothing of ours holds 8766 when the
 app starts. If another program holds it, the app takes the first free port from 8767 to 8785 and says in the log that the editor's
@@ -197,7 +206,7 @@ Considered and not chosen:
 
 ### 4. Installers
 
-**Recommended:**
+**Decided:**
 
 | System | Installer | Notes |
 |---|---|---|
@@ -218,7 +227,7 @@ Considered and not chosen:
 
 ### 5. Signing
 
-**Recommended: Tauri signs, with the identities the release already uses.** Signing has to happen while Tauri packs: the installer
+**Decided: Tauri signs, with the identities the release already uses.** Signing has to happen while Tauri packs: the installer
 holds the program, so signing the program after the installer is built leaves an unsigned copy inside it.
 
 - **Windows:** `bundle.windows.signCommand` runs a command for each file Tauri signs: the program, the NSIS installer and its
@@ -239,7 +248,7 @@ Considered and not chosen: **our own sign steps after Tauri.** It would mean unp
 
 ### 6. Updates
 
-**Recommended: Tauri's updater, asking first.** At start the app reads
+**Decided: Tauri's updater, asking first.** At start the app reads
 `https://github.com/plenarius/nwn-landscaper/releases/latest/download/latest.json`. When it names a newer version, the editor's
 version menu shows "Update to 0.7.0" with the release notes; the app downloads the installer, checks it against the updater's
 public key built into the app, installs and restarts. Windows reinstalls through the NSIS installer, macOS replaces the app from
@@ -259,7 +268,7 @@ Considered and not chosen:
 
 ### 7. Where the app keeps its data
 
-**Recommended: the engine's data folder, unchanged on every system,** so the app, a double-clicked program and the command line
+**Decided: the engine's data folder, unchanged on every system,** so the app, a double-clicked program and the command line
 share areas, workspaces and the texture library: `%LOCALAPPDATA%\landscaper` on Windows, `~/.local/share/landscaper` on Linux and
 macOS. The webview keeps its own storage where Tauri puts it, under the app's identifier (`io.github.plenarius.nwnlandscaper`):
 `%LOCALAPPDATA%\io.github.plenarius.nwnlandscaper` on Windows, `~/Library/WebKit/io.github.plenarius.nwnlandscaper` on macOS and
@@ -271,7 +280,7 @@ moving the folder of every Mac user of the archive, and the command line would h
 
 ### 8. Finding the game
 
-**Recommended: detect as today, then ask in the window, and keep the answer in a settings file.** The engine's detection already
+**Decided: detect as today, then ask in the window, and keep the answer in a settings file.** The engine's detection already
 covers Steam, GOG and Beamdog on all three systems. When it finds nothing, the app shows its own page before the editor: "The
 Landscaper needs Neverwinter Nights: Enhanced Edition. Choose its folder (the one with `data/nwn_base.key`)", with a folder
 picker, and the same for the user folder when the game has never been started. The answer goes to `settings.json` in the data
@@ -289,7 +298,7 @@ coming. The archive's terminal program gets the same prompt for the terminal app
 
 ### 9. The 3D view in each webview
 
-**Recommended: ship on all three webviews once a real Mac shows the view, with a fallback for Linux.** The prototype drew the view
+**Decided: ship on all three webviews once a real Mac shows the view, with a fallback for Linux.** The prototype drew the view
 in all three webviews' canvases, and on screen on Linux and Windows (above). What it can't show is speed, a desktop with a GPU, or
 a real Mac's screen:
 
@@ -307,14 +316,14 @@ The editor needs no change for any of the three: the prototype ran the editor's 
 
 ### 10. Team servers
 
-**Recommended: unchanged, in the browser.** A team server (`serve --team`, [TEAM-SERVER.md](TEAM-SERVER.md)) sits behind a
+**Decided: unchanged, in the browser.** A team server (`serve --team`, [TEAM-SERVER.md](TEAM-SERVER.md)) sits behind a
 sign-in proxy that many people reach with their own browsers; its users don't install anything. The app only ever serves itself on
 127.0.0.1, refuses `--team`, and never loads another site in its window: a link to anything else (the release notes, the handbook,
 a pull request) opens in the default browser.
 
 ### 11. The current download
 
-**Recommended: keep it, renamed for what it is.** The archives stay in each release as "the program alone: for the command line,
+**Decided: keep it, renamed for what it is.** The archives stay in each release as "the program alone: for the command line,
 for running it on a server, or with your own browser". The release notes put the installers first. The double-click behaviour
 stays as it is. Nothing removes it: the command line is how imports, exports and checks are scripted, and Linux users whose
 WebKitGTK can't draw the view need it.
@@ -324,7 +333,7 @@ to come out of the app bundle, which is awkward on macOS (`Contents/MacOS`).
 
 ### 12. Where the app's code lives
 
-**Recommended: `app/` in this repository, a member of its Cargo workspace.** One `Cargo.lock`, so cargo-deny, cargo-about and the
+**Decided: `app/` in this repository, a member of its Cargo workspace.** One `Cargo.lock`, so cargo-deny, cargo-about and the
 release's source archive (which must hold every dependency, as the GPL asks) cover Tauri's crates with no second pass. The root
 package stays the default member, so `cargo build` and the test workflow still build only the engine; a job of the test workflow
 builds `app/` with Linux's WebKitGTK packages installed. The app's version is the engine's (Tauri reads it from `Cargo.toml` when
@@ -356,7 +365,7 @@ trying it.
 | 2 | `app/`: the shell with the engine inside, port 8766 and its checks, single instance, the first-start page and folder picker, the log, links to the default browser, downloads to the Downloads folder, the Linux webview switch | engine | 8 h | 1 h: try it on each system |
 | 3 | The editor in the app: no "How to start the engine" link, a Help menu (data folder, log), the update item; on macOS the kept drawing buffer, if a real Mac needs it | web | 3 h | 20 min |
 | 4 | Release: the three bundles in `release.yml`, signed by Tauri with today's identities, the smoke test installing and starting each bundle, the source archive and licences covering `app/`; one test tag | engine | 8 h | 1 h |
-| 5 | Updates: the updater key (the maintainer creates it and adds the two secrets), `latest.json`, the update item | engine + web | 4 h | 30 min |
+| 5 | Updates: the updater key (the hub creates it with the maintainer, keeps it in the password manager and adds the two secrets), `latest.json`, the update item | engine + web | 4 h | 30 min |
 | 6 | Docs: the handbook's install page, README, QUICKSTART, the release notes' "Getting started", CHANGELOG | both | 2 h | 20 min |
 
 About 29 hours of agent time after the prototype, and 4 hours of the maintainer's. Steps 1 and 3 can start at once; step 2 needs
@@ -377,14 +386,12 @@ About 29 hours of agent time after the prototype, and 4 hours of the maintainer'
 
 ## For the maintainer
 
-1. **Try the prototype on a real Mac with Apple silicon** (10 minutes). Download `installers-macos-latest` from
-   [the prototype's run](https://github.com/plenarius/nwn-landscaper/actions/runs/45888476374), open the `.dmg` and drag the app
-   to Applications. It is unsigned, so clear the download mark first: in Terminal,
+1. **Try the prototype on a real Mac with Apple silicon** (10 minutes; the maintainer does this). Download
+   `installers-macos-latest` from [the prototype's run](https://github.com/plenarius/nwn-landscaper/actions/runs/45888476374),
+   open the `.dmg` and drag the app to Applications. It is unsigned, so clear the download mark first: in Terminal,
    `xattr -dr com.apple.quarantine "/Applications/NWN Landscaper.app"`. Without the game it shows plain green ground; with it,
    textured ground. If the 3D area stays empty, step 3 keeps the drawing buffer on macOS ("The empty view on macOS"), and that
    needs a second try on the Mac. `installers-windows-latest` and `installers-ubuntu-24.04` are there too, for a machine with a
    GPU.
-2. **The recommendations above,** most of all: the engine inside the app (question 1), the updater and its key (question 6),
-   and keeping the archives (question 11).
-3. **At step 5: the updater key.** Create it (`tauri signer generate`), keep a copy outside GitHub, and add the private key and its
-   password to the `release` environment's secrets.
+2. **At step 5: the updater key.** The hub creates it with the maintainer, keeps the private key and its password in the password
+   manager, and adds both to the `release` environment's secrets.
