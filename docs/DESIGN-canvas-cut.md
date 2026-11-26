@@ -276,8 +276,8 @@ and R on hills, corners and roads seen from above. It showed in two places: whit
 bank no longer hides the water behind it), and a shallower dip where a road crosses a crest on the skyline. S, which keeps 0.5 m
 cells where a shore runs, fixes the shores for 5,700 triangles more. A 64 px texture is blurry from a high camera. Small textures
 must be the 512 px bake shrunk down (the engine's own 128 px bake speckles), and the water past the cut uses the export's
-shoreline. **Decided for step 2 (2026-11-25): G at 128 px with full detail along shores and roads.** Trees as two crossed pictures from 25 m out
-are on trial next (variant T).
+shoreline. **Decided for step 2 (2026-11-25): G at 128 px with full detail along shores and roads.** Trees as two crossed
+pictures from 25 m out are on trial next (variant T).
 
 ### 4. Tile levels and path nodes
 
@@ -613,7 +613,7 @@ From the server's code (`nwserver-linux`) and a run of a two-area test module on
   into a trigger whose OnEnter is `nw_g0_transition` arrived in the other area at the waypoint; one walking into a trigger with no
   OnEnter stood in it and stayed.
 - **Arrival facing.** Jumping to a waypoint takes the waypoint's orientation (`CNWSCreature::AIActionJumpToObject`, 0x4b28b0);
-  the run arrived facing east at an east-facing waypoint. So "facing the way the player walked" is just the waypoint's facing.
+  the run arrived facing east at an east-facing waypoint. So "facing the way the player walked" is the waypoint's facing.
 - **Depth.** Creatures reached 0.35 m from the area's edge, well inside a 1.5 m trigger.
 
 **Question 5: the recommendation (automatic crossings) holds, with one addition:** each crossing trigger gets a small OnEnter
@@ -632,7 +632,7 @@ crossing.
 | `check` 32×32 / 42×42 | 8.9 s / 20.5 s | | 0.35 / 0.6 GB | |
 
 A second 42 by 42 run took 393 s with the machine busy with other work; the runs of 16 in a row were stopped there. Each
-export is its own process and uses every core, so a row of exports simply adds up: **16 pieces take about 40 minutes** (16 ×
+export is its own process and uses every core, so a row of exports adds up: **16 pieces take about 40 minutes** (16 ×
 2.5 min) the first time on this desktop. Building the halo as tiles would make it 72 minutes; the design reads the halo
 without building it, which adds mostly shadow-map work (33 s of CPU time at 32 by 32, 61 s at 42 by 42), so a few seconds a
 piece.
