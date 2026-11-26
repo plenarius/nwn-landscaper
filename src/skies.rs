@@ -293,10 +293,11 @@ fn lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 impl Library {
-    fn open(dir: &Path) -> Library {
-        let catalog = crate::atomic::read(&dir.join("catalog.json")).ok().and_then(|d| serde_json::from_slice::<Value>(&d).ok());
-        let list = |k: &str| catalog.as_ref().and_then(|v| v[k].as_array().cloned()).unwrap_or_default();
-        Library { dir: dir.to_path_buf(), skies: list("skies"), packs: list("packs") }
+    /// The library in `dir`: empty when it has no catalog yet, an error when its catalog can't be read
+    /// ([`crate::packs::read_catalog`]).
+    fn open(dir: &Path) -> Result<Library> {
+        let [skies, packs] = crate::packs::read_catalog(dir, "sky", ["skies", "packs"])?;
+        Ok(Library { dir: dir.to_path_buf(), skies, packs })
     }
 
     fn save(&self) -> Result<()> {
@@ -403,7 +404,7 @@ fn install_into(
     }
 
     let _one = lock();
-    let mut library = Library::open(dir);
+    let mut library = Library::open(dir)?;
     library.clash(&m)?;
     let replaced = library.pack(&m.id).and_then(|p| p["version"].as_str().map(str::to_string));
     let row_of =
@@ -522,7 +523,7 @@ pub fn remove(id: &str, force: bool) -> Result<Removed> {
 
 fn remove_from(dir: &Path, id: &str, force: bool, used: &dyn Fn(&[String]) -> Vec<String>) -> Result<Removed> {
     let _one = lock();
-    let mut library = Library::open(dir);
+    let mut library = Library::open(dir)?;
     let pack = library.pack(id).cloned().with_context(|| format!("no sky pack '{id}' is installed"))?;
     let name = pack["name"].as_str().unwrap_or(id).to_string();
     let ids: Vec<String> = library.skies.iter().filter(|s| s["pack"] == id).filter_map(|s| s["id"].as_str().map(str::to_string)).collect();
@@ -542,19 +543,26 @@ fn remove_from(dir: &Path, id: &str, force: bool, used: &dyn Fn(&[String]) -> Ve
 }
 
 /// The installed skies (id, name, preset, models, pack, row) and packs, as the catalog records them.
-pub fn installed() -> (Vec<Value>, Vec<Value>) {
-    let l = Library::open(&sky_dir());
-    (l.skies, l.packs)
+pub fn installed() -> Result<(Vec<Value>, Vec<Value>)> {
+    let l = Library::open(&sky_dir())?;
+    Ok((l.skies, l.packs))
 }
 
-/// Whether `row` of `skyboxes.2da` is an installed sky's: an area with that `SkyBox` needs [`HAK`] wherever it goes.
+/// Whether `row` of `skyboxes.2da` is an installed sky's: an area with that `SkyBox` needs [`HAK`] wherever it goes. With a
+/// sky catalog that can't be read, any row from [`FIRST_ROW`] up, where only Landscaper skies go, counts (said in the log).
 pub fn is_skys_row(row: u8) -> bool {
-    rows_in(&sky_dir()).contains(&usize::from(row))
+    rows_in(&sky_dir()).map_or_else(
+        |e| {
+            eprintln!("{e:#}: taking skyboxes.2da row {row} as a Landscaper sky's if it is {FIRST_ROW} or more");
+            usize::from(row) >= FIRST_ROW
+        },
+        |rows| rows.contains(&usize::from(row)),
+    )
 }
 
 /// Every installed sky's row, in the sky library `dir`.
-fn rows_in(dir: &Path) -> BTreeSet<usize> {
-    Library::open(dir).rows_but("")
+fn rows_in(dir: &Path) -> Result<BTreeSet<usize>> {
+    Ok(Library::open(dir)?.rows_but(""))
 }
 
 /// The sky an area's atmosphere names (`"sky": "<id>"`), if it names one.
@@ -705,7 +713,7 @@ pub fn prepare(id: &str, hak_dir: &Path) -> Result<u8> {
 }
 
 fn prepare_in(dir: &Path, id: &str, table: &mg_2da::TwoDa, codepage: mg_core::Codepage, hak_dir: &Path) -> Result<u8> {
-    let library = Library::open(dir);
+    let library = Library::open(dir)?;
     let sky = library.sky(id).with_context(|| {
         format!("the area's sky '{id}' is not installed: install the sky pack that has it (landscaper skies get), or choose another sky")
     })?;
@@ -904,7 +912,7 @@ pub fn run(command: crate::cli::Skies) -> Result<()> {
             }
         }
         Skies::List { index } => {
-            let (skies, packs) = installed();
+            let (skies, packs) = installed()?;
             println!("installed skies ({}):", skies.len());
             for s in &skies {
                 println!(
@@ -1236,8 +1244,14 @@ mod tests {
         let module = Module { table: table(false), has: &stock };
         let l = list(&src, "dusky", "1", "dk", &[("dusk", ["dk_a", "dk_a", "dk_a", "dk_a"])]);
         install_with(&dir, &make_with(&l, &src.join("out"), None, None).unwrap().zip, &module).unwrap();
-        assert_eq!(rows_in(&dir), BTreeSet::from([32]));
-        assert!(rows_in(&scratch("ours-none")).is_empty(), "no sky library: no row is ours");
+        assert_eq!(rows_in(&dir).unwrap(), BTreeSet::from([32]));
+        assert!(rows_in(&scratch("ours-none")).unwrap().is_empty(), "no sky library: no row is ours");
+        // A catalog that doesn't read is an error, not a library with no skies.
+        let damaged = scratch("ours-damaged");
+        std::fs::create_dir_all(&damaged).unwrap();
+        std::fs::write(damaged.join("catalog.json"), "{\"skies\": [").unwrap();
+        let e = format!("{:#}", rows_in(&damaged).unwrap_err());
+        assert!(e.contains("the sky library's catalog.json doesn't parse"), "{e}");
     }
 
     #[test]
