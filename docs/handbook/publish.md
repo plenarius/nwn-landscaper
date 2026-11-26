@@ -16,10 +16,10 @@ in [The whole path](../BUILDER-WORKFLOW.md#checks-before-it-is-handed-over).
 
 ## Package for your module
 
-Without a review service, **Share > Package for your module** builds a zip in the layout of your module's source: the area and tile files, the texture
-library (and the skies' hak when the area has one), your new blueprints, conversations and scripts, `module.ifo.json` with the
-area added, and a `MANIFEST.md`. Unzip it into your module's repository and commit it. It needs `nwn_gff` from
-[neverwinter.nim](https://github.com/niv/neverwinter.nim) on your `PATH`.
+Without a review service, **Share > Package for your module** builds a zip in the layout of your module's source: the area and
+tile files, the texture library (and the skies' hak when the area has one), your new blueprints, conversations and scripts,
+`module.ifo.json` with the area added, and a `MANIFEST.md`. Unzip it into your module's repository and commit it. It needs
+`nwn_gff` from [neverwinter.nim](https://github.com/niv/neverwinter.nim) on your `PATH`.
 
 ![The Share menu without a review service: Package for your module](../assets/handbook/publish.webp)
 
