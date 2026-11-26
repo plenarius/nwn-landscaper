@@ -132,6 +132,11 @@ In the client, an alpha-blended shaft drew as a flat, even band; the additive on
 its alpha, and in its colour for the additive ones, so the emitter's colours tint it. Replace a file with one of the same name,
 size and frame layout.
 
+## Licence
+
+The pack is under **CC0-1.0** ([`LICENSE`](LICENSE)): use, change and ship it in any hak, with no conditions. The rest of the
+repository stays `GPL-3.0-or-later`. The stock textures the models name are the game's, and aren't part of the pack.
+
 ## Not measured
 
 **Frame time.** Every still came from the game client on the CPU renderer (llvmpipe), which can't tell what a GPU spends on

@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: CC0-1.0
 
 """Writes the pack's placeholder textures beside this file: simple shapes for an artist to replace.
 

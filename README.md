@@ -231,3 +231,5 @@ You should have received a copy of the GNU General Public License along with thi
 - `src/pathnodes.json` is measured data: where each tile layout puts its path nodes and exit points, measured on a real game
   install by watching the server route creatures ([research/FINDINGS.md](research/FINDINGS.md)). It holds no file or code from
   the game, and is under **CC0-1.0** (`LICENSES/CC0-1.0.txt`).
+- The particle pack (`packs/particles/`: its models, textures, `pack.json` and sample `placeables.2da` rows) is under **CC0-1.0**
+  (`packs/particles/LICENSE`), so any team can ship it in its haks. Everything else stays `GPL-3.0-or-later`.
