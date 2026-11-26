@@ -1,0 +1,117 @@
+# Landscaper particle pack: Blowing sand. Written from scratch; derived from the stock fx_step_dust's tinted smoke, streaming.
+newmodel lsp_sandblow
+setsupermodel lsp_sandblow NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_sandblow
+node dummy lsp_sandblow
+  parent NULL
+endnode
+node emitter sand
+  parent lsp_sandblow
+  position 0 0 0.25
+  orientation 0 1 0 1.5708
+  update Fountain
+  render Normal
+  blend Normal
+  texture lspt_sandstrk
+  xgrid 1
+  ygrid 1
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 1
+  m_isTinted 0
+  bounce 0
+  random 0
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 6
+  lifeExp 3
+  colorStart 0.86 0.74 0.52
+  colorEnd 0.86 0.74 0.52
+  alphaStart 0.45
+  alphaEnd 0
+  sizeStart 1.2
+  sizeEnd 2
+  velocity 2.5
+  randvel 0.6
+  spread 0.2
+  grav 0
+  drag 0
+  particleRot 0
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 0
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 30
+  ysize 500
+endnode
+endmodelgeom lsp_sandblow
+
+newanim default lsp_sandblow
+  length 0.0333
+  transtime 0.25
+  animroot lsp_sandblow
+  node dummy lsp_sandblow
+    parent NULL
+  endnode
+  node emitter sand
+    parent lsp_sandblow
+    birthratekey 1
+      0 6
+    endlist
+  endnode
+doneanim default lsp_sandblow
+
+newanim on lsp_sandblow
+  length 0.0333
+  transtime 0.25
+  animroot lsp_sandblow
+  node dummy lsp_sandblow
+    parent NULL
+  endnode
+  node emitter sand
+    parent lsp_sandblow
+    birthratekey 1
+      0 6
+    endlist
+  endnode
+doneanim on lsp_sandblow
+
+newanim off lsp_sandblow
+  length 0.0333
+  transtime 0.25
+  animroot lsp_sandblow
+  node dummy lsp_sandblow
+    parent NULL
+  endnode
+  node emitter sand
+    parent lsp_sandblow
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+doneanim off lsp_sandblow
+
+donemodel lsp_sandblow

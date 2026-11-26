@@ -1,0 +1,116 @@
+# Landscaper particle pack: Embers. Written from scratch; derived from the stock c_fire's sparks.
+newmodel lsp_embers
+setsupermodel lsp_embers NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_embers
+node dummy lsp_embers
+  parent NULL
+endnode
+node emitter embers
+  parent lsp_embers
+  position 0 0 0.6
+  update Fountain
+  render Normal
+  blend Lighten
+  texture fxpa_flare
+  xgrid 1
+  ygrid 1
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 1
+  m_isTinted 0
+  bounce 0
+  random 0
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 5
+  lifeExp 3
+  colorStart 1 0.65 0.25
+  colorEnd 0.9 0.25 0.05
+  alphaStart 1
+  alphaEnd 0
+  sizeStart 0.07
+  sizeEnd 0.03
+  velocity 0.9
+  randvel 0.5
+  spread 0.4
+  grav 0
+  drag 0
+  particleRot 0
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 0
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 40
+  ysize 40
+endnode
+endmodelgeom lsp_embers
+
+newanim default lsp_embers
+  length 0.0333
+  transtime 0.25
+  animroot lsp_embers
+  node dummy lsp_embers
+    parent NULL
+  endnode
+  node emitter embers
+    parent lsp_embers
+    birthratekey 1
+      0 5
+    endlist
+  endnode
+doneanim default lsp_embers
+
+newanim on lsp_embers
+  length 0.0333
+  transtime 0.25
+  animroot lsp_embers
+  node dummy lsp_embers
+    parent NULL
+  endnode
+  node emitter embers
+    parent lsp_embers
+    birthratekey 1
+      0 5
+    endlist
+  endnode
+doneanim on lsp_embers
+
+newanim off lsp_embers
+  length 0.0333
+  transtime 0.25
+  animroot lsp_embers
+  node dummy lsp_embers
+    parent NULL
+  endnode
+  node emitter embers
+    parent lsp_embers
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+doneanim off lsp_embers
+
+donemodel lsp_embers

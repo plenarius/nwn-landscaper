@@ -1,0 +1,193 @@
+# Landscaper particle pack: Waterfall spray. Written from scratch; derived from the stock plc_shrine's FountainSpray and splash.
+newmodel lsp_fallspray
+setsupermodel lsp_fallspray NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_fallspray
+node dummy lsp_fallspray
+  parent NULL
+endnode
+node emitter spray
+  parent lsp_fallspray
+  position 0 0 0.1
+  update Fountain
+  render Motion_Blur
+  blend Lighten
+  texture fxpa_splash
+  xgrid 1
+  ygrid 1
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 0
+  m_isTinted 0
+  bounce 0
+  random 0
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 16
+  lifeExp 1
+  colorStart 0.9 0.95 1
+  colorEnd 0.7 0.8 0.9
+  alphaStart 0.8
+  alphaEnd 0.1
+  sizeStart 0.15
+  sizeEnd 0.5
+  velocity 3
+  randvel 1
+  spread 0.7
+  grav 6
+  drag 0
+  particleRot 0
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 0
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 200
+  ysize 100
+endnode
+node emitter puff
+  parent lsp_fallspray
+  position 0 0 0.3
+  update Fountain
+  render Billboard_to_World_Z
+  blend Normal
+  texture fxpa_mist
+  xgrid 4
+  ygrid 4
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 0
+  m_isTinted 0
+  bounce 0
+  random 1
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 6
+  lifeExp 3
+  colorStart 0.92 0.94 0.96
+  colorEnd 0.88 0.9 0.93
+  alphaStart 0.4
+  alphaEnd 0
+  sizeStart 1
+  sizeEnd 3.5
+  velocity 0.5
+  randvel 0.3
+  spread 0.8
+  grav 0
+  drag 0
+  particleRot 0.1
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 15
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 250
+  ysize 150
+endnode
+endmodelgeom lsp_fallspray
+
+newanim default lsp_fallspray
+  length 0.0333
+  transtime 0.25
+  animroot lsp_fallspray
+  node dummy lsp_fallspray
+    parent NULL
+  endnode
+  node emitter spray
+    parent lsp_fallspray
+    birthratekey 1
+      0 16
+    endlist
+  endnode
+  node emitter puff
+    parent lsp_fallspray
+    birthratekey 1
+      0 6
+    endlist
+  endnode
+doneanim default lsp_fallspray
+
+newanim on lsp_fallspray
+  length 0.0333
+  transtime 0.25
+  animroot lsp_fallspray
+  node dummy lsp_fallspray
+    parent NULL
+  endnode
+  node emitter spray
+    parent lsp_fallspray
+    birthratekey 1
+      0 16
+    endlist
+  endnode
+  node emitter puff
+    parent lsp_fallspray
+    birthratekey 1
+      0 6
+    endlist
+  endnode
+doneanim on lsp_fallspray
+
+newanim off lsp_fallspray
+  length 0.0333
+  transtime 0.25
+  animroot lsp_fallspray
+  node dummy lsp_fallspray
+    parent NULL
+  endnode
+  node emitter spray
+    parent lsp_fallspray
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+  node emitter puff
+    parent lsp_fallspray
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+doneanim off lsp_fallspray
+
+donemodel lsp_fallspray
