@@ -9,6 +9,7 @@
 
 use std::path::PathBuf;
 
+mod ambience;
 mod assignments;
 mod atmosphere;
 mod atomic;

@@ -82,6 +82,12 @@ const ENTRANCE_DARK: &str = shared::BLACK;
 /// A cave's rock is void (black) from this far below its roof up.
 const VOID_BELOW: f32 = 0.3;
 
+/// The loaded area's ambience sorted into its tiles, from the installed particle pack (see `ambience`).
+fn ambience_plan() -> crate::ambience::Plan {
+    let list = heightmap::current().map_or_default(|h| h.ambience.clone());
+    crate::ambience::plan(&list, crate::ambience::installed(), (tiles_x(), tiles_y()), |tx, ty| tile_level(tx, ty) as f32 * TRANSITION)
+}
+
 fn tile_name(tx: usize, ty: usize) -> String {
     format!("{}_{tx:02}{ty:02}", tileset_name())
 }

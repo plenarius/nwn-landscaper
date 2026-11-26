@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "id": "ambience-tests",
+  "version": "0.0.1",
+  "name": "Baked ambience tests",
+  "description": "Three kinds in the particle pack's shape: always on and looping, night only, day only.",
+  "prefix": "lsp",
+  "textures": [
+    { "name": "lspt_firefly", "file": "textures/lspt_firefly.tga", "placeholder": true, "use": "firefly glow" },
+    { "name": "lspt_motes", "file": "textures/lspt_motes.tga", "placeholder": true, "use": "motes" }
+  ],
+  "stock_textures": ["fxpa_mist"],
+  "kinds": [
+    {
+      "id": "mist", "name": "Water mist", "model": "lsp_mist", "shows": "always", "loops": true, "budget": 18,
+      "live": { "day": 18.0, "night": 18.0 },
+      "emitters": {
+        "mist": {
+          "day": { "birthrate": 1.5, "colorStart": [0.92, 0.94, 0.96], "colorEnd": [0.85, 0.87, 0.9], "alphaStart": 0.35, "alphaEnd": 0.0 },
+          "night": { "birthrate": 1.5, "colorStart": [0.3, 0.34, 0.43], "colorEnd": [0.26, 0.3, 0.38], "alphaStart": 0.45, "alphaEnd": 0.0 }
+        }
+      }
+    },
+    {
+      "id": "fireflies", "name": "Fireflies", "model": "lsp_fireflies", "shows": "night", "loops": false, "budget": 18,
+      "live": { "day": 0.0, "night": 18.0 },
+      "emitters": {
+        "flies": {
+          "day": { "birthrate": 0.0, "colorStart": [0.75, 1.0, 0.35], "colorEnd": [0.6, 0.9, 0.25], "alphaStart": 1.0, "alphaEnd": 0.2 },
+          "night": { "birthrate": 3.0, "colorStart": [0.75, 1.0, 0.35], "colorEnd": [0.6, 0.9, 0.25], "alphaStart": 1.0, "alphaEnd": 0.2 }
+        }
+      }
+    },
+    {
+      "id": "motes", "name": "Dust motes", "model": "lsp_motes", "shows": "day", "loops": false, "budget": 30,
+      "live": { "day": 30.0, "night": 0.0 },
+      "emitters": {
+        "motes": {
+          "day": { "birthrate": 3.0, "colorStart": [1.0, 0.92, 0.7], "colorEnd": [1.0, 0.92, 0.7], "alphaStart": 0.8, "alphaEnd": 0.0 },
+          "night": { "birthrate": 0.0, "colorStart": [1.0, 0.92, 0.7], "colorEnd": [1.0, 0.92, 0.7], "alphaStart": 0.8, "alphaEnd": 0.0 }
+        }
+      }
+    }
+  ]
+}

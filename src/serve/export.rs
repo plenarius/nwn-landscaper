@@ -176,7 +176,8 @@ const IN_BODY: [&str; 4] = ["palette", "water", "entrances", "atmosphere"];
 /// The query string has the area's name and its simple settings: `tiles`, `tilesY`, `shadow`, `module`, `kind`, `roof` and
 /// `clearance`. The body is the heights (f32 a sample, rows from the south), then the paint (one byte a sample: an index into the
 /// palette), then JSON: `palette` (the paint's texture ids), `water`, `chasm`, `entrances`, `atmosphere`, `objects`, `things`,
-/// `settings` and `originals`. A query string that still has one of [`IN_BODY`] (an editor older than this engine) is refused.
+/// `settings`, `originals` and `ambience`. A query string that still has one of [`IN_BODY`] (an editor older than this engine) is
+/// refused.
 pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<serde_json::Value> {
     let query = Query::new(query);
     if let Some(key) = IN_BODY.iter().find(|k| query.raw(k).is_some()) {
@@ -266,8 +267,8 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     if let Some(objects) = extra.get("objects") {
         header["objects"] = objects.clone();
     }
-    // The things the editor placed (creatures, triggers...) and the area's own settings.
-    for key in ["things", "settings", "originals"] {
+    // The things the editor placed (creatures, triggers...), the area's own settings and its particles.
+    for key in ["things", "settings", "originals", "ambience"] {
         if let Some(v) = extra.get(key).filter(|v| !v.is_null()) {
             header[key] = v.clone();
         }
@@ -405,6 +406,7 @@ fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightma
         shadow: None,
         entrances: Vec::new(),
         objects: Vec::new(),
+        ambience: Vec::new(),
         underground: false,
         interior: false,
         roof: None,
