@@ -270,6 +270,15 @@ full detail, grafted into the boundary tiles. Seen in the game client (software 
 **Decided (2026-11-25): F**, the overhang with the neighbour's trees and the fade to the fog colour. Next, the same at a quarter
 of the detail with a small baked texture, built and looked at once before step 2.
 
+**Quarter-detail trial (2026-11-25, module cc_edgeq).** For one 10 by 10 piece: F 281,000 triangles past the edge and 74 MB more
+hak; G (a vertex every 2.5 m, 128 px baked texture per tile) 40,000 triangles and 8 MB, of which the trees are 30,000. G matches F
+and R on hills, corners and roads seen from above. It showed in two places: white slivers of water along the far bank (the coarser
+bank no longer hides the water behind it), and a shallower dip where a road crosses a crest on the skyline. S, which keeps 0.5 m
+cells where a shore runs, fixes the shores for 5,700 triangles more. A 64 px texture is blurry from a high camera. Small textures
+must be the 512 px bake shrunk down (the engine's own 128 px bake speckles), and the water past the cut uses the export's
+shoreline. Proposed for step 2: G at 128 px with full detail along shores and roads. Trees as two crossed pictures from 25 m out
+are on trial next (variant T).
+
 ### 4. Tile levels and path nodes
 
 - **Tile levels need nothing new.** A tile's level is the mean height of its own ground (`src/generator/terrain.rs:152`). A cut on
