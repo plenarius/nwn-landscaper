@@ -4,7 +4,7 @@
 light shafts, snow gusts, blowing sand, embers and ground fog. The export bakes them into the tiles, so they cost the game no
 objects and need no `placeables.2da` rows.
 
-![The Ambience tool after Fill on a lake valley](../assets/handbook/ambience.webp)
+![The Ambience tool after Fill: mist and fireflies on a lake](../assets/handbook/ambience.webp)
 
 ## Fill the area
 
@@ -18,7 +18,7 @@ objects and need no `placeables.2da` rows.
    - motes and light shafts in gaps in the trees and at cave mouths;
    - sand on dune crests, snow on ridges, ground fog in hollows.
 
-**Clear** takes the ticked kinds' placements away.
+The status line says how many of each kind Fill placed; Undo takes them back. **Clear** takes the ticked kinds' placements away.
 
 ## Brush more or fewer
 

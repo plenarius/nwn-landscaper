@@ -2,3 +2,4 @@ target/
 landscaper-web/
 nwn-landscaper-web/
 site/
+__pycache__/
