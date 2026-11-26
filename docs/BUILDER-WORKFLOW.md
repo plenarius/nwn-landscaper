@@ -62,10 +62,11 @@ A cave or an interior starts as solid rock. You cut rooms and passages out of it
   taking another entrance out renames nothing, and transitions and scripts can name these doors. When you take an entrance out,
   the next export removes its door from the module and the export's report lists it; doors you placed yourself in the toolset
   are never removed. A transition elsewhere that led to the removed door still names it and leads nowhere: change it yourself.
-- **Long descents and click-to-move.** The game's pathfinder gives up on a route after a fixed search budget: in tests a click worked
-  for a path of about 260 m and failed at about 330 m. A descent with many long halls therefore can't be crossed in one click (the
-  character walks a few metres and stops), though walking by hand or clicking in shorter hops is fine. The path check in the editor
-  reports these as routes that stop short; keep each hop under about 250 m, or accept it, as long tunnels are fine to walk.
+- **Long descents and click-to-move.** The game's route search gives up when the way is about 20 tiles (200 m) longer than going
+  straight across the tiles between its ends, so a click from one end of a long descent to the other walks a few metres and
+  stops. Shorter clicks along the way get there, and so does walking with the keys. The path check tries those shorter clicks
+  for each route that stops: when they get there, it counts the route as too long for one click (the report's `long_routes`,
+  with how many clicks) instead of blocked, and the editor says the paths are OK. The sample descents have such routes.
 
 ## Things
 
