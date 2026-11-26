@@ -39,7 +39,7 @@ Words used here:
 
 ## What the spike did
 
-The engine is this repository at `master` ef618f1, the editor [nwn-landscaper-web](https://github.com/plenarius/nwn-landscaper-web)
+The engine is this repository at `master` adc33fc, the editor [nwn-landscaper-web](https://github.com/plenarius/nwn-landscaper-web)
 at `main` 05b9089, Moonglow at `ac17ade` and nwn-bake at `v0.7.0`. The spike branches, not for merge:
 
 - [nwn-landscaper `spike/wasm-demo`](https://github.com/plenarius/nwn-landscaper/tree/spike/wasm-demo): the engine's changes,
@@ -258,8 +258,9 @@ serves (the coi-serviceworker technique). Then a `wasm32-wasip1-threads` build w
 
 **Decided: a `wasm` job in CI, as cleanmodels does,** and the release attaching `landscaper-wasm.zip` beside the other
 downloads. The job installs wasi-sdk and the `wasm32-wasip1` target and builds with link-time optimisation, stripped. A size
-check fails it above 3 MB with brotli. A Rust feature `web` (on for the WASI target) leaves out the network, the team server and
-import, rather than `cfg` lines in many files.
+check fails it above 3 MB with brotli. What WASI can't do (threads, a process id, `mg-area`, TLS for `ureq`) is left out by
+target; the Rust feature `web` adds what only the browser needs (`landscaper wasi-request`, placeholder shaders with no game
+folder). Built that way in step 3 (#71): 7.0 MB, 1.8 MB with brotli, its export still byte for byte the native one.
 
 ### 9. Moonglow and nwn-bake
 
@@ -321,7 +322,7 @@ maintainer's time is review and testing.
 | 0 | Spike: what builds, the engine behind the editor in a Service Worker, measured. **Done** | engine, web | 4 h (took 1, with this design) | 20 min |
 | 1 | Moonglow's patched copy: lazy BIF reads and read fallbacks on WASI, `strnicmp`, on a branch of the maintainer's fork | Moonglow (fork) | 3 h | 20 min |
 | 2 | nwn-bake: its thread pools run in turn on WASI; a release (the maintainer cuts it) | nwn-bake | 2 h | 15 min |
-| 3 | The engine's WASI build: its Cargo configuration taking the patched Moonglow and nwn-bake, the `web` feature (no network, team server or import), `wasi-request` with its answer on its own stream, threads, process id; the CI `wasm` job and its size check; `landscaper-wasm.zip` in the release | engine | 6 h | 45 min |
+| 3 | The engine's WASI build: its Cargo configuration taking the patched Moonglow and nwn-bake, the `web` feature (the browser's entry point; no threads, TLS or import on WASI), `wasi-request` with its answer on its own stream, threads, process id; the CI `wasm` job and its size check; `landscaper-wasm.zip` in the release | engine | 6 h | 45 min |
 | 4 | The page: the engine in a Worker, the Service Worker passing requests, OPFS, Download and Open area, export as a zip, the texts that name a server or a disk path | web | 8 h | 45 min, plus 30 min in Firefox and Safari |
 | 5 | Demo assets: the texture pack (the maintainer's and CC0), the stand-ins made by a script, panels that need the game saying so | engine, web | 4 h | 30 min, choosing textures |
 | 6 | The site: `/try/` built by the docs workflow from the release, a handbook page "Try it in your browser" | engine | 3 h | 20 min |
