@@ -175,6 +175,10 @@ pub(crate) fn in_parallel<T: Sync + Copy, R: Send>(items: &[T], f: impl Fn(T) ->
 /// `f` of each item, in order, worked on at most `threads` threads (started for this call and gone when it returns).
 pub(crate) fn in_parallel_on<T: Sync + Copy, R: Send>(threads: usize, items: &[T], f: impl Fn(T) -> R + Sync) -> Vec<R> {
     let threads = threads.max(1).min(items.len().max(1));
+    // One thread (and always in the browser build, which has none to start): on this one.
+    if threads == 1 || cfg!(target_family = "wasm") {
+        return items.iter().map(|&item| f(item)).collect();
+    }
     let next = std::sync::atomic::AtomicUsize::new(0);
     let mut out: Vec<(usize, R)> = std::thread::scope(|s| {
         let workers: Vec<_> = (0..threads)

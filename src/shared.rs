@@ -126,6 +126,11 @@ fn stamp() -> Result<String> {
 /// says so: without them the area would draw wrong, not only without shadows.
 pub fn shaders() -> Result<[(&'static str, String); 4]> {
     let game = crate::models::game()?;
+    // The browser build with no game folder given: placeholders, so the rest of the export still downloads. It draws wrong in the
+    // game until exported again with the folder (docs/DESIGN-web-demo.md, question 5).
+    if cfg!(feature = "web") && game.resman.get_named("fslit", ResType::SHD).is_err() {
+        return Ok([LIGHTING, "ls_lm_vs", "ls_tp_fs", "ls_lm_fs"].map(|n| (n, STUB_SHADER.to_string())));
+    }
     let stock = |name: &str| -> Result<String> {
         let data = game.resman.get_named(name, ResType::SHD).map_err(|e| {
             anyhow::anyhow!(
@@ -143,6 +148,9 @@ pub fn shaders() -> Result<[(&'static str, String); 4]> {
         ("ls_lm_fs", fs),
     ])
 }
+
+/// What stands in for the tile shaders when the browser build has no game folder to make them from (see [`shaders`]).
+const STUB_SHADER: &str = "// placeholder: the Landscaper makes this shader from the game's own when it can read the game's folder\n";
 
 /// The tiles' lighting, `inc_lighting` changed (see [`shaders`]).
 const LIGHTING: &str = "ls_lighting";
