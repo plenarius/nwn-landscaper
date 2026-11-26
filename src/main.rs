@@ -279,12 +279,13 @@ fn print_check(r: &serde_json::Value) {
     let point = |v: &serde_json::Value| format!("({:.1}, {:.1})", v[0].as_f64().unwrap_or(0.0), v[1].as_f64().unwrap_or(0.0));
     let warnings = r["warnings"].as_array().map_or(&[][..], Vec::as_slice);
     println!(
-        "check {}: {}x{} tiles, routes {}/{}, coverage {:.1}%, {} warnings",
+        "check {}: {}x{} tiles, routes {}/{}{}, coverage {:.1}%, {} warnings",
         r["name"].as_str().unwrap_or(""),
         r["tiles"],
         r["tilesY"],
         r["routes"]["ok"],
         r["routes"]["total"],
+        generator::long_note(r["routes"]["long"].as_u64().unwrap_or(0) as usize),
         100.0 * r["coverage"].as_f64().unwrap_or(0.0),
         warnings.len()
     );
