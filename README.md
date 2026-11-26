@@ -202,11 +202,18 @@ to check and publish by hand. The self-host image (`deploy/self-host/Dockerfile`
 of that tag by default (`WEB_REF`), and `tests/release.rs` fails when its default and `Cargo.toml`'s version disagree: bump both
 in the release's pull request, then tag the two repositories.
 
-The release's pull request in each repository also runs `scripts/changelog.sh release X.Y.Z`: `## Unreleased` and every
-`changelog.d/` file become the version's section, which is what the release's notes and the version beside the editor's title
-read. The release workflow fails if a `changelog.d/` file is left at the tag. Between releases CHANGELOG.md starts with
-`## Unreleased`, by which a build says `+dev`: the first pull request after a release puts the heading back, empty
-(`scripts/changelog.sh check` asks for it).
+A release, step by step:
+
+1. In each repository, a pull request that runs `scripts/changelog.sh release X.Y.Z`: `## Unreleased`, if there is one, and
+   every `changelog.d/` file become the version's section, which the release's notes are made from. Here it also bumps
+   `Cargo.toml`'s version (and `Cargo.lock`) and the self-host image's `WEB_REF`.
+2. Merge both, tag the editor `vX.Y.Z`, then this repository. The release workflow fails if a `changelog.d/` file is left at
+   the tag.
+3. Check the draft release and publish it.
+
+Between releases a build says `+dev` after the last release's version while `changelog.d/` holds an entry, or CHANGELOG.md
+starts with `## Unreleased`: the engine counts its own when it is built (`build.rs`), and lists the editor's at `/changelog.d/`
+for the editor to say the same.
 
 When the engine moves to a new nwn-bake release (`Cargo.toml`'s tag), also run `scripts/shared-files.sh --pin vX.Y.Z` in
 nwn-landscaper-web with that tag, so its shared files (STYLE.md and the check configurations) stay pinned to the same nwn-bake

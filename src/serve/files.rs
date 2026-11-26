@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The editor's own files (landscaper-web) and the texture library (`/textures/`), for any GET no API route answered; any
-//! other method that reached no route is refused with 405.
+//! other method that reached no route is refused with 405. `/changelog.d/` lists the editor's changelog entries waiting for
+//! its next release, by which it says `+dev` beside its version (its js/version.js).
 
 use std::path::{Component, Path, PathBuf};
 
 use tiny_http::{Method, Response};
 
-use super::{Answer, Ask, refuse, response_header};
+use super::{Answer, Ask, json_response, refuse, response_header};
 use crate::paint::texture_dir;
 
 /// Answers a GET with a file from `web` (or the texture library), and anything else with 405.
@@ -19,6 +20,10 @@ pub(super) fn route(cx: &mut Ask<'_>, web: &Path) -> Answer {
             let rel = if path == "/" { "index.html" } else { path.trim_start_matches('/') };
             let (root, rel) = match rel.strip_prefix("textures/") {
                 Some(t) => (texture_dir(), PathBuf::from(t)),
+                None if rel.trim_end_matches('/') == "changelog.d" => {
+                    let waiting = crate::version::fragments(&web.join("changelog.d"));
+                    return json_response(200, &serde_json::json!({ "fragments": waiting }));
+                }
                 None => (web.to_path_buf(), PathBuf::from(rel)),
             };
             // Only plain relative paths inside the web folder / texture library, and no dot files (a clone's `.git`).
