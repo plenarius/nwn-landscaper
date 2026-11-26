@@ -870,6 +870,7 @@ dependencies = [
  "fastrand",
  "glam",
  "log",
+ "mg-2da",
  "mg-area",
  "mg-core",
  "mg-erf",

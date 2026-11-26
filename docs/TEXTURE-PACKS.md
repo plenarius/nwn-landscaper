@@ -122,6 +122,8 @@ pointing the setting at another server (a CDN) moves everything, since each pack
 }
 ```
 
+[Sky packs](SKY-PACKS.md) are in the same index, in a list of their own (`skies`).
+
 `swatches` are a few 64 px pictures, one a category, carried in the index as `data:` URIs so the dialog shows them without
 loading anything from another site. An entry without a `url` or a valid `sha256` is skipped. The server keeps the index it read
 for 5 minutes; the editor's dialog asks for a fresh one when it opens.

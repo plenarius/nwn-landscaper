@@ -16,7 +16,7 @@ use super::{
     minimap_name, set_file, shadow_map, shadow_name, shadow_strength, start_point, surfaced, tile_level, tile_model, tile_name, tile_wok,
     tiles_x, tiles_y, tileset_name, walkmesh,
 };
-use crate::{atmosphere, heightmap, import, models, objects, paint, settings, shared, textures, things, workspace};
+use crate::{atmosphere, heightmap, import, models, objects, paint, settings, shared, skies, textures, things, workspace};
 
 /// The import the current terrain comes from (its palette or objects name one: `@import:<name>`), if any.
 fn import_name() -> Option<String> {
@@ -129,6 +129,16 @@ pub(crate) fn module_haks(ours: &[String], original: impl IntoIterator<Item = St
         if !list.iter().any(|l| l.eq_ignore_ascii_case(&h)) {
             list.push(h);
         }
+    }
+    list
+}
+
+/// The haks an area's module lists first: the area's own (`hak`), the shared texture library, and the skies' when the area has a
+/// Landscaper sky (`sky`).
+pub(crate) fn our_haks(hak: &str, sky: bool) -> Vec<String> {
+    let mut list = vec![hak.to_string(), shared::HAK.to_string()];
+    if sky {
+        list.push(skies::HAK.to_string());
     }
     list
 }
@@ -452,6 +462,15 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         settings::apply(&mut are.root, &mut git.root, &sett)?;
         m.set_gff(git_key, &git)?;
     }
+    // A Landscaper sky: its row of the skyboxes.2da in ls_skies.hak, made now (after the settings: the area's sky wins).
+    let sky = match skies::area_sky() {
+        Some(id) => {
+            let row = skies::prepare(&id, &workspace::nwn_user_dir().context("no user dir")?.join("hak"))?;
+            are.root.set("SkyBox", Value::Byte(row));
+            true
+        }
+        None => false,
+    };
     m.set_gff(are_key, &are)?;
     // Object-mode placeables, to use and script.
     let placeables = objects::instances(game)?;
@@ -488,8 +507,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let mut info = m.info()?;
     // (An imported area's module haks after ours: its objects come from them. Then the editor's haks: the placeables placed
     // and baked from them, their rows, models and textures, are there only with them.)
-    let list =
-        module_haks(&[hak_name(), shared::HAK.to_string()], original.iter().flat_map(|o| o.haks.iter().cloned()), models::game_haks());
+    let list = module_haks(&our_haks(&hak_name(), sky), original.iter().flat_map(|o| o.haks.iter().cloned()), models::game_haks());
     let haks = mg_module::attach::hak_list(&info.root, &list);
     info.root.set("Mod_HakList", haks);
     if let Some(t) = original.as_ref().and_then(|o| o.tlk.as_ref()) {

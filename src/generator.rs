@@ -27,7 +27,7 @@ mod tile;
 use self::analyse::start_point;
 pub(crate) use self::analyse::{check, describe, export, sim_area};
 pub(crate) use self::entrance::{DOOR_MARK, door_mark};
-pub(crate) use self::generate::{generate, module_haks};
+pub(crate) use self::generate::{generate, module_haks, our_haks};
 pub(crate) use self::install::Before;
 use self::mdl::{Grid, Mapping, aabb_body, grid, normal_z, num, terrain_mesh, trimesh, trimesh_full, trimesh_listed, trimesh_with};
 use self::painter::{
