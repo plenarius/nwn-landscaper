@@ -1145,6 +1145,13 @@ fn the_review_services_area_list_outlives_a_restart_while_it_is_down() {
     // The server restarts while the service is down (it answers 503).
     let down = Review::start("", Duration::ZERO);
     let s = s.restart(&env(down.url.as_str()), true);
+    // Its start's call for the list, on a thread of its own: requests don't wait for it while there is a kept list, so it
+    // may land after them (it did on Windows).
+    let started = Instant::now();
+    while down.fetches() == 0 {
+        assert!(started.elapsed() < Duration::from_secs(30), "the restarted server never asked the service for its list");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     // Before: every new name was refused ("the module's area list isn't available") until the service came back.
     let (st, b) = save(&s, "meadow");
     assert_eq!(st, 200, "{b}");
@@ -1155,7 +1162,7 @@ fn the_review_services_area_list_outlives_a_restart_while_it_is_down() {
     assert_eq!(st, 200, "{b}");
     assert!(b.contains(r#""area":"chess""#), "{b}");
     // The failure memory still holds: one call to the service that is down, not one a request.
-    assert_eq!(down.fetches(), 1);
+    assert_eq!(down.fetches(), 1, "the start's call and no other");
 }
 
 #[test]
