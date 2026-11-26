@@ -21,7 +21,7 @@ mod webview;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -47,8 +47,6 @@ struct App {
     port: u16,
     log: Option<PathBuf>,
     handle: tauri::AppHandle,
-    /// The app's own page, where the window starts.
-    home: OnceLock<tauri::Url>,
     /// Whether the engine has been started (it reads the game's folders once).
     started: AtomicBool,
 }
@@ -112,10 +110,8 @@ fn app_open(app: &Shared, what: &str) -> Result<(), String> {
             let shown = |p: Option<PathBuf>| p.map(|p| p.display().to_string());
             let back = Some(place::engine_url(app.port));
             set(app, Phase::Setup { root: shown(root), user: shown(user), problem: None, back });
-            let (Some(w), Some(home)) = (app.handle.get_webview_window("main"), app.home.get()) else {
-                return Err("the app's window isn't there".into());
-            };
-            w.navigate(home.clone()).map_err(|e| e.to_string())
+            let Some(w) = app.handle.get_webview_window("main") else { return Err("the app's window isn't there".into()) };
+            w.navigate(place::home()).map_err(|e| e.to_string())
         }
         _ => Err(format!("can't open {what}")),
     }
@@ -166,7 +162,6 @@ fn begin(handle: tauri::AppHandle) -> Shared {
         port,
         log: log.as_ref().map(|l| l.path.clone()),
         handle,
-        home: OnceLock::new(),
         started: AtomicBool::new(false),
     });
     // The log is written until the program ends.
@@ -205,7 +200,6 @@ fn main() {
         .setup(move |tauri_app| {
             let app = begin(tauri_app.handle().clone());
             let port = app.port;
-            let home = app.clone();
             tauri_app.manage(app);
             let handle = tauri_app.handle().clone();
             let links = handle.clone();
@@ -215,7 +209,7 @@ fn main() {
                 let s = m.size().to_logical::<f64>(m.scale_factor());
                 (s.width, s.height)
             }));
-            let window = WebviewWindowBuilder::new(tauri_app, "main", WebviewUrl::App("index.html".into()))
+            WebviewWindowBuilder::new(tauri_app, "main", WebviewUrl::App("index.html".into()))
                 .title("NWN Landscaper")
                 .inner_size(width, height)
                 .min_inner_size(960.0, 600.0)
@@ -247,9 +241,6 @@ fn main() {
                     true
                 })
                 .build()?;
-            if let Ok(url) = window.url() {
-                let _ = home.home.set(url);
-            }
             Ok(())
         })
         .run(tauri::generate_context!())

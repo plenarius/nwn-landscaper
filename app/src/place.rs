@@ -21,6 +21,13 @@ pub fn engine_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/?app")
 }
 
+/// The app's own page, as each webview serves it: `http://tauri.localhost` on Windows (WebView2 takes no custom schemes),
+/// `tauri://localhost` elsewhere.
+pub fn home() -> Url {
+    let base = if cfg!(windows) { "http://tauri.localhost/index.html" } else { "tauri://localhost/index.html" };
+    Url::parse(base).expect("a fixed address")
+}
+
 /// Whether the window may go to `url`: the engine's editor, or the app's own page. Anything else opens in the default browser.
 pub fn stays_inside(url: &Url, port: u16) -> bool {
     match url.scheme() {
@@ -72,6 +79,7 @@ mod tests {
         let url = |s: &str| Url::parse(s).unwrap();
         assert!(stays_inside(&url("http://127.0.0.1:8766/js/app.js"), 8766));
         assert!(stays_inside(&url(&engine_url(8766)), 8766));
+        assert!(stays_inside(&home(), 8766));
         assert_eq!(engine_url(8767), "http://127.0.0.1:8767/?app");
         assert!(stays_inside(&url("tauri://localhost/index.html"), 8766));
         assert!(stays_inside(&url("http://tauri.localhost/index.html"), 8766));
