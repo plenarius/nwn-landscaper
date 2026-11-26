@@ -7,6 +7,13 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **Water too shallow to see is dry ground.** The game draws water under about 15 cm almost clear, so a bank a few
+  centimetres under the water looked dry until a footstep rippled it. Ground under less than 15 cm of water now exports dry:
+  no water surface, the ground's own footsteps and walkmesh surface. It still carries the flood, so a shallow ford doesn't
+  split a river. The editor of the same release draws it the same way.
+- **Small bakes don't glitter.** A baked texture under 512 px (`LS_BAKE=128`) took 2 by 2 samples a pixel of textures with
+  detail at 1 cm, so the ground speckled. It now reads the library textures halved to its samples' spacing. Bakes of 512 px
+  and more are unchanged.
 - **An imported area's doors and placeables say their model.** `/api/originals` gives each door and placeable its own
   appearance's model as `model` (null when it names none), so the editor draws it: the toolset often gives a door another look
   than its blueprint's.
