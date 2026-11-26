@@ -105,19 +105,26 @@ fn stamp() -> Result<String> {
     Ok(format!("{:016x}", h.finish()))
 }
 
-/// The tiles' shaders, `ls_lm_vs`, `ls_lm_fs` and `ls_tp_fs`: the game's stock lit pair (`vslit`, `fslit`) read from the install and
-/// changed here, so no copy of Beamdog's shaders is in this repository or in a release of it.
+/// The tiles' shaders, `ls_lm_vs`, `ls_lm_fs` and `ls_tp_fs`, and the lighting they share, `ls_lighting`: the game's stock lit pair
+/// (`vslit`, `fslit`) and its lighting (`inc_lighting`) read from the install and changed here, so no copy of Beamdog's shaders is in
+/// this repository or in a release of it.
 ///
-/// - `ls_lm_vs`: vslit, passing the second texture coordinates (MDL tverts1) on to the fragment shader.
-/// - `ls_lm_fs`: fslit, its colour darkened by the tile's baked shadow map (MTR texture7, at those coordinates) and then fogged.
-///   Fog comes last so baked shadows fade into the distance like everything else; the stock shader would fog first, so `FOG` is
-///   off and `ApplyFog` is called after the shadow. Without a texture7 the surface is drawn as fslit draws it.
+/// The tile's baked shadow map (MTR texture7) shades the area's own light only, its sun or moon (ambient and diffuse): local
+/// lights (tile lights, placeables' lights, a spell's glow) and a mesh's self-illumination light shaded ground as they light any
+/// other. Where nothing else lights the ground, this is the stock colour times the shadow map, as before.
+///
+/// - `ls_lighting`: inc_lighting with the area's ambient and diffuse colours multiplied by `lsAreaShade` (1 unless a shader sets
+///   it). Included before `inc_standard`, it takes stock's place (same include guard).
+/// - `ls_lm_vs`: vslit, passing the second texture coordinates (MDL tverts1) on to the fragment shader. Lit per vertex (the game's
+///   "Minimal" shader setting), it lights each vertex a second time without the area's light, for the fragment shader to blend.
+/// - `ls_lm_fs`: fslit, its area light shaded by the shadow map at those coordinates: lit per fragment, through `lsAreaShade`;
+///   lit per vertex, by blending the vertex shader's two lights. Without a texture7 the surface is drawn as fslit draws it.
 /// - `ls_tp_fs`: `ls_lm_fs` with its texture drawn from three sides by the slope ([`crate::triplanar`]), for library textures:
 ///   see [`patch_triplanar`].
 ///
-/// An install without the two (the dedicated server's download has no shaders) or with a different shape of them is an error that
+/// An install without them (the dedicated server's download has no shaders) or with a different shape of them is an error that
 /// says so: without them the area would draw wrong, not only without shadows.
-pub fn shaders() -> Result<[(&'static str, String); 3]> {
+pub fn shaders() -> Result<[(&'static str, String); 4]> {
     let game = crate::models::game()?;
     let stock = |name: &str| -> Result<String> {
         let data = game.resman.get_named(name, ResType::SHD).map_err(|e| {
@@ -129,8 +136,16 @@ pub fn shaders() -> Result<[(&'static str, String); 3]> {
         Ok(String::from_utf8_lossy(&data).into_owned())
     };
     let fs = patch_fslit(&stock("fslit")?)?;
-    Ok([("ls_lm_vs", patch_vslit(&stock("vslit")?)?), ("ls_tp_fs", patch_triplanar(&fs)?), ("ls_lm_fs", fs)])
+    Ok([
+        (LIGHTING, patch_lighting(&stock("inc_lighting")?)?),
+        ("ls_lm_vs", patch_vslit(&stock("vslit")?)?),
+        ("ls_tp_fs", patch_triplanar(&fs)?),
+        ("ls_lm_fs", fs),
+    ])
 }
+
+/// The tiles' lighting, `inc_lighting` changed (see [`shaders`]).
+const LIGHTING: &str = "ls_lighting";
 
 /// Replaces the one line of `text` that reads `anchor` (spaces around it aside) with `with` (its indent kept). A stock shader with
 /// none or several is not the shape the change is written for: an error, not a guess.
@@ -156,44 +171,102 @@ fn made_from(stock: &str) -> String {
     format!("// Made by the Landscaper from the game's {stock}.shd at run time (shared.rs, `shaders`): Beamdog's shader, changed.\n")
 }
 
-/// vslit, passing the second texture coordinates on to the fragment shader (see [`shaders`]).
-fn patch_vslit(stock: &str) -> Result<String> {
+/// inc_lighting, the area's ambient and diffuse light multiplied by `lsAreaShade` (see [`shaders`]).
+fn patch_lighting(stock: &str) -> Result<String> {
+    let name = "inc_lighting";
     let s = replace_line(
         stock,
+        name,
+        "uniform vec3 lightAreaDiffuseDirection;",
+        &[
+            "uniform vec3 lightAreaDiffuseDirection;",
+            "// The Landscaper's baked shade on the area's sun or moon, set by its tile shaders.",
+            "highp vec3 lsAreaShade = vec3(1.0);",
+        ],
+    )?;
+    let s = replace_line(&s, name, "AmbientLight = lightAreaAmbient;", &["AmbientLight = lightAreaAmbient * lsAreaShade;"])?;
+    let s = replace_line(
+        &s,
+        name,
+        "ComputeDiffuseLighting(lightAreaDiffuse, lightAreaDiffuseDirection, vNormalThis, 1.0, false);",
+        &["ComputeDiffuseLighting(lightAreaDiffuse * lsAreaShade, lightAreaDiffuseDirection, vNormalThis, 1.0, false);"],
+    )?;
+    Ok(made_from(name) + &s)
+}
+
+/// Includes [`LIGHTING`] in place of the stock lighting, which `inc_standard` then skips.
+fn include_lighting(text: &str, name: &str) -> Result<String> {
+    let include = format!("#include \"{LIGHTING}\"");
+    replace_line(text, name, "#include \"inc_standard\"", &[&include, "#include \"inc_standard\""])
+}
+
+/// Lit per vertex: `inc_standard` lights in the vertex shader and hands the fragment shader `VertexColor`.
+const PER_VERTEX: &str = "#if LIGHTING == 1 && FRAGMENT_LIGHTING != 1 && FRAGMENT_NORMAL != 1";
+
+/// vslit, passing the second texture coordinates on and, lit per vertex, the light without the area's (see [`shaders`]).
+fn patch_vslit(stock: &str) -> Result<String> {
+    let s = include_lighting(stock, "vslit")?;
+    let s = replace_line(
+        &s,
         "vslit",
         "#include \"inc_standard\"",
-        &["#include \"inc_standard\"", "", "attribute vec2 vTcIn1;", "varying vec2 vShadowUV;"],
+        &["#include \"inc_standard\"", "", "attribute vec2 vTcIn1;", "varying vec2 vShadowUV;", "varying vec3 vLsLocalLight;"],
     )?;
-    let s = replace_line(&s, "vslit", "ApplyStandardShader();", &["ApplyStandardShader();", "vShadowUV = vTcIn1;"])?;
+    let s = replace_line(
+        &s,
+        "vslit",
+        "ApplyStandardShader();",
+        &[
+            "ApplyStandardShader();",
+            "vShadowUV = vTcIn1;",
+            PER_VERTEX,
+            "// The vertex lit again without the area's sun or moon: the fragment shader blends the two by the baked shade.",
+            "vec4 lsLocal = COLOR_WHITE;",
+            "lsAreaShade = vec3(0.0);",
+            "ComputeLighting(lsLocal, vVertexNormal);",
+            "vLsLocalLight = lsLocal.rgb;",
+            "#else",
+            "vLsLocalLight = vec3(0.0);",
+            "#endif",
+        ],
+    )?;
     Ok(made_from("vslit") + &s)
 }
 
-/// fslit, darkened by the baked shadow map and then fogged (see [`shaders`]).
+/// fslit, its area light shaded by the baked shadow map (see [`shaders`]).
 fn patch_fslit(stock: &str) -> Result<String> {
-    let s = replace_line(stock, "fslit", "#define FOG 1", &["#define FOG 0"])?;
+    let s = include_lighting(stock, "fslit")?;
     let s = replace_line(
         &s,
         "fslit",
         "#include \"inc_standard\"",
         &[
-            "// inc_standard includes inc_fog only with FOG 1.",
-            "#include \"inc_fog\"",
             "#include \"inc_standard\"",
             "",
             "uniform sampler2D texUnit7;",
             "uniform lowp int texture7Bound;",
             "varying vec2 vShadowUV;",
+            "varying vec3 vLsLocalLight;",
         ],
     )?;
     let s = replace_line(
         &s,
         "fslit",
-        "gl_FragColor = FragmentColor;",
+        "ApplyStandardShader();",
         &[
+            "// The Landscaper's baked shade, on the area's sun or moon only (its shared.rs). In the light's colour space, so where",
+            "// nothing else lights the ground the colour comes out the shadow map times the stock one.",
             "if (texture7Bound != 0)",
-            "    FragmentColor.rgb *= texture2D(texUnit7, vShadowUV).rgb;",
-            "ApplyFog(FragmentColor);",
-            "gl_FragColor = FragmentColor;",
+            "{",
+            "    vec3 lsShade = ApplyColorSpace(texture2D(texUnit7, vShadowUV).rgb);",
+            PER_VERTEX,
+            "    // VertexColor is the light with the area's at full, vLsLocalLight without it; the second is never the brighter.",
+            "    FragmentColor.rgb *= mix(vLsLocalLight, VertexColor.rgb, lsShade) / max(VertexColor.rgb, vec3(0.0001));",
+            "#else",
+            "    lsAreaShade = lsShade;",
+            "#endif",
+            "}",
+            "ApplyStandardShader();",
         ],
     )?;
     Ok(made_from("fslit") + &s)
@@ -250,58 +323,100 @@ mod tests {
         text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("//")).map(str::to_string).collect()
     }
 
-    /// Made-up stand-ins for the stock pair: other lines around the ones the patch looks for (`#define FOG 1`, the
-    /// `inc_standard` include, `ApplyStandardShader();` and `gl_FragColor = FragmentColor;`), indented as the game's are.
+    /// Made-up stand-ins for the stock shaders: other lines around the ones the patches look for (the `inc_standard` include,
+    /// `SetupStandardShaderInputs();`, `ApplyStandardShader();`, the area's light in the lighting), indented as the game's are.
     const VSLIT: &str = "#define MADE_UP 1\n#include \"inc_standard\"\n\nvoid main ()\n{\n    Before();\n    ApplyStandardShader();\n}\n";
     const FSLIT: &str = "#define MADE_UP 2\n#define FOG 1\n#include \"inc_standard\"\n\nvoid main ()\n{\n    Before();\n    \
-        SetupStandardShaderInputs();\n    gl_FragColor = FragmentColor;\n}\n";
+        SetupStandardShaderInputs();\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n";
+    const LIGHTING_STOCK: &str = "#ifndef INC_LIGHTING\nuniform vec3 lightAreaAmbient;\nuniform vec3 lightAreaDiffuse;\n\
+        uniform vec3 lightAreaDiffuseDirection;\nvoid ComputeLighting(inout vec4 ColorIO, vec3 vNormalThis)\n{\n    \
+        AmbientLight = lightAreaAmbient;\n\tComputeDiffuseLighting(lightAreaDiffuse, lightAreaDiffuseDirection, vNormalThis, 1.0, \
+        false);\n    for (int i = 0; i < numLights; i++) {}\n}\n";
 
     #[test]
-    fn the_shadow_shaders_add_the_shadow_map_and_keep_the_rest() {
+    fn the_lighting_shades_the_area_s_light_and_not_the_others() {
+        let lighting = patch_lighting(LIGHTING_STOCK).unwrap();
+        let want = [
+            "#ifndef INC_LIGHTING",
+            "uniform vec3 lightAreaAmbient;",
+            "uniform vec3 lightAreaDiffuse;",
+            "uniform vec3 lightAreaDiffuseDirection;",
+            "highp vec3 lsAreaShade = vec3(1.0);",
+            "void ComputeLighting(inout vec4 ColorIO, vec3 vNormalThis)",
+            "{",
+            "AmbientLight = lightAreaAmbient * lsAreaShade;",
+            "ComputeDiffuseLighting(lightAreaDiffuse * lsAreaShade, lightAreaDiffuseDirection, vNormalThis, 1.0, false);",
+            "for (int i = 0; i < numLights; i++) {}",
+            "}",
+        ];
+        assert_eq!(code(&lighting), want);
+        assert!(lighting.contains("\n\tComputeDiffuseLighting(lightAreaDiffuse * lsAreaShade,"), "the indent is kept");
+    }
+
+    #[test]
+    fn the_shadow_shaders_shade_the_area_light_and_keep_the_rest() {
         let vs = [
             "#define MADE_UP 1",
+            "#include \"ls_lighting\"",
             "#include \"inc_standard\"",
             "attribute vec2 vTcIn1;",
             "varying vec2 vShadowUV;",
+            "varying vec3 vLsLocalLight;",
             "void main ()",
             "{",
             "Before();",
             "ApplyStandardShader();",
             "vShadowUV = vTcIn1;",
+            PER_VERTEX,
+            "vec4 lsLocal = COLOR_WHITE;",
+            "lsAreaShade = vec3(0.0);",
+            "ComputeLighting(lsLocal, vVertexNormal);",
+            "vLsLocalLight = lsLocal.rgb;",
+            "#else",
+            "vLsLocalLight = vec3(0.0);",
+            "#endif",
             "}",
         ];
         assert_eq!(code(&patch_vslit(VSLIT).unwrap()), vs);
         let fs = [
             "#define MADE_UP 2",
-            "#define FOG 0",
-            "#include \"inc_fog\"",
+            "#define FOG 1",
+            "#include \"ls_lighting\"",
             "#include \"inc_standard\"",
             "uniform sampler2D texUnit7;",
             "uniform lowp int texture7Bound;",
             "varying vec2 vShadowUV;",
+            "varying vec3 vLsLocalLight;",
             "void main ()",
             "{",
             "Before();",
             "SetupStandardShaderInputs();",
             "if (texture7Bound != 0)",
-            "FragmentColor.rgb *= texture2D(texUnit7, vShadowUV).rgb;",
-            "ApplyFog(FragmentColor);",
+            "{",
+            "vec3 lsShade = ApplyColorSpace(texture2D(texUnit7, vShadowUV).rgb);",
+            PER_VERTEX,
+            "FragmentColor.rgb *= mix(vLsLocalLight, VertexColor.rgb, lsShade) / max(VertexColor.rgb, vec3(0.0001));",
+            "#else",
+            "lsAreaShade = lsShade;",
+            "#endif",
+            "}",
+            "ApplyStandardShader();",
             "gl_FragColor = FragmentColor;",
             "}",
         ];
         assert_eq!(code(&patch_fslit(FSLIT).unwrap()), fs);
-        assert!(patch_fslit(FSLIT).unwrap().contains("\n    ApplyFog(FragmentColor);\n"), "the indent is kept");
+        assert!(patch_fslit(FSLIT).unwrap().contains("\n    ApplyStandardShader();\n"), "the indent is kept");
+        assert!(patch_fslit(FSLIT).unwrap().contains("\n#else\n"), "preprocessor lines are not indented");
     }
 
     #[test]
-    fn the_triplanar_shader_replaces_the_texture_after_the_stock_read_and_keeps_the_shadow_and_fog() {
+    fn the_triplanar_shader_replaces_the_texture_after_the_stock_read_and_before_the_light() {
         let tp = patch_triplanar(&patch_fslit(FSLIT).unwrap()).unwrap();
         let lines = code(&tp);
         let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{tp}"));
         let read = at("SetupStandardShaderInputs();");
         let replaced = at("FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);");
-        assert!(read < replaced && replaced < at("FragmentColor.rgb *= texture2D(texUnit7, vShadowUV).rgb;"));
-        assert!(at("ApplyFog(FragmentColor);") < at("gl_FragColor = FragmentColor;"));
+        assert!(read < replaced && replaced < at("lsAreaShade = lsShade;") && replaced < at("ApplyStandardShader();"));
         // The projections and weights triplanar.rs has: 4 m repeats, along x (y, z), along y (x, z), from above (x, y), power 4.
         assert!(tp.contains("/ 4.0;") && tp.contains("vec3(4.0)"), "{tp}");
         assert!(tp.contains("texUnit0, lsP.yz) * lsW.x") && tp.contains("texUnit0, lsP.xz) * lsW.y") && tp.contains("lsP.xy) * lsW.z"));
@@ -309,8 +424,10 @@ mod tests {
 
     #[test]
     fn a_stock_shader_of_another_shape_is_an_error() {
-        let e = patch_fslit(&FSLIT.replace("#define FOG 1", "#define FOG 2")).unwrap_err().to_string();
-        assert!(e.contains("fslit.shd has 0 lines `#define FOG 1`"), "{e}");
+        let e = patch_fslit(&FSLIT.replace("    ApplyStandardShader();\n", "")).unwrap_err().to_string();
+        assert!(e.contains("fslit.shd has 0 lines `ApplyStandardShader();`"), "{e}");
+        let e = patch_lighting(&LIGHTING_STOCK.replace("lightAreaAmbient;\n\t", "lightAreaAmbient * 2.0;\n\t")).unwrap_err().to_string();
+        assert!(e.contains("inc_lighting.shd has 0 lines `AmbientLight = lightAreaAmbient;`"), "{e}");
         let twice = VSLIT.replace("ApplyStandardShader();", "ApplyStandardShader();\n    ApplyStandardShader();");
         assert!(patch_vslit(&twice).unwrap_err().to_string().contains("has 2 lines"));
     }

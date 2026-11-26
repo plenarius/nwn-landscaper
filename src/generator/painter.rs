@@ -713,7 +713,7 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
 pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: bool) -> String {
     let (fs, what) = if triplanar { ("ls_tp_fs", "drawn from three sides by the slope, ") } else { ("ls_lm_fs", "") };
     let mut s = format!(
-        "// NWN Landscaper: {what}lit as usual, then the baked shadow map, then fog\ncustomshadervs ls_lm_vs\ncustomshaderfs {fs}\n\
+        "// NWN Landscaper: {what}lit as usual, the baked shadow map shading the area's sun or moon\ncustomshadervs ls_lm_vs\ncustomshaderfs {fs}\n\
          texture0 {bitmap}\n"
     );
     if let Some(t) = texture7 {

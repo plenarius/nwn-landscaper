@@ -33,7 +33,7 @@ Words used here:
   **Confirmed in game:** an emitter written into a Landscaper tile model draws.
 - **Local light:** every Landscaper tile already carries two main lights, exported black; the trial lit them by script. A
   **Light** brush colours them per tile.
-  The baked shadow maps darken every light today, torches included, which needs a shader change.
+  The baked shadow maps shade only the area's sun or moon (step 9): a torch in a tree's shade lights it as it lights open ground.
 - **Filming:** nwn-director gets a `look` per shot (golden hour, misty dawn, moonlit, storm), made from script calls that exist in
   the game today plus temporary stock placeables and lights. For colours no script can set (the sun's), the director films in a
   copy of the area with other light. A GPU on an off-screen display gives the director shadows, grass and screen effects.
@@ -219,11 +219,39 @@ would need a script on a heartbeat or the area's enter event.
   into `Tile_MainLight1` and `Tile_MainLight2`. A tile is 10 m, so this is a broad wash, not a lamp.
 - **Lamps and glowing things** stay placeables: `placeables.2da`'s `LightColor` gives an object a light. Baking keeps a mesh's
   self-illumination colour (today it is dropped), so glowing mushrooms or crystals glow when baked.
-- **Baked shade must not darken local light.** Today the shadow map multiplies everything. The fix is to apply it to the area's
-  sun or moon term only. Whether the stock `fslit` lets the shader split them is the first thing to check (Risks).
+- **Baked shade must not darken local light.** The shadow map multiplied everything. It now shades the area's sun or moon term
+  only (step 9, "The shade split" below).
 
 Considered and not chosen: **light from placeables alone.** Every lit spot would be a game object, and a wash over a village or a
 cave would need many of them.
+
+### The shade split (step 9)
+
+**The stock `fslit` alone can't split them, the game's lighting can.** `fslit` only calls `inc_standard`, whose
+`ComputeLighting` (in `inc_lighting`) adds the area's own light apart from every other: `lightAreaAmbient` as the starting
+ambient, then `lightAreaDiffuse` along `lightAreaDiffuseDirection`, then the local lights: placeables' and spells' lights, and the
+tile lights (`RecomputeStaticLighting`). The Landscaper already makes its tile shaders from the installed `fslit` and `vslit`
+at run time; it now makes `ls_lighting` from `inc_lighting` the same way, with the area's two colours multiplied by the shade,
+and its tile shaders include it in place of the stock one (same include guard). So neither fallback the design listed was
+needed: the night keeps its full shade, and no hand-written shader has to follow the game's.
+
+- **Per fragment** (the game's "Performance" shader setting, its default, and "High Quality"): the fragment shader sets the shade
+  before the stock lighting runs.
+- **Per vertex** ("Minimal": `inc_config` turns fragment lighting off): the light is worked out at each vertex, before the shadow
+  map is read. The vertex shader lights each vertex twice, with and without the area's light, and the fragment shader blends the
+  two by the shadow map.
+- **Unchanged where nothing else lights the ground:** the shade multiplies the light in its own colour space (`ApplyColorSpace`),
+  so shaded ground comes out the stock colour times the shadow map, as before.
+- **What is no longer shaded:** everything but the sun or moon. A mesh's self-illumination (step 8's baked glow) and the
+  emissive colour, and a torch in a chasm or a cave mouth: their fade and darkness are in the same shadow map, so a light there
+  now lights the wall as it would anywhere.
+- **Checked in the client** (CPU renderer, "Performance" and "Minimal"): a brazier (`placeables.2da` row 57, a placeable light)
+  in a baked tree's shade, by day and by night. Before, its pool of light was dimmed by the shade; after, it lights the shade as
+  it lights open grass (the pool's brightness up 22% by day, 37% at night). Shade with no other light measured the same to the
+  pixel before and after. A tile light set by script (`SetTileMainLightColor`, `RecomputeStaticLighting`) didn't show in this
+  test, before or after, so tile lights are covered by the code, not a still.
+- **The cost:** one more stock file read and changed (three lines of `inc_lighting`, found by their text; a game update that
+  changes them stops the shared hak's build with a message that says which), and tiles lit twice per vertex at "Minimal".
 
 ## The particle pack
 
@@ -399,8 +427,6 @@ bearable. Films need the GPU but not the maintainer's desktop.
 
 ## Risks
 
-- **The baked shade can't be split from local light** inside the stock `fslit`. Then the choice is a weaker shadow at night (the
-  moon's shade is fainter anyway), or the Landscaper's own lit shader, which then has to track the game's.
 - **The `skyboxes.2da` merge** breaks if a team's hak order puts another `skyboxes.2da` above `ls_skies.hak`. The export checks the
   order it knows; a module's own `.hak` list edited by hand later can still undo it.
 - **Emitters in many tiles**: a 32 by 32 area filled with mist could reach thousands of live particles. The Fill rule caps live
@@ -426,7 +452,7 @@ maintainer's time is review and testing. "Client" marks a check in the game clie
 | 6 | The particle pack, first cut: eleven kinds written as ASCII emitters from the stock ones, tuned against client stills; each also as a placeable model with a sample `placeables.2da` row | engine (`packs/`) | 7 h | 1 h | 30 min |
 | 7 | The Ambience tool: Fill rules, brush, points in the view, live particle count | web | 10 h | 1 h | no |
 | 8 | Local light: the Light brush, self-illumination kept in baking | web + engine | 5 h | 30 min | 15 min: a village at night |
-| 9 | Baked shade on the sun or moon only, or a weaker shade at night | engine | 4 h | 30 min | 15 min: a torch in a tree's shadow |
+| 9 | Baked shade on the sun or moon only ("The shade split": the game's lighting splits, no weaker night shade) | engine | 4 h | 30 min | 15 min: a torch in a tree's shadow |
 | 10 | nwn-director: `look` per shot, an area copy per look, temporary placeables and lights | director | 6 h | 45 min | 20 min: four looks filmed |
 | 11 | nwn-director: films on a GPU off screen through VirtualGL | director | 3 h | 30 min | 20 min: one film on a GPU machine |
 | 12 | Docs: `docs/SKY-PACKS.md`, the builder workflow, the changelog | both | 2 h | 20 min | no |
@@ -455,4 +481,3 @@ start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 an
 - **Emitter culling:** whether the client drops a tile's emitters with the tile when it is out of view, as it does meshes (T52).
 - **Baked self-illumination** is dropped judging by the code (`src/objects.rs` keeps texture and transparency per group), not
   seen in game.
-- **The shadow split** in `fslit` (Risks).
