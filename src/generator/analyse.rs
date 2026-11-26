@@ -320,6 +320,9 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         }));
     }
     lap("closed passages");
+    // The particle placements: what was skipped, and the live particle count the editor shows.
+    let ambience = super::ambience_plan();
+    warnings.extend(ambience.warnings());
     let faces_max = plan.0.iter().map(|w| w.faces.len()).max().unwrap_or(0);
     let report = serde_json::json!({
         "name": hm.name,
@@ -332,6 +335,7 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         "routes": { "ok": ok, "total": total },
         "start": start_point(),
         "warnings": warnings,
+        "ambience": ambience.report(),
     });
     if !build {
         return Ok(report);

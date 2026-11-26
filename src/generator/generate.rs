@@ -183,6 +183,21 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let tiles: Vec<(usize, usize)> = (0..tiles_y()).flat_map(|ty| (0..tiles_x()).map(move |tx| (tx, ty))).collect();
     // (The plan first: worked out once, for every tile.)
     super::area_plan();
+    // The particle placements, by tile.
+    let ambience = super::ambience_plan();
+    let pack = crate::ambience::installed().ok();
+    if ambience.placements > 0 {
+        println!("{}", ambience.summary());
+        for s in &ambience.skipped {
+            eprintln!(
+                "  ambience at ({:.1}, {:.1}){}: {}",
+                s.at[0],
+                s.at[1],
+                if s.count > 1 { format!(" and {} more", s.count - 1) } else { String::new() },
+                s.why
+            );
+        }
+    }
     lap("planned");
     let pre_loop = gen_start.elapsed().as_secs_f32();
     let no_surfaces = std::env::var_os("LS_NO_SURFACES").is_some();
@@ -210,7 +225,8 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         let w = if no_surfaces { raw } else { surfaced(&raw, tx, ty, painter.as_ref()) };
         phase(0);
         let mut mtrs = Vec::new();
-        let text = tile_model(&name, tx, ty, &w, painter.as_ref(), strength > 0.0, &mut mtrs);
+        let particles = pack.zip(ambience.tiles.get(&(tx, ty))).map(|(p, b)| (b.as_slice(), p));
+        let text = tile_model(&name, tx, ty, &w, painter.as_ref(), strength > 0.0, &mut mtrs, particles);
         phase(1);
         let mini = minimap(tx, ty, painter.as_ref());
         phase(4);
@@ -328,6 +344,12 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             }
         }
     }
+    // The particle pack's own textures, for the kinds baked in.
+    if let Some(pack) = pack {
+        for (name, data) in pack.textures_for(&ambience.kinds()) {
+            owned.push((ResRef::from_str(&name)?, ResType::TGA, data));
+        }
+    }
     let nodes = choose_path_nodes();
     let set = set_file(&nodes);
     owned.push((ResRef::from_str(&tileset_name())?, ResType::SET, crlf(&set)));
@@ -417,7 +439,8 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         t.set("Tile_ID", Value::Int(i as i32));
         t.set("Tile_Orientation", Value::Int(0));
         t.set("Tile_Height", Value::Int(tile_level(i % tiles_x(), i / tiles_x())));
-        // As the toolset sets them (a tile's animations loop), so the builder's test module and the published area agree.
+        // As the toolset sets them (a tile's animations loop), so the builder's test module and the published area agree. Baked
+        // ambience that loops is keyed on in `animloop01`, which only plays with these on.
         for k in ["Tile_AnimLoop1", "Tile_AnimLoop2", "Tile_AnimLoop3"] {
             t.set(k, Value::Byte(1));
         }

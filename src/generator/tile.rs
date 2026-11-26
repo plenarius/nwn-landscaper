@@ -13,9 +13,10 @@ use super::{
     mtr_name, normal_z, num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
     trimesh_full, trimesh_listed, trimesh_with,
 };
-use crate::{heightmap, objects, paint, shared};
+use crate::{ambience, heightmap, objects, paint, shared};
 
-/// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`).
+/// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
+/// particle placements baked into it, and the pack they come from.
 pub(super) fn tile_model(
     name: &str,
     tx: usize,
@@ -24,6 +25,7 @@ pub(super) fn tile_model(
     painter: Option<&Painter>,
     shadow: bool,
     mtrs: &mut Vec<(String, String)>,
+    ambience: Option<(&[ambience::Baked], &ambience::Pack)>,
 ) -> String {
     let (ox, oy) = (tx as f32 * TILE + TILE / 2.0, ty as f32 * TILE + TILE / 2.0);
     let base = tile_level(tx, ty) as f32 * TRANSITION;
@@ -256,12 +258,21 @@ pub(super) fn tile_model(
             [(v[0] + ox) / WATER_METRES, (v[1] + oy) / WATER_METRES]
         });
     }
+    // Particles: under the tile's `<name>a` dummy, keyed in its animations (`ambience`).
+    if let Some((baked, pack)) = ambience {
+        s.push_str(&ambience::tile_nodes(name, baked, pack));
+    }
     let _ = writeln!(
         s,
         "node aabb {name}_wg\n  parent {name}\n  ambient 0.2 0.2 0.2\n  diffuse 0.8 0.8 0.8\n  specular 0 0 0\n  shininess 1\n  render 0"
     );
     aabb_body(&mut s, w);
-    let _ = writeln!(s, "endnode\nendmodelgeom {name}\ndonemodel {name}");
+    let _ = writeln!(s, "endnode\nendmodelgeom {name}");
+    if let Some((baked, pack)) = ambience {
+        let animations = ambience::tile_animations(name, &s, baked, pack);
+        s.push_str(&animations);
+    }
+    let _ = writeln!(s, "donemodel {name}");
     s
 }
 

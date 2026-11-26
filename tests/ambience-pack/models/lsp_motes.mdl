@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The baked-ambience tests' dust motes, in the particle pack's shape.
+newmodel lsp_motes
+setsupermodel lsp_motes NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_motes
+node dummy lsp_motes
+  parent NULL
+endnode
+node emitter motes
+  parent lsp_motes
+  position 1 0 1.5
+  update Fountain
+  render Normal
+  blend Lighten
+  texture lspt_motes
+  xgrid 2
+  ygrid 2
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 0
+  m_isTinted 0
+  bounce 0
+  random 1
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 3
+  lifeExp 10
+  colorStart 1 0.92 0.7
+  colorEnd 1 0.92 0.7
+  alphaStart 0.8
+  alphaEnd 0
+  sizeStart 0.35
+  sizeEnd 0.35
+  velocity 0.1
+  randvel 0.1
+  spread 3.14
+  grav 0
+  drag 0
+  particleRot 0
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 0
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 250
+  ysize 250
+endnode
+endmodelgeom lsp_motes
+donemodel lsp_motes

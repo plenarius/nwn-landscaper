@@ -57,3 +57,10 @@ path = "packs/particles/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 plenarius"
 SPDX-License-Identifier = "CC0-1.0"
+
+# The baked-ambience tests' small particle pack (its pack.json and textures; the models carry their own header).
+[[annotations]]
+path = ["tests/ambience-pack/pack.json", "tests/ambience-pack/textures/*.tga"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (C) 2026 plenarius"
+SPDX-License-Identifier = "GPL-3.0-or-later"

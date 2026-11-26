@@ -165,6 +165,8 @@ pub struct Heightmap {
     pub entrances: Vec<Entrance>,
     /// Placeables baked in, from the editor.
     pub objects: Vec<Object>,
+    /// Particle placements baked into the tiles (see `ambience`).
+    pub ambience: Vec<crate::ambience::Placement>,
     /// A cave or an interior: no sky; rock tops at `roof` and above are void (drawn black).
     pub underground: bool,
     /// An interior (rooms): flagged interior only, not underground or natural.
@@ -337,6 +339,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
                 })
                 .collect()
         }),
+        ambience: crate::ambience::placements_of(&j["ambience"])?,
         serial: SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
     });
     in_range(&hm)?;
@@ -379,6 +382,12 @@ fn in_range(hm: &Heightmap) -> Result<()> {
             "the entrance at {}: its direction and floor must be numbers, its width and depth more than 0 and at most the area's side",
             at(e.x, e.y)
         );
+    }
+    for a in &hm.ambience {
+        let what = || format!("ambience {} at {}", a.kind, at(a.x, a.y));
+        anyhow::ensure!(inside(a.x, a.y), "{}: outside the {w} by {h} m area", what());
+        anyhow::ensure!(a.z.is_finite() && a.bearing.is_finite(), "{}: its height and bearing must be numbers", what());
+        anyhow::ensure!(SCALE.contains(&a.scale), "{}: its size is {}, not {} to {}", what(), a.scale, SCALE.start(), SCALE.end());
     }
     for (k, v) in [("roof", hm.roof), ("shadow", hm.shadow)] {
         anyhow::ensure!(v.is_none_or(f32::is_finite), "the {k} must be a number");
@@ -698,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    fn objects_things_and_entrances_out_of_range_are_refused() {
+    fn objects_things_entrances_and_ambience_out_of_range_are_refused() {
         let object = |o: serde_json::Value| {
             let mut base = serde_json::json!({ "model": "plc_a01", "x": 15, "y": 15, "z": 1, "bearing": 0, "scale": 1 });
             for (k, v) in o.as_object().unwrap() {
@@ -708,12 +717,21 @@ mod tests {
         };
         let thing = |t: serde_json::Value| serde_json::json!({ "things": [t] });
         let entrance = |e: serde_json::Value| serde_json::json!({ "entrances": [e] });
+        let ambience = |a: serde_json::Value| {
+            let mut base = serde_json::json!({ "kind": "mist", "x": 15, "y": 15, "z": 1, "scale": 1, "seed": 7 });
+            for (k, v) in a.as_object().unwrap() {
+                base[k] = v.clone();
+            }
+            serde_json::json!({ "ambience": [base] })
+        };
         let fine = [
             object(serde_json::json!({})),
             object(serde_json::json!({ "scale": 0.1, "x": 0, "y": 30 })),
             object(serde_json::json!({ "scale": 5, "x": -5, "y": 35 })),
             thing(serde_json::json!({ "id": 1, "kind": "trigger", "x": 1, "y": 2, "outline": [[1, 2], [29, 2], [29, 29]] })),
             entrance(serde_json::json!({ "x": 15, "y": 0, "dir": 1.57, "width": 6, "depth": 8, "floor": 0 })),
+            ambience(serde_json::json!({})),
+            ambience(serde_json::json!({ "x": -5, "bearing": 1.57, "scale": 0.5 })),
         ];
         for (k, extra) in fine.into_iter().enumerate() {
             read(&area(&format!("fine{k}"), extra.clone(), None)).unwrap_or_else(|e| panic!("{extra}: {e:#}"));
@@ -734,6 +752,10 @@ mod tests {
                 "at most the area's side",
             ),
             (entrance(serde_json::json!({ "x": -1e9, "y": 0, "dir": 1.57, "width": 6, "depth": 8, "floor": 0 })), "outside"),
+            (ambience(serde_json::json!({ "x": 1e9 })), "ambience mist at (1000000000, 15): outside"),
+            (ambience(serde_json::json!({ "scale": 1e5 })), "its size is 100000"),
+            (ambience(serde_json::json!({ "z": 1e39 })), "must be numbers"),
+            (ambience(serde_json::json!({ "z": "high" })), "x, y and z must be numbers"),
         ];
         for (k, (extra, why)) in refused.into_iter().enumerate() {
             let e = format!("{:#}", read(&area(&format!("bad{k}"), extra.clone(), None)).err().unwrap_or_else(|| panic!("{extra}: taken")));
@@ -825,6 +847,7 @@ mod tests {
             shadow: None,
             entrances: vec![],
             objects: vec![],
+            ambience: vec![],
             underground: false,
             interior: false,
             roof: None,
@@ -870,6 +893,7 @@ mod tests {
             shadow: None,
             entrances: vec![],
             objects: vec![],
+            ambience: vec![],
             underground: false,
             interior: false,
             roof: None,
