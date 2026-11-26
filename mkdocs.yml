@@ -84,6 +84,18 @@ nav:
   - Home: index.md
   - Handbook:
       - handbook/index.md
+      - Getting started: handbook/getting-started.md
+      - Terrain: handbook/terrain.md
+      - Paint and the mix brush: handbook/paint.md
+      - Caves and interiors: handbook/caves.md
+      - Scatter and Place: handbook/scatter.md
+      - Things: handbook/things.md
+      - Light: handbook/light.md
+      - Ambience: handbook/ambience.md
+      - Atmosphere and skies: handbook/atmosphere.md
+      - Texture packs: handbook/texture-packs.md
+      - Export: handbook/export.md
+      - Publish and teams: handbook/publish.md
       - The whole path: BUILDER-WORKFLOW.md
   - Showcase: showcase.md
   - Running it:
