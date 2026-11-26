@@ -498,7 +498,7 @@ fn choose_path_nodes_for(walks: &mut [Walk], prune: bool) -> (Vec<(char, u8)>, u
         pathnode::layouts().into()
     };
     let points = pathnode::edge_points(&layouts);
-    let regions: Vec<pathnode::Regions> = walks
+    let mut regions: Vec<pathnode::Regions> = walks
         .iter()
         .map(|w| {
             let verts: Vec<[f32; 3]> = w.verts.iter().map(|v| [v[0] + TILE / 2.0, v[1] + TILE / 2.0, v[2]]).collect();
@@ -510,10 +510,19 @@ fn choose_path_nodes_for(walks: &mut [Walk], prune: bool) -> (Vec<(char, u8)>, u
             }
         })
         .collect();
+    let lone = std::env::var_os("LS_NO_LONE").is_none();
+    if lone {
+        pathnode::serve_lone_regions(&layouts, &mut regions, tiles_x(), &[]);
+    }
     if std::env::var_os("LS_TIMING").is_some() {
         eprintln!("    regions done");
     }
-    let picks = pathnode::choose(&layouts, &regions, tiles_x(), tiles_y());
+    let mut picks = pathnode::choose(&layouts, &regions, tiles_x(), tiles_y());
+    // Ground the choice left an island (its exits face water, say): served through crossings too, then chosen again.
+    let islands = if lone { pathnode::cut_off(&layouts, &regions, &picks, tiles_x(), tiles_y()) } else { Vec::new() };
+    if !islands.is_empty() && pathnode::serve_lone_regions(&layouts, &mut regions, tiles_x(), &islands) > 0 {
+        picks = pathnode::choose(&layouts, &regions, tiles_x(), tiles_y());
+    }
     let mut pruned = 0;
     if prune {
         for (i, p) in picks.iter().enumerate() {

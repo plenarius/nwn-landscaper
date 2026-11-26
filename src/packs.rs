@@ -54,11 +54,11 @@ impl Kind {
 
 /// Where an index lists its packs: `LANDSCAPER_PACKS_URL` (a URL or a file), else [`DEFAULT_INDEX`].
 pub fn index_url() -> String {
-    std::env::var("LANDSCAPER_PACKS_URL").ok().map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).unwrap_or(DEFAULT_INDEX.into())
+    crate::config::setting("LANDSCAPER_PACKS_URL").map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).unwrap_or(DEFAULT_INDEX.into())
 }
 
 fn max_pack_bytes() -> u64 {
-    std::env::var("LANDSCAPER_PACK_MAX_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).filter(|&n| n > 0).unwrap_or(DEFAULT_MAX_MB)
+    crate::config::setting("LANDSCAPER_PACK_MAX_MB").and_then(|v| v.trim().parse::<u64>().ok()).filter(|&n| n > 0).unwrap_or(DEFAULT_MAX_MB)
         << 20
 }
 

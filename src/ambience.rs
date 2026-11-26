@@ -298,7 +298,7 @@ fn kind(file: &dyn Fn(&str) -> Result<Vec<u8>>, k: &serde_json::Value) -> Result
 /// says why there is none.
 pub fn installed() -> std::result::Result<&'static Pack, &'static str> {
     static PACK: OnceLock<std::result::Result<Pack, String>> = OnceLock::new();
-    PACK.get_or_init(|| match std::env::var_os(PACK_ENV).filter(|d| !d.is_empty()) {
+    PACK.get_or_init(|| match crate::config::setting_os(PACK_ENV).filter(|d| !d.is_empty()) {
         Some(dir) => {
             let dir = Path::new(&dir);
             Pack::load(dir).map_err(|e| format!("the particle pack in {} ({PACK_ENV}): {e:#}", dir.display()))
@@ -652,7 +652,7 @@ mod tests {
         }
         assert!(built_in::FILES.iter().any(|(f, _)| *f == "pack.json") && pack.kinds.len() >= 3);
         assert!(pack.kinds.iter().all(|k| k.live[0].max(k.live[1]) <= PLACEMENT_LIVE_MAX));
-        if std::env::var_os(PACK_ENV).is_none() {
+        if crate::config::setting_os(PACK_ENV).is_none() {
             assert_eq!(installed().map(|p| p.kinds.len()), Ok(pack.kinds.len()));
         }
         let list = [at("mist", 15.0, 15.0, 1.0), at("fireflies", 5.0, 5.0, 1.0), at("motes", 25.0, 5.0, 1.0)];

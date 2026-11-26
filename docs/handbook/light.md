@@ -1,7 +1,8 @@
 # Light
 
 An area has one sun by day and one moon by night, set in the **Sky & fog** panel (`L`). On top of that, the **Light** tool (`b`)
-gives each tile its own two lights: warm pools in a village at night, a cold glow in a cave.
+gives each tile its own two lights: warm pools in a village at night, a cold glow in a cave. Sky & fog lies over the tools'
+panels: picking a tool closes it, and `L` opens it again.
 
 ## Set the area's light
 
@@ -15,7 +16,7 @@ gives each tile its own two lights: warm pools in a village at night, a cold glo
 
 **Show in the view** draws the area by day or by night, so you see the light the game will use.
 
-![The Sky & fog panel by night: the view shows the moon's light and the fireflies](../assets/handbook/light.webp)
+![The Sky & fog panel by night: the view shows the night sky, the moon's light and the fireflies](../assets/handbook/light.webp)
 
 ## Shadows
 
@@ -38,8 +39,8 @@ lamp or a torch, place a placeable that gives light ([Things](things.md)).
 
 - **Whole area** gives every tile the two lights; **All off** turns every tile's lights off. Each is one Undo.
 - The panel counts the tiles lit.
-- The view draws the lights on the ground, under the area's light: switch **Sky & fog** to **Night** and tick **Show in the
-  view** to see them as they will look after dark.
+- The view draws the lights on the ground, under the area's light: press `L`, switch **Sky & fog** to **Night** and tick **Show
+  in the view** to see them as they will look after dark. Picking a tool closes the panel; the view stays by night.
 
 | Look | Lights |
 | --- | --- |

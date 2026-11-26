@@ -111,3 +111,4 @@ nav:
   - Internals:
       - Areas that look alive: DESIGN-ambience.md
       - Cut into pieces: DESIGN-canvas-cut.md
+      - A desktop app: DESIGN-desktop-app.md

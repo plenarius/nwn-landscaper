@@ -181,7 +181,7 @@ pub fn read(limit: usize, user: Option<&str>, action: Option<&str>) -> Vec<Value
 static SEARCHES: Mutex<Option<HashMap<String, VecDeque<Instant>>>> = Mutex::new(None);
 
 fn limit(var: &str, default: usize) -> usize {
-    std::env::var(var).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    crate::config::setting(var).and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
 /// Whether `user` may search now: at most `LANDSCAPER_SEARCH_PER_MIN` (30) in a minute and `LANDSCAPER_SEARCH_PER_DAY` (300) in a day.
@@ -220,7 +220,7 @@ fn notify(text: String) {
         return;
     }
     let queue = QUEUE.get_or_init(|| {
-        let url = std::env::var("LANDSCAPER_DISCORD_WEBHOOK").ok().filter(|u| !u.trim().is_empty())?;
+        let url = crate::config::setting("LANDSCAPER_DISCORD_WEBHOOK").filter(|u| !u.trim().is_empty())?;
         let (send, notices) = sync_channel::<String>(QUEUED);
         std::thread::spawn(move || {
             for text in notices {

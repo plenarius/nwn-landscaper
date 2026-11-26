@@ -26,7 +26,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
                 "versions": crate::gitea::enabled(),
                 "publish": crate::review::active(),
                 "package": crate::review::config().is_none(),
-                "reviewers": std::env::var("LANDSCAPER_REVIEWERS").unwrap_or_default(),
+                "reviewers": crate::config::setting("LANDSCAPER_REVIEWERS").unwrap_or_default(),
             }),
         ),
         (Method::Get, "/api/users") if me.admin => json_response(

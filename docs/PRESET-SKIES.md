@@ -1,10 +1,11 @@
 # Preset skies
 
-Preset skies is the first [sky pack](SKY-PACKS.md): a sky for each Sky & fog preset that shows one, so an area's sky matches its
-light. The design is [DESIGN-ambience.md](DESIGN-ambience.md), question 2. Five skies re-use the pictures of Savant1974's
-[Real Skies](https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version) at other times of day. Real Skies states
-no licence, so this repository ships none of its pictures and the pack is not in the Landscaper's list of packs: you make it
-from your own download. Thick mist and Swamp are painted by the script from their presets' colours.
+Preset skies is the first [sky pack](SKY-PACKS.md): a sky for each outdoor Sky & fog preset but Clear day (which keeps the game's
+Grass Clear), so an area's sky matches its light. The design is [DESIGN-ambience.md](DESIGN-ambience.md), question 2. Five skies
+re-use the pictures of Savant1974's [Real Skies](https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version) at
+other times of day. Real Skies states no licence, so this repository ships none of its pictures and the pack is not in the
+Landscaper's list of packs: you make it from your own download. Thick mist and Swamp are painted by the script from their presets'
+colours.
 
 ## The skies
 
@@ -48,6 +49,9 @@ The pack has 34 files, 60 MB: 11 pictures of 5.6 MB, 6 small gradients and 17 mo
    many pictures are re-encoded at once (default 4, about 150 MB of memory each).
 3. Install it as any sky pack, with the module's haks set: `landscaper skies get dist/preset-skies-1.0.0.zip`. Its seven skies
    take the first free rows of the module's `skyboxes.2da` from 32 up.
+
+From then on each preset in the editor's Sky & fog panel picks its sky from the pack, and the Sky row lists the seven
+([Atmosphere and skies](handbook/atmosphere.md)). Without the pack, a preset picks the game's sky nearest to it.
 
 Preset skies works with or without the `realskies_dds.hak` that `real-skies` makes: it carries its own copies of the pictures
 under its own names.

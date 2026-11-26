@@ -22,7 +22,7 @@ struct Config {
 }
 
 fn config() -> Result<Config> {
-    let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    let var = |k: &str| crate::config::setting(k).filter(|v| !v.is_empty());
     Ok(Config {
         url: var("LANDSCAPER_GITEA_URL")
             .context("saving versions isn't set up (LANDSCAPER_GITEA_URL, LANDSCAPER_GITEA_TOKEN)")?
