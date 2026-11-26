@@ -4,7 +4,7 @@
 light shafts, snow gusts, blowing sand, embers and ground fog. The export bakes them into the tiles, so they cost the game no
 objects and need no `placeables.2da` rows.
 
-![The Ambience tool after Fill: mist and fireflies on a lake](../assets/handbook/ambience.webp)
+![The Ambience tool after Fill: mist on the lake, leaves and light shafts in the trees, stopped at the particle cap](../assets/handbook/ambience.webp)
 
 ## Fill the area
 
@@ -33,8 +33,9 @@ Fill and the brush stop at the cap; the count turns to a warning as it gets clos
 ## Day and night
 
 Some kinds show only at night (fireflies) or only by day. The view sketches the particles as moving points in each kind's
-colour. Night-only kinds show when **Sky & fog** shows the area by night; while the Ambience panel is open, kinds out of their
-hours show as grey dots.
+colour. Night-only kinds show when **Sky & fog** shows the area by night (`L`, **Night**; picking a tool closes the panel, and
+`A` brings the Ambience panel back with the view still by night); while the Ambience panel is open, kinds out of their hours
+show as grey dots.
 
 The view only sketches where the particles go. The game draws the particle pack's own emitters, so look at the result in the game
 before you call an area done.
