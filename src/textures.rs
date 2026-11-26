@@ -30,6 +30,11 @@ pub mod packs;
 
 const STARTER: &str = include_str!("starter_textures.json");
 
+/// Starter textures whose game texture changed, as (id, the resref it was made from before). A library still holding the old
+/// one, untouched, gets the new one ([`refresh_starter`]); one the builder replaced or changed is left alone.
+/// `dirt` was `tcm02_dirt02`, a near-black stone that made Dig's and Room's floors black.
+const RETIRED: [(&str, &str); 1] = [("dirt", "tcm02_dirt02")];
+
 /// The longest id the Landscaper makes itself: with the `ls_` prefix it is the texture's resref in the hak (16 characters at most).
 pub const MAX_ID: usize = 13;
 /// The longest id a list may give. The hak's resref takes `ls_` and the first [`MAX_ID`] (see [`paint::resref`]), so two ids
@@ -160,6 +165,12 @@ impl Library {
         self.entries.iter().find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id))).and_then(|e| e["original"].as_str())
     }
 
+    /// The picture file of the entry `id`, if there is one.
+    fn render_of(&self, id: &str) -> Option<&str> {
+        let e = self.entries.iter().find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id)))?;
+        e["render"].as_str().or(e["file"].as_str())
+    }
+
     fn save(&self) -> Result<()> {
         std::fs::create_dir_all(&self.dir)?;
         let path = self.dir.join("catalog.json");
@@ -251,13 +262,16 @@ fn add_specs(library: &mut Library, haks: &[String], specs: &[Spec], replace: bo
 pub fn init() -> Result<Report> {
     let (_, specs) = parse_list(STARTER)?;
     let mut library = Library::open(&paint::texture_dir());
-    let report = add_specs(&mut library, &[], &specs, false)?;
+    let mut report = add_specs(&mut library, &[], &specs, false)?;
     anyhow::ensure!(
         report.added > 0 || report.kept > 0,
         "none of the starter textures were found in the game's files ({})",
         report.problems.first().cloned().unwrap_or_default()
     );
     library.save()?;
+    let replaced = refresh_starter()?.len();
+    report.added += replaced;
+    report.kept = report.kept.saturating_sub(replaced);
     Ok(report)
 }
 
@@ -445,10 +459,62 @@ fn build_into(library_dir: &Path, folder: &Path, category: Option<&str>, surface
     Ok(report)
 }
 
+/// Whether `library` holds a [`RETIRED`] starter texture as it was made: its entry names the old game texture and is no pack's.
+fn has_retired(library: &Library) -> bool {
+    RETIRED.iter().any(|(id, old)| library.pack_of(id).is_none() && library.original_of(id) == Some(&format!("game:{old}")))
+}
+
+/// Replaces each [`RETIRED`] starter texture `library` still holds, untouched (its entry names the old game texture and its
+/// picture is the one that texture makes), with the starter set's texture for that id. `picture` reads a game texture by resref.
+/// Returns the ids replaced; running it again replaces nothing.
+fn refresh_retired(library: &mut Library, picture: impl Fn(&str) -> Option<Rgba>) -> Result<Vec<String>> {
+    let (_, specs) = parse_list(STARTER)?;
+    let mut replaced = Vec::new();
+    for (id, old) in RETIRED {
+        if library.pack_of(id).is_some() || library.original_of(id) != Some(&format!("game:{old}")) {
+            continue;
+        }
+        let Some(spec) = specs.iter().find(|s| s.id == id) else { continue };
+        // (A picture edited in place keeps the old entry: it is the builder's now.)
+        let Some(file) = library.render_of(id) else { continue };
+        let (Some(was), Ok(now)) = (picture(old), paint::read_png(&library.dir.join(file))) else { continue };
+        let was = library_pictures(was).0;
+        if (was.width, was.height, &was.data) != (now.width, now.height, &now.data) {
+            continue;
+        }
+        let Some(new) = picture(&spec.resref) else { continue };
+        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), new)?;
+        replaced.push(id.to_string());
+    }
+    Ok(replaced)
+}
+
+/// [`refresh_retired`] on the library, reading the game only when it holds a retired texture. Its catalog is saved when one
+/// was replaced, so the shared hak and the next export of an area painted with it take the new picture.
+pub fn refresh_starter() -> Result<Vec<String>> {
+    let _one = lock();
+    let mut library = Library::open(&paint::texture_dir());
+    if !has_retired(&library) {
+        return Ok(Vec::new());
+    }
+    let game = crate::models::open_game(nwn_bake::game::Haks::List(Vec::new()), nwn_bake::game::Tlk::None)
+        .context("opening the game (set NWN_ROOT)")?;
+    let replaced = refresh_retired(&mut library, |resref| game_picture(&game, resref))?;
+    if !replaced.is_empty() {
+        library.save()?;
+    }
+    Ok(replaced)
+}
+
 /// The first run on a machine: with no library, builds the starter set so painting and exporting work. A failure is reported, not
 /// fatal (a team server whose game files are not mounted yet should still start).
 pub fn ensure_starter() {
     if paint::texture_dir().join("catalog.json").is_file() {
+        match refresh_starter() {
+            Ok(ids) if !ids.is_empty() => println!("textures: {} replaced with the starter set's new picture", ids.join(", ")),
+            Ok(_) => {}
+            Err(e) => eprintln!("The texture library's old starter textures could not be refreshed: {e:#}"),
+        }
         // A library made before the starter set had all of them: say how to add the editor's defaults it lacks.
         let library = Library::open(&paint::texture_dir());
         let missing: Vec<&str> = EDITOR_DEFAULTS.into_iter().filter(|id| !library.has(id)).collect();
@@ -745,5 +811,80 @@ mod tests {
         assert_eq!(lib.id_from("game:tcn02_grass01").as_deref(), Some("tcn02grass01"));
         assert_eq!(lib.id_from("game:nothing"), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The starter's `dirt` as an old library holds it: made from the retired texture, `old` its picture.
+    fn old_dirt(dir: &Path, old: &Rgba) -> Library {
+        let mut lib = Library::open(dir);
+        let (_, specs) = parse_list(STARTER).unwrap();
+        let spec = Spec { resref: RETIRED[0].1.into(), ..specs.into_iter().find(|s| s.id == "dirt").unwrap() };
+        lib.put(&spec, "Neverwinter Nights", &format!("game:{}", RETIRED[0].1), old.clone()).unwrap();
+        lib.save().unwrap();
+        Library::open(dir)
+    }
+
+    /// Two game textures, the retired dirt and its replacement, as `refresh_retired` reads them.
+    fn two_dirts() -> (Rgba, Rgba, impl Fn(&str) -> Option<Rgba>) {
+        let old = picture(64, 64);
+        let mut new = picture(64, 64);
+        new.data.iter_mut().for_each(|v| *v = v.wrapping_add(40));
+        let (o, n) = (old.clone(), new.clone());
+        let read = move |resref: &str| match resref {
+            "tcm02_dirt02" => Some(o.clone()),
+            "tni01_dirt02" => Some(n.clone()),
+            _ => None,
+        };
+        (old, new, read)
+    }
+
+    #[test]
+    fn an_old_starter_dirt_is_replaced_once() {
+        let dir = scratch("retired");
+        let (old, new, read) = two_dirts();
+        let mut lib = old_dirt(&dir, &old);
+        assert!(has_retired(&lib));
+        assert_eq!(refresh_retired(&mut lib, &read).unwrap(), vec!["dirt".to_string()]);
+        lib.save().unwrap();
+        let lib = Library::open(&dir);
+        assert_eq!(lib.original_of("dirt"), Some("game:tni01_dirt02"));
+        assert_eq!(paint::read_png(&dir.join("dirt.png")).unwrap().data, library_pictures(new).0.data);
+        // Again: nothing left to replace.
+        let mut again = Library::open(&dir);
+        assert!(!has_retired(&again));
+        assert!(refresh_retired(&mut again, &read).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_dirt_the_builder_changed_or_replaced_is_kept() {
+        let (old, _, read) = two_dirts();
+        // The old entry with its picture painted over in place.
+        let dir = scratch("retired-edited");
+        let mut lib = old_dirt(&dir, &old);
+        let mut edited = library_pictures(old.clone()).0;
+        edited.data[0] ^= 0xff;
+        paint::write_png(&dir.join("dirt.png"), &edited).unwrap();
+        assert!(refresh_retired(&mut lib, &read).unwrap().is_empty());
+        assert_eq!(lib.original_of("dirt"), Some("game:tcm02_dirt02"));
+        assert_eq!(paint::read_png(&dir.join("dirt.png")).unwrap().data, edited.data);
+        let _ = std::fs::remove_dir_all(&dir);
+        // Replaced with another game texture (`textures add`).
+        let dir = scratch("retired-replaced");
+        let mut lib = Library::open(&dir);
+        let spec = Spec { id: "dirt".into(), name: "Dirt".into(), category: "Earth".into(), surface: 1, resref: "ttr01_dirt03".into() };
+        lib.put(&spec, "Neverwinter Nights", "game:ttr01_dirt03", old.clone()).unwrap();
+        assert!(!has_retired(&lib));
+        assert!(refresh_retired(&mut lib, &read).unwrap().is_empty());
+        assert_eq!(lib.original_of("dirt"), Some("game:ttr01_dirt03"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_retired_starter_texture_is_no_longer_in_the_starter_set() {
+        let (_, specs) = parse_list(STARTER).unwrap();
+        for (id, old) in RETIRED {
+            let now = specs.iter().find(|s| s.id == id).unwrap_or_else(|| panic!("{id} left the starter set"));
+            assert_ne!(now.resref, old, "{id} is still {old}");
+        }
     }
 }
