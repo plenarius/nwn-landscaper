@@ -250,6 +250,11 @@ which near a cut may be across it. The engine fits rims with the halo in view, s
 
 Edges on the canvas's own border, and on gaps, follow the same rule: a gap is canvas ground, so option A shows it.
 
+**A single area gets the same edge scenery (2026-11-26).** An area on its own has no neighbour to show, so it gains a 50 m band
+around it, stored as its halo: sculpted and painted like the area, never walked, never built into tiles. A first fill carries the
+area's own ground outward, so an area looks right past its edge before anyone touches the band. Every area, old or new, then shows
+real ground past its edge, whether or not it is ever part of a canvas.
+
 **Edge trials (2026-11-25).** A throwaway trial for the maintainer to walk in the game client: a 30 by 30 tile landscape (hills,
 a river and a road crossing the cuts, the texture mix, baked trees) cut into 10 by 10 pieces, its centre piece exported once per
 treatment, each also with a 90 m fog clip, and the uncut landscape for reference. The overhang there is the halo's own tiles at
@@ -651,7 +656,8 @@ the maintainer's time is review and testing. "Client" marks a check in the game 
 |---|---|---|---|---|---|
 | 0 | Spikes S1 to S4 | both | 9 h | 1 h | S2, S3 |
 | 1 | Today's areas, cheaper: undo of changed rectangles, IndexedDB copy, GPU uploads of changed ranges | web | 5 h | 30 min | no |
-| 2 | Area format: `halo` and `tagPrefix`; normals, shade, chasm rims and ceilings read the halo; edge scenery from the halo (3A or 3C after S2) | engine | 6 h | 45 min | 15 min: one area with a halo, its edges |
+| 2 | Area format: `halo` and `tagPrefix`; normals, shade, chasm rims and ceilings read the halo; edge scenery from the halo (G, full detail along shores and roads) | engine | 6 h | 45 min | 15 min: one area with a halo, its edges |
+| 2b | The band around a single area: the editor shows, sculpts and paints the halo; a first fill carries the ground outward | web + engine | 5 h | 30 min | 10 min: an old area with its band |
 | 3 | Canvas storage: `canvases/<name>/` with blocks and versions, load and save of changed blocks, team workspaces and assignments | engine | 7 h | 45 min | no |
 | 4 | Cutting on the engine: pieces, water seeds, things by position, crossings with their tags, per-piece and whole-canvas route check, export of all pieces into one module | engine | 10 h | 1 h | 20 min: walk across three pieces |
 | 5 | Editor canvas model: block-backed grids, region undo across blocks, block saves, the canvas sculpt view at a quarter of the detail | web | 10 h | 45 min | no |
@@ -659,7 +665,7 @@ the maintainer's time is review and testing. "Client" marks a check in the game 
 | 7 | Publish, package and dev trial for a canvas, the changed-pieces ticks | web + engine | 4 h | 30 min | 20 min: the published module |
 | 8 | Make a canvas from an area; docs (BUILDER-WORKFLOW, TEAM-SERVER) and the changelog | both | 3 h | 20 min | no |
 
-About 62 hours of agent time and 6.5 hours of the maintainer's, of which about 1.5 hours in the client. Steps 1 and 2 can run in parallel;
+About 67 hours of agent time and 7 hours of the maintainer's, of which about 1.7 hours in the client. Steps 1 and 2 can run in parallel;
 step 5 needs step 3, and step 6 needs steps 4 and 5.
 
 Later, not in this build: importing several existing areas onto one canvas; neighbours' objects drawn in edge scenery; an
