@@ -130,7 +130,7 @@ pub(crate) fn height(x: f32, y: f32) -> f32 {
     hill * (1.0 - s) + cliff_height() * s
 }
 
-/// The ground's unit normal at area point (x, y): the painted terrain's ([`heightmap::Heightmap::normal`], as the editor has it), else
+/// The ground's unit normal at area point (x, y): the painted terrain's ([`heightmap::Heightmap::normal`]), else
 /// the built-in test terrain's slope over 0.625 m each way.
 pub(crate) fn ground_normal(x: f32, y: f32) -> [f32; 3] {
     if let Some(h) = heightmap::current() {

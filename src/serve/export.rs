@@ -411,6 +411,7 @@ fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightma
         ceiling: Vec::new(),
         rim: Vec::new(),
         serial: 0,
+        normals: Default::default(),
     })
 }
 

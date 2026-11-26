@@ -188,9 +188,19 @@ pub struct Heightmap {
     pub originals: Option<serde_json::Value>,
     /// Bumped on every load, so caches keyed on the terrain notice.
     pub serial: u64,
+    /// Each sample's normal ([`Heightmap::sample_normal`]), made on first use.
+    pub(crate) normals: std::sync::OnceLock<Vec<[f32; 3]>>,
 }
 
 static CURRENT: RwLock<Option<Arc<Heightmap>>> = RwLock::new(None);
+
+/// How many samples each way steep ground's normal is taken over ([`Heightmap::normal`]): 1.25 m at 0.625 m a sample, about
+/// as far as a river's bank climbs.
+const WIDE: usize = 2;
+/// The tilts (as the up part of the wide normal) between which steep ground's normal turns from its own slope to the wide one:
+/// 15 and 30 degrees. Gentler ground keeps the light on its every bump.
+const GENTLE_NZ: f32 = 0.966;
+const STEEP_NZ: f32 = 0.866;
 
 /// The area loaded last (by [`load`]), which the generator builds from; None before any.
 pub fn current() -> Option<Arc<Heightmap>> {
@@ -338,6 +348,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
                 .collect()
         }),
         serial: SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        normals: Default::default(),
     });
     in_range(&hm)?;
     Ok(hm)
@@ -637,9 +648,9 @@ impl Heightmap {
         a + (b - a) * ty
     }
 
-    /// The ground's unit normal at area coordinates (x east, y north, z up), smooth across the whole area: each sample's slope
-    /// between its neighbours (clamped at the area's edge), blended bilinearly between samples. The editor's view gives its
-    /// ground the same normals (js/view.js, `updateNormals`), so slopes are textured alike in both ([`crate::triplanar`]).
+    /// The ground's unit normal at area coordinates (x east, y north, z up), smooth across the whole area: each sample's
+    /// ([`Self::sample_normal`]), blended bilinearly between samples. The editor's view gives gentle ground the same normals
+    /// (js/view.js, `updateNormals`), so slopes are textured alike in both ([`crate::triplanar`]); on steep ground they differ.
     pub fn normal(&self, x: f32, y: f32) -> [f32; 3] {
         let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
         let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
@@ -658,12 +669,42 @@ impl Heightmap {
         n.map(|c| c / len)
     }
 
-    /// Sample (i, j)'s unit normal: its rise per metre east and north, between its neighbours.
+    /// Sample (i, j)'s unit normal. On gentle ground, its slope between its neighbours. Where a steep face runs across the samples'
+    /// grid at a slant (a river's bank), that slope swings from one sample to the next with how the face crosses them, and the
+    /// game's sun drew it as dark blotches along the face. Steep ground takes the slope over [`WIDE`] samples each way instead,
+    /// blended in between [`GENTLE_NZ`] and [`STEEP_NZ`] of that wide slope's tilt. Made once for every sample, on first use.
     fn sample_normal(&self, i: usize, j: usize) -> [f32; 3] {
-        let h = |i: usize, j: usize| self.data[j * self.width + i];
+        let normals = self.normals.get_or_init(|| {
+            (0..self.height)
+                .flat_map(|j| (0..self.width).map(move |i| (i, j)))
+                .map(|(i, j)| {
+                    let (near, wide) = (self.slope_normal(i, j, 0), self.slope_normal(i, j, WIDE));
+                    let t = ((wide[2] - GENTLE_NZ) / (STEEP_NZ - GENTLE_NZ)).clamp(0.0, 1.0);
+                    let t = t * t * (3.0 - 2.0 * t);
+                    let n: [f32; 3] = std::array::from_fn(|k| near[k] + (wide[k] - near[k]) * t);
+                    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                    n.map(|c| c / len)
+                })
+                .collect()
+        });
+        normals[j * self.width + i]
+    }
+
+    /// Sample (i, j)'s unit normal from its rise per metre east and north between its neighbours, of the heights averaged over
+    /// `r` samples each way (0: the heights themselves). Near the area's edge the average takes fewer, as many on each side, so a
+    /// plane's normal stays the plane's.
+    fn slope_normal(&self, i: usize, j: usize, r: usize) -> [f32; 3] {
+        let mean = |i: usize, j: usize| {
+            let (ri, rj) = (r.min(i).min(self.width - 1 - i), r.min(j).min(self.height - 1 - j));
+            let mut sum = 0.0;
+            for y in j - rj..=j + rj {
+                sum += self.data[y * self.width + i - ri..=y * self.width + i + ri].iter().sum::<f32>();
+            }
+            sum / ((2 * ri + 1) * (2 * rj + 1)) as f32
+        };
         let (w, e, s, n) = (i.saturating_sub(1), (i + 1).min(self.width - 1), j.saturating_sub(1), (j + 1).min(self.height - 1));
-        let east = (h(e, j) - h(w, j)) / ((e - w) as f32 * self.spacing);
-        let north = (h(i, n) - h(i, s)) / ((n - s) as f32 * self.spacing);
+        let east = (mean(e, j) - mean(w, j)) / ((e - w) as f32 * self.spacing);
+        let north = (mean(i, n) - mean(i, s)) / ((n - s) as f32 * self.spacing);
         let len = (east * east + north * north + 1.0).sqrt();
         [-east / len, -north / len, 1.0 / len]
     }
@@ -831,6 +872,7 @@ mod tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            normals: Default::default(),
         };
         assert_eq!(hm.at(10.0, 0.0), 1.0);
         assert_eq!(hm.at(5.0, 0.0), 0.5);
@@ -847,6 +889,51 @@ mod tests {
         for (x, y) in [(0.0, 0.0), (1.5, 2.25), (3.0, 3.0), (2.0, 0.5)] {
             let n = hm.normal(x, y);
             assert!(n.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-5), "({x}, {y}): {n:?}");
+        }
+    }
+
+    #[test]
+    fn a_bank_slanting_across_the_samples_is_lit_evenly_and_gentle_ground_keeps_its_own_slope() {
+        // Gentle ground (3 degrees, rising east) with a river's bank across it at a slant: 1.6 m in one sample, along y = 0.4 x + 8.
+        let (n, sp) = (49, 0.625);
+        let data = (0..n)
+            .flat_map(|j| (0..n).map(move |i| (i as f32 * sp, j as f32 * sp)))
+            .map(|(x, y)| 0.05 * x + if y > 0.4 * x + 8.0 { 1.6 } else { 0.0 })
+            .collect();
+        let hm = Heightmap { spacing: sp, width: n, height: n, data, ..plain() };
+        // Each sample's own slope, blended as `normal` blends: the normals before steep ground took the wide one.
+        let near = |x: f32, y: f32| {
+            let (fx, fy) = (x / sp, y / sp);
+            let (i, j, tx, ty) = (fx as usize, fy as usize, fx.fract(), fy.fract());
+            let mut v = [0.0; 3];
+            for (i, j, w) in
+                [(i, j, (1.0 - tx) * (1.0 - ty)), (i + 1, j, tx * (1.0 - ty)), (i, j + 1, (1.0 - tx) * ty), (i + 1, j + 1, tx * ty)]
+            {
+                let s = hm.slope_normal(i, j, 0);
+                for k in 0..3 {
+                    v[k] += s[k] * w;
+                }
+            }
+            let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            v.map(|c| c / len)
+        };
+        // The sun's light (from the south, 37 degrees up) along the face, every 0.1 m: how far it swings.
+        let sun = [0.0, -0.8, 0.6];
+        let swing = |f: &dyn Fn(f32, f32) -> [f32; 3]| {
+            let light: Vec<f32> = (50..200)
+                .map(|k| k as f32 / 10.0)
+                .map(|x| f(x, 0.4 * x + 8.0))
+                .map(|v| v[0] * sun[0] + v[1] * sun[1] + v[2] * sun[2])
+                .collect();
+            light.iter().copied().fold(f32::MIN, f32::max) - light.iter().copied().fold(f32::MAX, f32::min)
+        };
+        let (before, now) = (swing(&near), swing(&|x, y| hm.normal(x, y)));
+        assert!(before > 0.15 && now < 0.03, "light along the bank swings {before:.3} on each sample's slope, {now:.3} now");
+        // 4 m from the bank, the ground's own slope, as before.
+        let len = (0.05f32 * 0.05 + 1.0).sqrt();
+        for x in [8.0, 12.0, 16.0] {
+            let v = hm.normal(x, 0.4 * x + 4.0);
+            assert!(v.iter().zip([-0.05 / len, 0.0, 1.0 / len]).all(|(a, b)| (a - b).abs() < 1e-6), "({x}): {v:?}");
         }
     }
 
@@ -876,6 +963,7 @@ mod tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            normals: Default::default(),
         }
     }
 
