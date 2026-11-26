@@ -14,6 +14,10 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   line keeps to one height, under the water. In a 10 by 10 test area with a river, no vertex of the mud is above the water
   (150 before, up to 0.23 m), and the tile models are 3% smaller. The editor still draws steep ground with the nearest sample.
 
+- **An area with a Landscaper sky publishes with its sky.** Publish, a module's publish and Try on dev send `ls_skies.hak`'s
+  files as `skies_files` (a check names them in `skies_manifest`), the package for a module has them in `haks/ls_skies/`, and
+  `dev-pack` copies the hak and lists it: the area's sky row is in that hak's `skyboxes.2da`. The service routes give it as
+  `GET /api/service/skies`. Areas without one send what they did before.
 - **Sky packs.** `landscaper skies get`, `list`, `remove-pack` and `pack` install skies the way texture packs install textures
   (docs/SKY-PACKS.md). Each sky takes the first free rows of the module's `skyboxes.2da` from 32 up; an area that names one
   (`"atmosphere": { "sky": "<id>" }`) exports with that row, and with `ls_skies.hak`: the skies' files and the module's table

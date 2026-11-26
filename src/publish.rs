@@ -11,7 +11,9 @@
 //!   one's resref and replaces it), with the builder's hidden mark taken out (it is for
 //!   tracing leaks, not for the module);
 //! - the area's tile files (its hak), without the textures an import copied from the game or the module's haks;
-//! - the shared texture library hak, which the review service sends on only if the module's haks lack it.
+//! - the shared texture library hak, which the review service sends on only if the module's haks lack it;
+//! - the skies' hak (`ls_skies.hak`, with its `skyboxes.2da`), only when an area has a Landscaper sky: without it the area's
+//!   sky row would name a row the module's table doesn't have.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -211,6 +213,26 @@ struct Packed {
     tiles: Arc<Pack>,
     /// The builder's new blueprints this area uses (`<resref>.<ext>.json`).
     blueprints: Vec<(String, Vec<u8>)>,
+    /// Whether its sky is a Landscaper sky: it needs the skies' hak.
+    sky: bool,
+}
+
+/// Whether an area whose `SkyBox` is `row` needs the skies' hak: the row is an installed sky's (`ours`), or, a sky pack removed
+/// since, a row from 32 up in a module that lists the skies' hak (`lists`).
+fn needs_sky(row: u8, lists: bool, ours: impl Fn(u8) -> bool) -> bool {
+    ours(row) || (lists && usize::from(row) >= crate::skies::FIRST_ROW)
+}
+
+/// Whether the export `e`'s area has a Landscaper sky.
+fn has_sky(e: &Exported) -> bool {
+    let row = e.module.gff(&ResKey { resref: e.res, restype: ResType::ARE }).and_then(Result::ok).and_then(|a| a.root.integer("SkyBox"));
+    let lists = e.module.haks().unwrap_or_default().iter().any(|h| h.eq_ignore_ascii_case(crate::skies::HAK));
+    row.and_then(|r| u8::try_from(r).ok()).is_some_and(|r| needs_sky(r, lists, crate::skies::is_skys_row))
+}
+
+/// The skies' hak the exports carry, when one of `areas` has a Landscaper sky; an error when it should and the hak is gone.
+fn skies(areas: &[&Packed]) -> Result<Option<Arc<Pack>>> {
+    skies_named(&areas.iter().filter(|a| a.sky).map(|a| a.name.clone()).collect::<Vec<_>>())
 }
 
 /// Where `name`'s last export is: the module it installed, the area on its tileset, and what the area will be in
@@ -360,7 +382,7 @@ fn pack_area(name: &str) -> Result<Packed> {
         h.finish()
     };
     let tiles = packed(&user_dir.join("hak").join(format!("{name}.hak")), other, |files| own_files(files, &copied))?;
-    Ok(Packed { name: name.to_string(), target, rework: e.rework, module_files, tiles, blueprints })
+    Ok(Packed { name: name.to_string(), target, rework: e.rework, module_files, tiles, blueprints, sky: has_sky(&e) })
 }
 
 /// `name`'s last export as a trusted service fetches it: its area files and new blueprints as JSON, without packing the tiles.
@@ -415,6 +437,14 @@ fn own_files(files: Vec<(String, Vec<u8>)>, copied: &std::collections::HashSet<S
 fn library() -> Option<Arc<Pack>> {
     let user_dir = crate::workspace::nwn_user_dir()?;
     packed(&user_dir.join("hak").join(format!("{}.hak", crate::shared::HAK)), 0, |f| f).ok()
+}
+
+/// [`skies`] for the areas `with_sky` (by name) that have a Landscaper sky.
+fn skies_named(with_sky: &[String]) -> Result<Option<Arc<Pack>>> {
+    let Some(first) = with_sky.first() else { return Ok(None) };
+    let path = crate::workspace::nwn_user_dir().context("no module folder")?.join("hak").join(format!("{}.hak", crate::skies::HAK));
+    anyhow::ensure!(path.is_file(), "{first} has a Landscaper sky, and its hak {}.hak is missing: export it again", crate::skies::HAK);
+    packed(&path, 0, |f| f).map(Some)
 }
 
 /// Fields and files for the review service, as one multipart form.
@@ -491,6 +521,7 @@ pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
     crate::review::config().context("publishing isn't set up on this server (the review service)")?;
     let a = pack_area(name)?;
     let lib = library();
+    let sky = skies(&[&a])?;
     let fields = vec![
         ("user", crate::workspace::acting_user()),
         ("name", name.to_string()),
@@ -508,6 +539,9 @@ pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
         if let Some(lib) = &lib {
             files.push(tiles_part("library_files", "library_manifest", "library", lib, listed)?);
         }
+        if let Some(sky) = &sky {
+            files.push(tiles_part("skies_files", "skies_manifest", "skies", sky, listed)?);
+        }
         if !a.blueprints.is_empty() {
             files.push(part("blueprint_files", "blueprints.zip", zip_of(&a.blueprints)?));
         }
@@ -517,7 +551,7 @@ pub fn publish(name: &str, note: &str, dry_run: bool) -> Result<Value> {
     if !dry_run {
         return send(path, &form(false)?);
     }
-    send_check(path, &form(true)?, || form(false), std::iter::once(a.tiles.clone()).chain(lib.clone()).collect())
+    send_check(path, &form(true)?, || form(false), std::iter::once(a.tiles.clone()).chain(lib.clone()).chain(sky.clone()).collect())
 }
 
 /// Several areas of one module as one pair of PRs.
@@ -547,9 +581,13 @@ fn module_form_of(names: &[String], note: &str, listed: bool) -> Result<(Form, V
     let mut files = Vec::new();
     let mut packs = Vec::new();
     let mut blueprints: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
+    let mut with_sky = Vec::new();
     for n in names {
         let a = pack_area(n).with_context(|| n.clone())?;
         blueprints.extend(a.blueprints.iter().cloned());
+        if a.sky {
+            with_sky.push(a.name.clone());
+        }
         let mut entry = module_entry(&a, &area_folder(&a.target));
         entry["export"] = crate::export_id::export_id(n)?.into();
         meta.push(entry);
@@ -560,6 +598,10 @@ fn module_form_of(names: &[String], note: &str, listed: bool) -> Result<(Form, V
     if let Some(lib) = library() {
         files.push(tiles_part("library_files", "library_manifest", "library", &lib, listed)?);
         packs.push(lib);
+    }
+    if let Some(sky) = skies_named(&with_sky)? {
+        files.push(tiles_part("skies_files", "skies_manifest", "skies", &sky, listed)?);
+        packs.push(sky);
     }
     if !blueprints.is_empty() {
         files.push(part("blueprint_files", "blueprints.zip", zip_of(&blueprints.into_iter().collect::<Vec<_>>())?));
@@ -608,8 +650,12 @@ pub fn package(names: &[String]) -> Result<(Vec<(String, Vec<u8>)>, Value)> {
     let (mut areas, mut new_areas, mut tile_files) = (Vec::new(), Vec::new(), 0usize);
     let mut blueprints: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
     let mut notes = Vec::new();
+    let mut with_sky = Vec::new();
     for n in names {
         let a = pack_area(n).with_context(|| n.clone())?;
+        if a.sky {
+            with_sky.push(a.name.clone());
+        }
         let folder = area_folder(&a.target);
         for (f, b) in &a.module_files {
             files.insert(crate::config::rel(&[&layout.areas, &folder, f]), b.clone());
@@ -637,6 +683,19 @@ pub fn package(names: &[String]) -> Result<(Vec<(String, Vec<u8>)>, Value)> {
         }
         manifest +=
             &format!("- the shared texture library every Landscaper area uses: `haks/{}/` (one hak for all areas)\n", crate::shared::HAK);
+    }
+    let sky = skies_named(&with_sky)?;
+    if let Some(sky) = &sky {
+        for (f, b) in &sky.files {
+            files.insert(format!("haks/{}/{f}", crate::skies::HAK), b.clone());
+        }
+        manifest += &format!(
+            "- the Landscaper skies {} use{}: `haks/{h}/`, with a `skyboxes.2da` that is your module's with their rows added. List \
+             `{h}` above every hak of your module that has its own `skyboxes.2da`\n",
+            with_sky.join(", "),
+            if with_sky.len() == 1 { "s" } else { "" },
+            h = crate::skies::HAK
+        );
     }
     for (f, b) in &blueprints {
         let path = if let Some(ext) = f.strip_suffix(".json").and_then(|s| s.rsplit('.').next()) {
@@ -678,7 +737,7 @@ pub fn package(names: &[String]) -> Result<(Vec<(String, Vec<u8>)>, Value)> {
     let plan = json!({
         "area": areas.join(", "), "areas": areas, "new": new_areas.len() == areas.len(),
         "module_files": files.keys().filter(|k| !k.starts_with("haks/") && *k != "MANIFEST.md").collect::<Vec<_>>(),
-        "hak_files": tile_files, "library": library().is_some(), "warnings": notes, "review": "",
+        "hak_files": tile_files, "library": library().is_some(), "skies": sky.is_some(), "warnings": notes, "review": "",
     });
     Ok((files.into_iter().collect(), plan))
 }
@@ -691,6 +750,15 @@ pub fn package_zip(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_area_with_a_landscaper_sky_carries_the_skies_hak() {
+        let ours = |r: u8| r == 33;
+        assert!(needs_sky(33, false, ours), "an installed sky's row");
+        assert!(needs_sky(40, true, ours), "a row from 32 up in a module that lists the skies' hak");
+        assert!(!needs_sky(40, false, ours), "a module's own row, no skies' hak: nothing changes");
+        assert!(!needs_sky(1, true, ours), "a stock sky");
+    }
 
     #[test]
     fn an_imports_copied_textures_stay_out_of_the_publish() {
@@ -736,6 +804,7 @@ mod tests {
             module_files: Vec::new(),
             tiles: Arc::new(Pack::new(Vec::new())),
             blueprints: Vec::new(),
+            sky: false,
         };
         let kind = |l: &crate::config::Layout, target: &str| area_folder_in(l, &areas, target);
         // nasher's layout (the default): new areas in no group.

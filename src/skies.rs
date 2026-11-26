@@ -547,6 +547,16 @@ pub fn installed() -> (Vec<Value>, Vec<Value>) {
     (l.skies, l.packs)
 }
 
+/// Whether `row` of `skyboxes.2da` is an installed sky's: an area with that `SkyBox` needs [`HAK`] wherever it goes.
+pub fn is_skys_row(row: u8) -> bool {
+    rows_in(&sky_dir()).contains(&usize::from(row))
+}
+
+/// Every installed sky's row, in the sky library `dir`.
+fn rows_in(dir: &Path) -> BTreeSet<usize> {
+    Library::open(dir).rows_but("")
+}
+
 /// The sky an area's atmosphere names (`"sky": "<id>"`), if it names one.
 fn sky_of(atmosphere: &Value) -> Option<&str> {
     atmosphere["sky"].as_str().map(str::trim).filter(|s| !s.is_empty())
@@ -1218,6 +1228,16 @@ mod tests {
         .unwrap();
         let r = install_with(&dir, &v2.zip, &published_module).unwrap();
         assert_eq!(r.rows, [("dusk".to_string(), 33), ("dawn".to_string(), 34)]);
+    }
+
+    #[test]
+    fn only_an_installed_skys_row_is_ours() {
+        let (src, dir) = (scratch("ours-src"), scratch("ours-lib"));
+        let module = Module { table: table(false), has: &stock };
+        let l = list(&src, "dusky", "1", "dk", &[("dusk", ["dk_a", "dk_a", "dk_a", "dk_a"])]);
+        install_with(&dir, &make_with(&l, &src.join("out"), None, None).unwrap().zip, &module).unwrap();
+        assert_eq!(rows_in(&dir), BTreeSet::from([32]));
+        assert!(rows_in(&scratch("ours-none")).is_empty(), "no sky library: no row is ours");
     }
 
     #[test]

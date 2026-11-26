@@ -136,7 +136,8 @@ tried on dev: they go through Publish.
 
 Either way it is what your **last export** built, so export again after any change. The dialog first runs the checks above.
 
-- **Package for your module:** a zip in the layout of your module's source: the area files, tile files, the shared texture library,
+- **Package for your module:** a zip in the layout of your module's source: the area files, tile files, the shared texture library
+  (and the skies' hak when the area has a Landscaper sky),
   new blueprints, conversations and scripts, `module.ifo.json` with a new area added, and a `MANIFEST.md`.
 - **Publish:** the same files as pull requests for review, with a note for the reviewers. A reworked area's PR says what changed
   against the module's copy. Nothing is merged by the Landscaper.
