@@ -9,19 +9,31 @@ module in the toolset or the game.
 2. The export builds the tiles, the hak and the module, then checks paths: it sends the game's pathfinding along random routes
    over the area.
 3. Read the result on the map:
-   - **Red markers:** a route stops short. Open up the ground between the two ends.
+   - **Red markers:** a route is blocked: it stops short, and shorter clicks don't get there either. Open up the ground between
+     the two ends.
    - **Orange markers:** a tile whose walkable ground is too winding for the game's search within a tile. Straighten or widen the
      passage.
 
 A module already there takes only the new tiles. The module before is kept as `<module>.mod.bak`, and a failed export leaves the
 module and the hak as they were. `report.json`, beside the module, holds the whole report.
 
-![The path check's markers: red where a route stops short, orange on a tile too winding](../assets/handbook/export.webp)
+![Check paths on a wooded valley: every route gets there, and orange markers show the tiles too winding](../assets/handbook/export.webp)
+
+## Routes too long for one click
+
+The game's route search gives up when the way is about 20 tiles (200 m) longer than going straight there, so in a long descent
+one click from one end to the other walks a few metres and stops. Two or three shorter clicks get there. The path check tries
+those shorter clicks for each route that stops: when they get there, the route counts as working, too long for one click. It is
+not blocked and has no marker; the report says how many there are and how many clicks they take.
+
+![Check paths on the sample descending cave: all 400 routes work, 105 of them in 2 or 3 shorter clicks](../assets/handbook/long-routes.webp)
 
 ## Check without exporting
 
 - **Check paths** runs the path check with nothing exported.
-- **Live** checks paths after each edit.
+- **Live** checks paths after each edit, and its button says how it went: **Paths OK** (green), every route gets there;
+  **N spots** (orange), every route gets there but some tiles are too winding or a passage is closed; **N blocked** (red), routes
+  that don't get there. Its tooltip counts the routes too long for one click. Click it to turn the live check off or on.
 - **Markers** (`M`) shows or hides the markers; the checks go on.
 
 ## What stops an export

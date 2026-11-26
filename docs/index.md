@@ -3,7 +3,7 @@
 Draw terrain in your browser and get a Neverwinter Nights: Enhanced Edition area: its own tileset in a hak, and a module you
 can open in the toolset or the game, checked against the game's pathfinding.
 
-![The editor: trees scattered round a lake, with the path check's markers](assets/handbook/editor.webp)
+![The editor: dunes scattered with cacti and rocks under the Golden haze sky, the path check OK](assets/handbook/editor.webp)
 
 ## Where to start
 

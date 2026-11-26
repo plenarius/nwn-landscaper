@@ -620,7 +620,7 @@ pub fn import(game: &GameData, are: &mg_gff::Struct) -> Result<Imported> {
         objects,
         textures: used.into_iter().collect(),
         tileset: tileset_ref.to_string(),
-        atmosphere: crate::atmosphere::read(are),
+        atmosphere: crate::skies::name_rows(crate::atmosphere::read(are)),
         settings: serde_json::Value::Null,
         // Flags: 1 interior, 2 underground, 4 natural.
         kind: match are.integer("Flags").unwrap_or(4) {

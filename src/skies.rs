@@ -589,6 +589,79 @@ fn areas_using_in(roots: &[(String, PathBuf)], ids: &[String]) -> Vec<String> {
     })
 }
 
+// --- What the editor shows -------------------------------------------------------------------------------------------------
+
+pub mod picture;
+
+/// What the Sky & fog panel offers: the installed skies (id, name, the preset each suits, its pack and row), their packs, and
+/// the module's own rows of `skyboxes.2da` (`game`: row and name), with why those couldn't be read (`game_error`).
+pub fn offered() -> Result<Value> {
+    let (skies, packs) = installed()?;
+    let ours: BTreeSet<usize> = skies.iter().filter_map(|s| s["row"].as_u64()).map(|r| r as usize).collect();
+    let skies: Vec<Value> = skies
+        .iter()
+        .map(|s| json!({ "id": s["id"], "name": s["name"], "preset": s["preset"], "pack": s["pack"], "row": s["row"] }))
+        .collect();
+    let packs: Vec<Value> = packs
+        .iter()
+        .map(|p| json!({ "id": p["id"], "name": p["name"], "version": p["version"], "licence": p["licence"], "credits": p["credits"] }))
+        .collect();
+    let rows = crate::models::game().and_then(|g| Ok(game_rows(&module_table(g)?, &ours, &|r| g.string(mg_core::StrRef(r)))));
+    let (game, game_error) = match rows {
+        Ok(rows) => (rows, Value::Null),
+        Err(e) => (Vec::new(), crate::workspace::scrub(&format!("{e:#}")).into()),
+    };
+    Ok(json!({ "skies": skies, "packs": packs, "game": game, "game_error": game_error }))
+}
+
+/// The module's rows of `table` an area can pick as they are: `{row, name}` for each row with a label, but the installed
+/// skies' (`ours`) and rows labelled as one (`LS_`, in a module that took the skies' table in). The name is the talk table's
+/// (`string`), else the label.
+fn game_rows(table: &mg_2da::TwoDa, ours: &BTreeSet<usize>, string: &dyn Fn(u32) -> Option<String>) -> Vec<Value> {
+    (0..table.rows.len())
+        .filter_map(|r| {
+            let label = table.get(r, "LABEL").map(str::trim).filter(|l| !l.is_empty() && *l != "****")?;
+            if ours.contains(&r) || label.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("ls_")) {
+                return None;
+            }
+            let name = table
+                .get(r, "STRING_REF")
+                .and_then(|v| v.trim().parse::<u32>().ok())
+                .and_then(string)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| label.replace('_', " "));
+            Some(json!({ "row": r, "name": name }))
+        })
+        .collect()
+}
+
+/// The model `sky` shows at `time` (`dawn`, `day`, `dusk` or `night`): `sky` is an installed sky's id, or `row-<n>` for row `n`
+/// of the module's `skyboxes.2da`.
+fn model_of(sky: &str, time: &str, game: Option<&mg_rules::GameData>) -> Result<String> {
+    let (_, col) = TIMES.iter().find(|(t, _)| *t == time).with_context(|| format!("'{time}' is not dawn, day, dusk or night"))?;
+    if let Some(row) = sky.strip_prefix("row-") {
+        let row: usize = row.parse().ok().filter(|&r| r <= LAST_ROW).with_context(|| format!("{sky}: no such row"))?;
+        let table = module_table(game.context("the game isn't open, so its skies can't be shown")?)?;
+        return row_model(&table, row, col).with_context(|| format!("row {row} of skyboxes.2da has no {time} model"));
+    }
+    let library = Library::open(&sky_dir())?;
+    let s = library.sky(sky).with_context(|| format!("no sky '{sky}' is installed"))?;
+    Ok(s["models"][time].as_str().with_context(|| format!("the sky {sky} has no {time} model"))?.to_string())
+}
+
+/// The model in column `col` of `table`'s row `row`, if it has one.
+fn row_model(table: &mg_2da::TwoDa, row: usize, col: &str) -> Option<String> {
+    table.get(row, col).map(str::trim).filter(|m| !m.is_empty() && *m != "****").map(str::to_ascii_lowercase)
+}
+
+/// A picture of `sky` at `time` for the editor, as PNG ([`picture`]; `sky` as for [`model_of`]).
+pub fn picture_of(sky: &str, time: &str, kind: picture::Kind) -> Result<Vec<u8>> {
+    let game = crate::models::game().ok();
+    let model = model_of(sky, time, game)?;
+    let dir = sky_dir();
+    picture::picture(&picture::Files { library: &dir, game }, &model, kind, &dir.join("pictures"))
+}
+
 // --- The module's table and the export ---------------------------------------------------------------------------------------
 
 /// The game the module's table is read from: the editor's, once it has the module's haks.
@@ -686,6 +759,41 @@ pub fn area_sky() -> Option<String> {
         return None;
     }
     h.atmosphere.as_ref().and_then(sky_of).map(str::to_string)
+}
+
+/// The game's own row of `skyboxes.2da` an atmosphere picks (`"skyRow": 3`) when it names no Landscaper sky: what a preset falls
+/// back to without the sky pack that has its sky, or a builder picks among the module's rows.
+fn row_of(atmosphere: &Value) -> Option<u8> {
+    if sky_of(atmosphere).is_some() {
+        return None;
+    }
+    atmosphere["skyRow"].as_u64().and_then(|r| u8::try_from(r).ok())
+}
+
+/// `atmosphere` with its `skyRow` as the installed sky that has the row (`"sky": "<id>"`), if one has it: an imported area that
+/// was exported with a Landscaper sky keeps it by its id.
+pub fn name_rows(atmosphere: Value) -> Value {
+    name_rows_in(&sky_dir(), atmosphere)
+}
+
+fn name_rows_in(dir: &Path, mut atmosphere: Value) -> Value {
+    let (Some(row), Ok(library)) = (atmosphere["skyRow"].as_u64(), Library::open(dir)) else { return atmosphere };
+    if let Some(id) = library.skies.iter().find(|s| s["row"].as_u64() == Some(row)).and_then(|s| s["id"].as_str()) {
+        atmosphere["sky"] = id.into();
+        if let Some(o) = atmosphere.as_object_mut() {
+            o.remove("skyRow");
+        }
+    }
+    atmosphere
+}
+
+/// The game's row the loaded area picks in its light and fog ([`row_of`]), unless it is underground.
+pub fn area_sky_row() -> Option<u8> {
+    let h = crate::heightmap::current()?;
+    if h.underground {
+        return None;
+    }
+    h.atmosphere.as_ref().and_then(row_of)
 }
 
 /// Makes the export's [`HAK`] for the sky `id` (every installed sky's files and the merged `skyboxes.2da`) in `hak_dir`, after
@@ -1261,6 +1369,50 @@ mod tests {
         assert_eq!(hak_above(&s(&["team_2da", "Ls_Skies", "low_2da"]), has), Some("team_2da".into()));
         assert_eq!(hak_above(&s(&["art", "ls_skies", "team_2da"]), has), None);
         assert_eq!(hak_above(&s(&["team_2da"]), has), None, "not listed: the export's own list puts it first");
+    }
+
+    #[test]
+    fn the_panel_offers_the_modules_rows_but_the_skies_own() {
+        let mut t = table(true);
+        t.rows.push(vec![Some("LS_dusk".into()), None, Some("1".into()), None, None, None, None]);
+        let names = |r: u32| (r == 7).then(|| "From the talk table".to_string());
+        t.rows[2][1] = Some("7".into());
+        let rows = game_rows(&t, &BTreeSet::from([32]), &names);
+        let shown: Vec<(u64, &str)> = rows.iter().map(|r| (r["row"].as_u64().unwrap(), r["name"].as_str().unwrap())).collect();
+        assert_eq!(
+            shown,
+            [
+                (0, "(None)"),
+                (1, "Grass Clear"),
+                (2, "From the talk table"),
+                (3, "Desert Clear"),
+                (4, "Winter Clear"),
+                (5, "Icy"),
+                (6, "Black")
+            ]
+        );
+        assert_eq!(row_model(&t, 1, "NIGHT").as_deref(), Some("sky_001"));
+        assert_eq!(row_model(&t, 7, "DAY"), None);
+        assert_eq!(row_model(&t, 300, "DAY"), None);
+    }
+
+    #[test]
+    fn an_imported_row_of_an_installed_sky_is_named_by_its_id() {
+        let dir = scratch("name-rows");
+        std::fs::write(dir.join("catalog.json"), r#"{"skies":[{"id":"dusk","row":33}],"packs":[]}"#).unwrap();
+        assert_eq!(name_rows_in(&dir, json!({ "preset": "imported", "skyRow": 33 })), json!({ "preset": "imported", "sky": "dusk" }));
+        assert_eq!(name_rows_in(&dir, json!({ "skyRow": 3 })), json!({ "skyRow": 3 }));
+        assert_eq!(name_rows_in(&dir, json!({ "time": "day" })), json!({ "time": "day" }));
+    }
+
+    #[test]
+    fn a_game_row_is_picked_only_without_a_landscaper_sky() {
+        assert_eq!(row_of(&json!({ "skyRow": 3 })), Some(3));
+        assert_eq!(row_of(&json!({ "sky": "dusk", "skyRow": 3 })), None);
+        assert_eq!(row_of(&json!({ "sky": " ", "skyRow": 4 })), Some(4));
+        assert_eq!(row_of(&json!({ "skyRow": 256 })), None);
+        assert_eq!(row_of(&json!({ "skyRow": "3" })), None);
+        assert_eq!(row_of(&json!({ "preset": "clear" })), None);
     }
 
     #[test]

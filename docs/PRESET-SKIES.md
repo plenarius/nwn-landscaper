@@ -1,10 +1,11 @@
 # Preset skies
 
-Preset skies is the first [sky pack](SKY-PACKS.md): a sky for each Sky & fog preset that shows one, so an area's sky matches its
-light. The design is [DESIGN-ambience.md](DESIGN-ambience.md), question 2. Five skies re-use the pictures of Savant1974's
-[Real Skies](https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version) at other times of day. Real Skies states
-no licence, so this repository ships none of its pictures and the pack is not in the Landscaper's list of packs: you make it
-from your own download. Thick mist and Swamp are painted by the script from their presets' colours.
+Preset skies is the first [sky pack](SKY-PACKS.md): a sky for each outdoor Sky & fog preset but Clear day (which keeps the game's
+Grass Clear), so an area's sky matches its light. The design is [DESIGN-ambience.md](DESIGN-ambience.md), question 2. Five skies
+re-use the pictures of Savant1974's [Real Skies](https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version) at
+other times of day. Real Skies states no licence, so this repository ships none of its pictures and the pack is not in the
+Landscaper's list of packs: you make it from your own download. Thick mist and Swamp are painted by the script from their presets'
+colours.
 
 ## The skies
 
@@ -14,7 +15,7 @@ from your own download. Thick mist and Swamp are painted by the script from thei
 | Dusk | `dusk` | `dusk` | Grass dusk | Grass dusk | Grass dusk | Grass night |
 | Overcast | `overcast` | `overcast` | Storm dawn, greyed | Storm day, greyed | Storm dusk, greyed | Storm night, greyed |
 | Starry night | `starry-night` | `night` | Desert night | Desert night | Desert night | Desert night |
-| Dawn haze | `dawn-haze` | `dawn` (a preset still to make) | Desert dawn | Winter dawn | Winter dusk | Winter night |
+| Dawn haze | `dawn-haze` | `dawn` | Desert dawn | Winter dawn | Winter dusk | Winter night |
 | Thick mist | `thick-mist` | `mist` | painted | painted | painted | painted |
 | Swamp | `swamp` | `swamp` | painted | painted | painted | painted |
 
@@ -49,6 +50,9 @@ The pack has 34 files, 60 MB: 11 pictures of 5.6 MB, 6 small gradients and 17 mo
 3. Install it as any sky pack, with the module's haks set: `landscaper skies get dist/preset-skies-1.0.0.zip`. Its seven skies
    take the first free rows of the module's `skyboxes.2da` from 32 up.
 
+From then on each preset in the editor's Sky & fog panel picks its sky from the pack, and the Sky row lists the seven
+([Atmosphere and skies](handbook/atmosphere.md)). Without the pack, a preset picks the game's sky nearest to it.
+
 Preset skies works with or without the `realskies_dds.hak` that `real-skies` makes: it carries its own copies of the pictures
 under its own names.
 
@@ -72,5 +76,8 @@ day on top, by night below, each over its preset's light. Pictures from Real Ski
   row as in a new one, and never on a first visit, so it is not the pack's rows or models; whether stock skies do it too wasn't
   tried.
 
-Not checked: anything on a graphics card, and the new `dawn` preset, which doesn't exist yet (the Dawn haze area used Clear
-day's light).
+On 2026-11-26 again, with the editor's presets naming their skies (step 4): an area per preset, its light and sky from the
+editor's own presets, each exported with its sky's row. The new Dawn preset's warm light suits Dawn haze at noon, and standing in
+the area while the clock ran into dawn, its sky faded from the night picture into the dawn one in about 3 minutes.
+
+Not checked: anything on a graphics card.

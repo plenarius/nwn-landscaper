@@ -6,8 +6,11 @@
 //! ```json
 //! { "time": "cycle" | "day" | "night", "fogClip": 150,
 //!   "sun":  { "ambient": "#50504f", "diffuse": "#d6d6d6", "fog": "#bbbbbb", "fogAmount": 7, "shadows": true },
-//!   "moon": { ... } }
+//!   "moon": { ... },
+//!   "sky": "dusk", "skyRow": 3 }
 //! ```
+//! `sky` and `skyRow` are the area's sky (an installed Landscaper sky, else a row of the module's `skyboxes.2da`), which the
+//! export writes as `SkyBox` (crate::skies).
 //! Colours are `#rrggbb`; the .are stores them as 0x00BBGGRR.
 
 use anyhow::{Context, Result};
@@ -62,10 +65,15 @@ pub fn read(are: &Struct) -> Json {
     } else {
         "day"
     };
-    serde_json::json!({
+    let mut a = serde_json::json!({
         "preset": "imported", "time": time, "fogClip": are.float("FogClipDist").unwrap_or(150.0),
         "sun": sky("Sun"), "moon": sky("Moon"),
-    })
+    });
+    // (Its sky as the Sky & fog panel keeps it: the game's row, which `skies::name_rows` names when it is a Landscaper sky's.)
+    if let Some(row) = are.integer("SkyBox").and_then(|r| u8::try_from(r).ok()) {
+        a["skyRow"] = row.into();
+    }
+    a
 }
 
 #[cfg(test)]
@@ -88,5 +96,8 @@ mod tests {
             (back["sun"]["ambient"].as_str(), back["moon"]["fog"].as_str(), back["time"].as_str()),
             (Some("#ff0000"), Some("#0000ff"), Some("night"))
         );
+        assert!(back.get("skyRow").is_none());
+        are.set("SkyBox", Value::Byte(4));
+        assert_eq!(read(&are)["skyRow"], 4);
     }
 }

@@ -19,6 +19,7 @@ mod previews;
 mod query;
 mod scripts;
 mod service;
+mod skies;
 mod team;
 mod underlay;
 
@@ -63,7 +64,7 @@ struct Gate {
 /// let through without it (still subject to the `Host`, `Origin` and `Sec-Fetch-Site` checks). Another site can at most
 /// show such a picture, never read it. Everything else under `/api/` (a preview's `scene.json` too) needs the header.
 fn picture_route(path: &str) -> bool {
-    ["/api/texture/", "/api/import/", "/api/import-file/", "/api/preview-icon/"].iter().any(|p| path.starts_with(p))
+    ["/api/texture/", "/api/import/", "/api/import-file/", "/api/preview-icon/", "/api/sky-picture/"].iter().any(|p| path.starts_with(p))
         || path.strip_prefix("/api/preview-file/").and_then(|rest| rest.split_once('/')).is_some_and(|(_, file)| file.starts_with("tex/"))
 }
 
@@ -91,7 +92,7 @@ impl Gate {
     }
 
     fn from_env(port: u16, team: bool) -> Gate {
-        Gate::new(port, team, std::env::var("LANDSCAPER_PUBLIC_HOST").ok().as_deref())
+        Gate::new(port, team, crate::config::setting("LANDSCAPER_PUBLIC_HOST").as_deref())
     }
 
     /// Whether `host` is one of the public names.
@@ -193,7 +194,7 @@ pub fn serve(bind: &str, port: u16, web: &Path, reload_on_rebuild: bool) -> Resu
         );
     }
     if crate::workspace::team() {
-        let secret = std::env::var("LANDSCAPER_PROXY_SECRET").is_ok_and(|s| !s.is_empty());
+        let secret = crate::config::setting("LANDSCAPER_PROXY_SECRET").is_some_and(|s| !s.is_empty());
         println!(
             "Landscaper team server on {bind}:{port} (serving {}; workspaces in {}; proxy secret {})",
             web.display(),
@@ -511,9 +512,10 @@ struct Ask<'a> {
 
 /// The API's areas, asked in turn: each answers the requests that are its own and returns `None` for the rest. No two
 /// match the same request; anything left is a file of the editor (GET) or refused with 405.
-const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 10] = [
+const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 11] = [
     team::route,
     packs::route,
+    skies::route,
     areas::route,
     underlay::route,
     export::route,
@@ -610,7 +612,7 @@ fn read_only_allows(method: &Method, path: &str) -> bool {
 /// [`answer`] without the security headers.
 fn answer_request(req: &mut tiny_http::Request, web: &Path, gate: &Gate) -> Answer {
     let url = req.url().to_string();
-    if std::env::var_os("LANDSCAPER_LOG").is_some() {
+    if crate::config::setting_os("LANDSCAPER_LOG").is_some() {
         let ua = req.headers().iter().find(|h| h.field.equiv("User-Agent")).map_or_default(|h| h.value.to_string());
         eprintln!("{} {} {} [{ua}]", req.remote_addr().map_or_default(ToString::to_string), req.method(), url);
     }
