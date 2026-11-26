@@ -195,7 +195,11 @@ pub fn loopback(bind: &str) -> bool {
 #[derive(Subcommand, Debug)]
 pub enum Textures {
     /// Build the starter library from the game's files
-    Init,
+    Init {
+        /// A folder of pictures named by starter id (`grassMedium.png`, PNG, TGA or DDS), read instead of the game's textures
+        #[arg(long)]
+        pictures: Option<PathBuf>,
+    },
     /// Add the game's or the haks' textures named in a JSON list
     Add {
         /// A JSON list of textures (docs/SELF-HOSTING.md, "Textures")

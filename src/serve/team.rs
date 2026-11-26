@@ -17,6 +17,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             200,
             &serde_json::json!({
                 "version": crate::version::text(),
+                "game": crate::config::has_game(),
                 "team": crate::workspace::team(),
                 "user": me.user,
                 "name": me.name,

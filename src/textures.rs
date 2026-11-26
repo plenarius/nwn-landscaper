@@ -275,6 +275,46 @@ pub fn init() -> Result<Report> {
     Ok(report)
 }
 
+/// Builds the starter set from `folder`'s pictures instead of the game's files (the web demo, which has no game): `<id>.png`,
+/// `.tga` or `.dds` for each starter id, with the starter list's names, groups and footsteps. A missing picture is reported.
+pub fn init_from_pictures(folder: &Path) -> Result<Report> {
+    let (_, specs) = parse_list(STARTER)?;
+    let mut library = Library::open(&paint::texture_dir())?;
+    let report = add_pictures(&mut library, folder, &specs)?;
+    anyhow::ensure!(
+        report.added > 0 || report.kept > 0,
+        "none of the starter textures' pictures are in {} ({})",
+        folder.display(),
+        report.problems.first().cloned().unwrap_or_default()
+    );
+    library.save()?;
+    Ok(report)
+}
+
+/// Adds `specs` to `library` from the pictures in `folder` named by their ids, leaving an id the library has as it is.
+fn add_pictures(library: &mut Library, folder: &Path, specs: &[Spec]) -> Result<Report> {
+    let mut report = Report::default();
+    for s in specs {
+        if library.has(&s.id) {
+            report.kept += 1;
+            continue;
+        }
+        let Some(path) = ["png", "tga", "dds"].iter().map(|e| folder.join(format!("{}.{e}", s.id))).find(|p| p.is_file()) else {
+            report.problems.push(format!("{}: no {}.png in {}", s.id, s.id, folder.display()));
+            continue;
+        };
+        match read_picture(&path) {
+            Ok(img) => {
+                let file = path.file_name().map_or_default(|n| n.to_string_lossy().into_owned());
+                library.put(s, "Your pictures", &file, img)?;
+                report.added += 1;
+            }
+            Err(e) => report.problems.push(format!("{e:#}")),
+        }
+    }
+    Ok(report)
+}
+
 /// Adds the textures a list names (`{ "haks": [...], "textures": [...] }`, see [`parse_list`]); an existing id is replaced.
 pub fn add_listed(list: &Path) -> Result<Report> {
     let text = std::fs::read_to_string(list).with_context(|| format!("reading {}", list.display()))?;
@@ -555,7 +595,8 @@ fn print_report(r: &Report) {
 pub fn run(command: crate::cli::Textures) -> Result<()> {
     use crate::cli::Textures;
     match command {
-        Textures::Init => print_report(&init()?),
+        Textures::Init { pictures: None } => print_report(&init()?),
+        Textures::Init { pictures: Some(folder) } => print_report(&init_from_pictures(&folder)?),
         Textures::Add { list } => print_report(&add_listed(&list)?),
         Textures::Build { folder, category, surface } => print_report(&build_from_folder(&folder, category.as_deref(), surface)?),
         Textures::List => {
@@ -825,6 +866,46 @@ mod tests {
         assert_eq!((by("beach")["category"].as_str(), by("beach")["surface"].as_u64()), (Some("Sand"), Some(20)));
         let _ = std::fs::remove_dir_all(&src);
         let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_starter_set_builds_from_pictures_with_its_names_and_footsteps() {
+        let (src, data) = (scratch("starter-src"), scratch("starter-data"));
+        std::fs::create_dir_all(&src).unwrap();
+        paint::write_png(&src.join("grassMedium.png"), &picture(64, 64)).unwrap();
+        paint::write_png(&src.join("mudSwamp.png"), &picture(64, 64)).unwrap();
+        paint::write_png(&src.join("notAStarter.png"), &picture(64, 64)).unwrap();
+        let (_, specs) = parse_list(STARTER).unwrap();
+        let mut lib = Library::open(&data).unwrap();
+        let report = add_pictures(&mut lib, &src, &specs).unwrap();
+        // Only starter ids are read; each one without a picture is reported.
+        assert_eq!((report.added, report.problems.len()), (2, specs.len() - 2));
+        let by = |id: &str| lib.entries.iter().find(|e| e["id"] == id).unwrap().clone();
+        assert_eq!((by("grassMedium")["name"].as_str(), by("grassMedium")["category"].as_str()), (Some("Medium grass"), Some("Grass")));
+        assert_eq!(by("mudSwamp")["surface"], 13);
+        assert!(!lib.has("notAStarter"));
+        // Run again: what the library has is kept.
+        assert_eq!(add_pictures(&mut lib, &src, &specs).unwrap().kept, 2);
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_demo_pack_has_every_starter_texture_within_its_budget() {
+        // The web demo (packs/demo) has no game: its pictures stand in for the whole starter set, and are downloaded on a first visit.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("packs/demo");
+        let pack: Value = serde_json::from_slice(&std::fs::read(dir.join("pack.json")).unwrap()).unwrap();
+        let listed = pack["textures"].as_array().unwrap();
+        let (_, specs) = parse_list(STARTER).unwrap();
+        assert_eq!(listed.len(), specs.len(), "one picture for each starter texture, and no others");
+        let mut total = 0;
+        for s in &specs {
+            let t = listed.iter().find(|t| t["id"] == s.id.as_str()).unwrap_or_else(|| panic!("the demo pack has no {}", s.id));
+            let (sha, size) = crate::export_id::sha256_file(&dir.join("pictures").join(t["file"].as_str().unwrap())).unwrap();
+            assert_eq!(t["sha256"].as_str(), Some(sha.as_str()), "{}: run packs/demo/make.py again", s.id);
+            total += size;
+        }
+        assert!(total <= 3 << 20, "the demo pack is {} KB, over its 3 MB budget (packs/demo/README.md)", total >> 10);
     }
 
     #[test]
