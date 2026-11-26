@@ -1,7 +1,7 @@
 # Configuration
 
 The Landscaper runs on a fresh machine with no setup beyond the game's files; everything below is optional and read from the
-environment. (`src/config.rs` is the source of truth.)
+environment, or from the settings file ("The settings file" below). (`src/config.rs` is the source of truth.)
 
 The command line's options win over the environment. `landscaper --help` lists the commands; the options below work before or
 after any command (the same names as nwn-bake's options):
@@ -33,6 +33,26 @@ after any command (the same names as nwn-bake's options):
 
 At start `landscaper serve` prints the game install, the user folder and the module it found, and where each came from, so a wrong
 guess shows at once.
+
+## The settings file
+
+Every setting in the table above can also be in `settings.json` in the data folder (`~/.local/share/landscaper/settings.json`;
+on Windows `%LOCALAPPDATA%\landscaper\settings.json`), for a program started without your shell's environment: from the Dock or
+Finder on macOS, from a desktop menu on Linux. One JSON object, each setting named as in the environment, its value a string:
+
+```json
+{
+  "NWN_ROOT": "D:\\Games\\Neverwinter Nights",
+  "LANDSCAPER_HAKS": "my_plc,my_tex"
+}
+```
+
+- The command line wins over the environment, and the environment over the file. A variable that is set but blank counts as unset.
+- `NWN_ROOT`, `NWN_HOME`, `NWN_USER_DIRECTORY` and the `LANDSCAPER_*` settings only. The data folder (`XDG_DATA_HOME`) can't be
+  set there, since it says where the file is, and the debugging switches (`LS_*`) stay in the environment.
+- A number or `true` is taken as written; `null` leaves the setting unset. Anything else, and a name that is no setting, is
+  ignored with a warning at start; so is the whole file when it isn't a JSON object.
+- It is read once, at start: restart the Landscaper after changing it.
 
 ## The editor's haks
 

@@ -92,7 +92,7 @@ impl Gate {
     }
 
     fn from_env(port: u16, team: bool) -> Gate {
-        Gate::new(port, team, std::env::var("LANDSCAPER_PUBLIC_HOST").ok().as_deref())
+        Gate::new(port, team, crate::config::setting("LANDSCAPER_PUBLIC_HOST").as_deref())
     }
 
     /// Whether `host` is one of the public names.
@@ -194,7 +194,7 @@ pub fn serve(bind: &str, port: u16, web: &Path, reload_on_rebuild: bool) -> Resu
         );
     }
     if crate::workspace::team() {
-        let secret = std::env::var("LANDSCAPER_PROXY_SECRET").is_ok_and(|s| !s.is_empty());
+        let secret = crate::config::setting("LANDSCAPER_PROXY_SECRET").is_some_and(|s| !s.is_empty());
         println!(
             "Landscaper team server on {bind}:{port} (serving {}; workspaces in {}; proxy secret {})",
             web.display(),
@@ -612,7 +612,7 @@ fn read_only_allows(method: &Method, path: &str) -> bool {
 /// [`answer`] without the security headers.
 fn answer_request(req: &mut tiny_http::Request, web: &Path, gate: &Gate) -> Answer {
     let url = req.url().to_string();
-    if std::env::var_os("LANDSCAPER_LOG").is_some() {
+    if crate::config::setting_os("LANDSCAPER_LOG").is_some() {
         let ua = req.headers().iter().find(|h| h.field.equiv("User-Agent")).map_or_default(|h| h.value.to_string());
         eprintln!("{} {} {} [{ua}]", req.remote_addr().map_or_default(ToString::to_string), req.method(), url);
     }
