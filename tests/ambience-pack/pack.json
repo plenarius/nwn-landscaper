@@ -16,8 +16,8 @@
       "live": { "day": 18.0, "night": 18.0 },
       "emitters": {
         "mist": {
-          "day": { "birthrate": 1.5, "colorStart": [0.92, 0.94, 0.96], "colorEnd": [0.85, 0.87, 0.9], "alphaStart": 0.35, "alphaEnd": 0.0 },
-          "night": { "birthrate": 1.5, "colorStart": [0.3, 0.34, 0.43], "colorEnd": [0.26, 0.3, 0.38], "alphaStart": 0.45, "alphaEnd": 0.0 }
+          "day": { "birthrate": 2.0, "colorStart": [0.92, 0.94, 0.96], "colorEnd": [0.85, 0.87, 0.9], "alphaStart": 0.35, "alphaEnd": 0.0 },
+          "night": { "birthrate": 2.0, "colorStart": [0.3, 0.34, 0.43], "colorEnd": [0.26, 0.3, 0.38], "alphaStart": 0.45, "alphaEnd": 0.0 }
         }
       }
     },

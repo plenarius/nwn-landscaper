@@ -251,8 +251,15 @@ fn kind(dir: &Path, k: &serde_json::Value) -> Result<Kind> {
         let life = n.value("lifeexp").map_or(0.0, |v| v[0]);
         let own = n.value("birthrate").map_or(0.0, |v| v[0]);
         let rate = looks.iter().find(|(m, _)| *m == i).and_then(|(_, l)| l.iter().find(|c| c.is("birthrate")));
-        live[0] += rate.map_or(own, |r| r.day[0]) * life;
-        live[1] += rate.map_or(own, |r| r.night[0]) * life;
+        let (day, night) = (rate.map_or(own, |r| r.day[0]), rate.map_or(own, |r| r.night[0]));
+        // (The client draws nothing from a birth rate under 1 a second.)
+        ensure!(
+            [own, day, night].iter().all(|&b| b == 0.0 || b >= 1.0),
+            "{}",
+            what(&format!("{}: a birth rate under 1 draws nothing (0, or 1 and more)", n.name))
+        );
+        live[0] += day * life;
+        live[1] += night * life;
         if loops {
             ensure!(rate.is_none_or(|r| r.day == r.night), "{}", what("a kind that loops has one birth rate, day and night"));
         }
@@ -669,6 +676,8 @@ mod tests {
         // A look naming what the model hasn't, or giving a colour one number.
         assert!(err("node", &|j| j["kinds"][0]["emitters"]["fog"] = j["kinds"][0]["emitters"]["mist"].clone()).contains("no node fog"));
         assert!(err("columns", &|j| j["kinds"][0]["emitters"]["mist"]["day"]["colorStart"] = 1.into()).contains("takes 3 number(s)"));
+        // A birth rate the client wouldn't draw.
+        assert!(err("under1", &|j| j["kinds"][2]["emitters"]["motes"]["day"]["birthrate"] = 0.5.into()).contains("under 1 draws nothing"));
         assert!(edited("fine", |_: &mut serde_json::Value| {}).is_ok());
     }
 
@@ -774,7 +783,7 @@ mod tests {
         let m = compiled(&tile_text(tile, &[baked(&pack, "mist", [0.0, 0.0, 0.3])], &pack));
         let mist = m.node("amb_0101a0_mist").unwrap();
         assert_eq!(m.nodes[mist].value("birthrate"), Some(&[0.0][..]));
-        assert_eq!(key(&m, "animloop01", "amb_0101a0_mist", "birthrate"), Some(vec![1.5]));
+        assert_eq!(key(&m, "animloop01", "amb_0101a0_mist", "birthrate"), Some(vec![2.0]));
         assert_eq!(key(&m, "tiledefault", "amb_0101a0_mist", "birthrate"), Some(vec![0.0]));
         assert_eq!(key(&m, "night", "amb_0101a0_mist", "birthrate"), None);
         assert_eq!(key(&m, "night", "amb_0101a0_mist", "colorstart"), Some(vec![0.3, 0.34, 0.43]));
@@ -797,7 +806,7 @@ mod tests {
         let text = tile_text("amb_0000", &[baked(&kinds, "mist", [0.0; 3])], &kinds);
         assert!(text.contains("node dummy amb_0000a") && !text.contains("newanim"), "{text}");
         let m = compiled(&text);
-        assert_eq!(m.nodes[m.node("amb_0000a0_mist").unwrap()].value("birthrate"), Some(&[1.5][..]));
+        assert_eq!(m.nodes[m.node("amb_0000a0_mist").unwrap()].value("birthrate"), Some(&[2.0][..]));
     }
 
     #[test]
@@ -810,8 +819,10 @@ mod tests {
         // The motes sit 1 m along the kind's +x and 1.5 m up: turned north and doubled.
         let p = n.position;
         assert!((p[0] - 2.0).abs() < 1e-4 && (p[1] - 2.0).abs() < 1e-4 && (p[2] - 4.0).abs() < 1e-4, "{p:?}");
-        let z = glam::Quat::from_array(n.orientation) * glam::Vec3::X;
-        assert!((z - glam::Vec3::Y).length() < 1e-4, "{z:?}");
+        // Its +x turned north; its up still up, so flat kinds (`Billboard_to_Local_Z`) stay flat.
+        let turn = glam::Quat::from_array(n.orientation);
+        assert!((turn * glam::Vec3::X - glam::Vec3::Y).length() < 1e-4, "{turn:?}");
+        assert!((turn * glam::Vec3::Z - glam::Vec3::Z).length() < 1e-4, "{turn:?}");
         assert_eq!(n.value("sizestart"), Some(&[0.7][..]));
         assert_eq!(n.value("xsize"), Some(&[500.0][..]));
         // Its life and birth rate (so its live count) stay.

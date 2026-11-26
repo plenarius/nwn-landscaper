@@ -36,8 +36,8 @@ node emitter mist
   inherit_local 0
   splat 0
   inherit_part 0
-  birthrate 1.5
-  lifeExp 12
+  birthrate 2
+  lifeExp 9
   colorStart 0.92 0.94 0.96
   colorEnd 0.92 0.94 0.96
   alphaStart 0.35
