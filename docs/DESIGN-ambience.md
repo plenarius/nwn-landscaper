@@ -233,23 +233,38 @@ spike 0.
 
 | Kind | Where | Build | Day and night | Live |
 |---|---|---|---|---|
-| **Water mist** | over still water, near shores | large soft billboards (`Billboard_to_World_Z`), 3 to 7 m, alpha 0.35, rising 0.1 m/s | thicker at dawn and night | 18 |
+| **Water mist** | over still water, near shores | large soft billboards (`Billboard_to_World_Z`), 3 to 7 m, alpha 0.5, rising 0.1 m/s | thicker at dawn and night | 18 |
 | **Waterfall spray** | where water drops more than 1 m | a fountain of splash sprites at the foot, plus a mist puff | always | 16 + 18 |
 | **Rapids spray** | steep stretches of a river | small low fountains every 4 m | always | 6 |
-| **Fireflies** | grass within 10 m of water, under trees | tiny additive flares (0.15 m), slow random drift, fading in and out | night only | 18 |
+| **Fireflies** | grass within 10 m of water, under trees | tiny additive flares (a 0.3 m glow), slow random drift, flickering | night only | 18 |
 | **Dust motes, pollen** | sunlit forest gaps, under light shafts, cave mouths | tiny additive points drifting slowly | day only | 30 |
 | **Falling leaves** | under tree crowns | stock `fxpa_leaf`, gravity, spin, `affectedByWind` | always | 4 a tree |
 | **Snow gusts** | ridges and crests in snowy areas | small fast sprites blown along the wind; the engine's snow does the rest | always | 60 |
 | **Blowing sand** | dune crests, desert ridges | low tinted smoke sprites streaming downwind, `affectedByWind` | always | 18 |
 | **Embers** | above fire placeables | additive sparks rising and fading | always | 15 |
 | **Light shafts** | forest gaps, cave openings | two crossed additive quads (a mesh, not particles) plus dust motes | day only (mesh alpha 0 at night) | 30 |
-| **Ground fog** | hollows, swamp | four to six flat sprites 10 m across (`Aligned_to_World_Z`) | thicker at night | 10 |
+| **Ground fog** | hollows, swamp | flat sprites 8 to 11 m across (`Billboard_to_Local_Z`), one a second for 10 s | thicker at night | 10 |
 
 **Cost:** the stock models give the scale. `dag_fog_med` keeps 20 particles alive, `tnp_gmist` about 50, the light shaft
 `tnp_gsol1` 28 plus its meshes, and `silm_fog_50_lo` 1,250 (25 emitters). The pack keeps each placement under 60 and proposes a
 budget of 1,500 live particles in view. A particle is a camera-facing quad: the CPU cost grows with the count, and large soft
 sprites cost fill rate on the GPU when they cover the screen, which is why mist uses few big particles at low alpha. Frame times
 are not measured yet ("What this design could not check").
+
+**First cut (step 6):** the pack is in [`packs/particles`](../packs/particles/README.md), tuned against client stills. What the
+stills showed:
+
+- **A birth rate under 1 draws nothing** (confirmed in the client: leaves and ground fog at 0.5 a second drew no particle; at 1 they
+  drew). Every kind uses whole birth rates and gets its count from the particles' life.
+- **`Billboard_to_Local_Z` lies flat; `Aligned_to_World_Z` stands upright** (confirmed in the client: the same fog both ways). So
+  ground fog is `Billboard_to_Local_Z`, as the stock blob shadow is.
+- **Light shafts are additive,** with their own texture and TXI. An alpha-blended quad drew as a flat, even band.
+- **Glowing kinds keep their colour at night:** embers and fireflies make their own light. Every other kind's night colour is darker.
+- **The placeables switch:** an `off` animation keying the birth rate to 0 stopped an ember placeable placed deactivated.
+
+![Each kind of the particle pack as a placeable on the trial's pond area, by day and by night. The ground fog spreads into the
+rapids and snow frames from its spot nearby; the tall puffs in the ground fog frame are the same fog drawn upright, for
+comparison](ambience-5-particle-pack.png)
 
 **Already stock:** mist (`tnp_gmist`, `placeables.2da` row 791), fog (`dag_fog_*`, rows 15080 to 15082; `silm_fog_*`, 15600 to
 15609), light shafts (`tnp_gsol*`, rows 762 to 764 and 825 to 828) and a dust plume (row 148). The pack doesn't repeat them; the
@@ -387,7 +402,8 @@ start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 an
 - **Sky textures:** the desert glare day panorama and a swamp panorama with clouds, about a day each.
 - **Emitters in NeverBlender:** tuning the eleven kinds by eye after step 6 (timing, colour, how they read at a distance), about two
   days.
-- **Particle textures:** a firefly glow, soft motes and a sand streak, about half a day.
+- **Particle textures:** a firefly glow, soft motes, a sand streak and the light shafts' quads (step 6 made placeholders), about
+  half a day.
 
 ## What this design could not check
 

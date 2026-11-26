@@ -1,0 +1,116 @@
+# Landscaper particle pack: Ground fog. Written from scratch; derived from the stock silm_fog_50_lo's clouds, flat and fewer.
+newmodel lsp_groundfog
+setsupermodel lsp_groundfog NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_groundfog
+node dummy lsp_groundfog
+  parent NULL
+endnode
+node emitter fog
+  parent lsp_groundfog
+  position 0 0 1
+  update Fountain
+  render Billboard_to_Local_Z
+  blend Normal
+  texture silm_fog_cloud
+  xgrid 1
+  ygrid 1
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 0
+  m_isTinted 0
+  bounce 0
+  random 0
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 1
+  lifeExp 10
+  colorStart 0.85 0.87 0.9
+  colorEnd 0.85 0.87 0.9
+  alphaStart 0.4
+  alphaEnd 0
+  sizeStart 8
+  sizeEnd 11
+  velocity 0.02
+  randvel 0.03
+  spread 0.5
+  grav 0
+  drag 0
+  particleRot 0.02
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 0
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 1000
+  ysize 1000
+endnode
+endmodelgeom lsp_groundfog
+
+newanim default lsp_groundfog
+  length 0.0333
+  transtime 0.25
+  animroot lsp_groundfog
+  node dummy lsp_groundfog
+    parent NULL
+  endnode
+  node emitter fog
+    parent lsp_groundfog
+    birthratekey 1
+      0 1
+    endlist
+  endnode
+doneanim default lsp_groundfog
+
+newanim on lsp_groundfog
+  length 0.0333
+  transtime 0.25
+  animroot lsp_groundfog
+  node dummy lsp_groundfog
+    parent NULL
+  endnode
+  node emitter fog
+    parent lsp_groundfog
+    birthratekey 1
+      0 1
+    endlist
+  endnode
+doneanim on lsp_groundfog
+
+newanim off lsp_groundfog
+  length 0.0333
+  transtime 0.25
+  animroot lsp_groundfog
+  node dummy lsp_groundfog
+    parent NULL
+  endnode
+  node emitter fog
+    parent lsp_groundfog
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+doneanim off lsp_groundfog
+
+donemodel lsp_groundfog

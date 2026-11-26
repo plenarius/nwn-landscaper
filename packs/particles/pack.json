@@ -1,0 +1,430 @@
+{
+  "format": 1,
+  "id": "landscaper-particles",
+  "version": "0.1.0",
+  "name": "Landscaper particles",
+  "description": "Eleven particle kinds for the Ambience tool, each also a placeable.",
+  "prefix": "lsp",
+  "textures": [
+    {
+      "name": "lspt_firefly",
+      "file": "textures/lspt_firefly.tga",
+      "placeholder": true,
+      "use": "firefly glow, 2 by 2 frames of brightness"
+    },
+    {
+      "name": "lspt_motes",
+      "file": "textures/lspt_motes.tga",
+      "placeholder": true,
+      "use": "soft motes, 2 by 2 frames of specks"
+    },
+    {
+      "name": "lspt_sandstrk",
+      "file": "textures/lspt_sandstrk.tga",
+      "placeholder": true,
+      "use": "sand streak"
+    },
+    {
+      "name": "lspt_shaft",
+      "file": "textures/lspt_shaft.tga",
+      "placeholder": true,
+      "use": "the light shafts' quads"
+    }
+  ],
+  "stock_textures": [
+    "fxpa_dot01",
+    "fxpa_flare",
+    "fxpa_leaf",
+    "fxpa_mist",
+    "fxpa_splash",
+    "silm_fog_cloud"
+  ],
+  "kinds": [
+    {
+      "id": "mist",
+      "name": "Water mist",
+      "model": "lsp_mist",
+      "where": "over still water, near shores",
+      "shows": "always",
+      "loops": true,
+      "budget": 18,
+      "live": {
+        "day": 18.0,
+        "night": 18.0
+      },
+      "stock": "tnp_gmist and dag_fog_med: fxpa_mist puffs, Billboard_to_World_Z",
+      "emitters": {
+        "mist": {
+          "day": {
+            "birthrate": 2.0,
+            "colorStart": [0.92, 0.94, 0.96],
+            "colorEnd": [0.85, 0.87, 0.9],
+            "alphaStart": 0.5,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 2.0,
+            "colorStart": [0.3, 0.34, 0.43],
+            "colorEnd": [0.26, 0.3, 0.38],
+            "alphaStart": 0.55,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "waterfall",
+      "name": "Waterfall spray",
+      "model": "lsp_fallspray",
+      "where": "where water drops more than 1 m",
+      "shows": "always",
+      "loops": false,
+      "budget": 34,
+      "live": {
+        "day": 34.0,
+        "night": 34.0
+      },
+      "stock": "plc_shrine's FountainSpray and splash: fxpa_splash, Motion_Blur",
+      "emitters": {
+        "spray": {
+          "day": {
+            "birthrate": 16.0,
+            "colorStart": [0.9, 0.95, 1.0],
+            "colorEnd": [0.7, 0.8, 0.9],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.1
+          },
+          "night": {
+            "birthrate": 16.0,
+            "colorStart": [0.3, 0.35, 0.45],
+            "colorEnd": [0.2, 0.25, 0.32],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.1
+          }
+        },
+        "puff": {
+          "day": {
+            "birthrate": 6.0,
+            "colorStart": [0.92, 0.94, 0.96],
+            "colorEnd": [0.88, 0.9, 0.93],
+            "alphaStart": 0.4,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 6.0,
+            "colorStart": [0.3, 0.34, 0.43],
+            "colorEnd": [0.26, 0.3, 0.38],
+            "alphaStart": 0.4,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "rapids",
+      "name": "Rapids spray",
+      "model": "lsp_rapids",
+      "where": "steep stretches of a river, one every 4 m",
+      "shows": "always",
+      "loops": false,
+      "budget": 6,
+      "live": {
+        "day": 6.0,
+        "night": 6.0
+      },
+      "stock": "plc_j02's small fountain: fxpa_splash",
+      "emitters": {
+        "spray": {
+          "day": {
+            "birthrate": 6.0,
+            "colorStart": [0.9, 0.95, 1.0],
+            "colorEnd": [0.7, 0.8, 0.9],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 6.0,
+            "colorStart": [0.3, 0.35, 0.45],
+            "colorEnd": [0.2, 0.25, 0.32],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "fireflies",
+      "name": "Fireflies",
+      "model": "lsp_fireflies",
+      "where": "grass within 10 m of water, under trees",
+      "shows": "night",
+      "loops": false,
+      "budget": 18,
+      "live": {
+        "day": 0.0,
+        "night": 18.0
+      },
+      "stock": "c_fairy's fairy dust: small additive sprites, slow drift",
+      "emitters": {
+        "flies": {
+          "day": {
+            "birthrate": 0.0,
+            "colorStart": [0.75, 1.0, 0.35],
+            "colorEnd": [0.6, 0.9, 0.25],
+            "alphaStart": 1.0,
+            "alphaEnd": 0.2
+          },
+          "night": {
+            "birthrate": 3.0,
+            "colorStart": [0.75, 1.0, 0.35],
+            "colorEnd": [0.6, 0.9, 0.25],
+            "alphaStart": 1.0,
+            "alphaEnd": 0.2
+          }
+        }
+      }
+    },
+    {
+      "id": "motes",
+      "name": "Dust motes, pollen",
+      "model": "lsp_motes",
+      "where": "sunlit forest gaps, under light shafts, cave mouths",
+      "shows": "day",
+      "loops": false,
+      "budget": 30,
+      "live": {
+        "day": 30.0,
+        "night": 0.0
+      },
+      "stock": "c_drgfaerie's fairy dust, slowed: tiny additive points",
+      "emitters": {
+        "motes": {
+          "day": {
+            "birthrate": 3.0,
+            "colorStart": [1.0, 0.92, 0.7],
+            "colorEnd": [1.0, 0.92, 0.7],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 0.0,
+            "colorStart": [1.0, 0.92, 0.7],
+            "colorEnd": [1.0, 0.92, 0.7],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "leaves",
+      "name": "Falling leaves",
+      "model": "lsp_leaves",
+      "where": "under tree crowns, one a tree; they start 4 m up",
+      "shows": "always",
+      "loops": false,
+      "budget": 4,
+      "live": {
+        "day": 4.0,
+        "night": 4.0
+      },
+      "stock": "fx_leaf: fxpa_leaf, a 4 by 4 sheet of leaves",
+      "emitters": {
+        "leaves": {
+          "day": {
+            "birthrate": 1.0,
+            "colorStart": [1.0, 1.0, 1.0],
+            "colorEnd": [1.0, 1.0, 1.0],
+            "alphaStart": 1.0,
+            "alphaEnd": 0.6
+          },
+          "night": {
+            "birthrate": 1.0,
+            "colorStart": [0.3, 0.32, 0.4],
+            "colorEnd": [0.3, 0.32, 0.4],
+            "alphaStart": 1.0,
+            "alphaEnd": 0.6
+          }
+        }
+      }
+    },
+    {
+      "id": "snow",
+      "name": "Snow gusts",
+      "model": "lsp_snowgust",
+      "where": "ridges and crests in snowy areas; blows along the model's +x",
+      "shows": "always",
+      "loops": false,
+      "budget": 60,
+      "live": {
+        "day": 56.0,
+        "night": 56.0
+      },
+      "stock": "fx_snow's flakes, blown sideways: fxpa_dot01",
+      "emitters": {
+        "gust": {
+          "day": {
+            "birthrate": 28.0,
+            "colorStart": [1.0, 1.0, 1.0],
+            "colorEnd": [0.95, 0.97, 1.0],
+            "alphaStart": 0.9,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 28.0,
+            "colorStart": [0.35, 0.4, 0.5],
+            "colorEnd": [0.3, 0.35, 0.45],
+            "alphaStart": 0.9,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "sand",
+      "name": "Blowing sand",
+      "model": "lsp_sandblow",
+      "where": "dune crests, desert ridges; blows along the model's +x",
+      "shows": "always",
+      "loops": false,
+      "budget": 18,
+      "live": {
+        "day": 18.0,
+        "night": 18.0
+      },
+      "stock": "fx_step_dust's tinted smoke, streaming: a sand streak",
+      "emitters": {
+        "sand": {
+          "day": {
+            "birthrate": 6.0,
+            "colorStart": [0.86, 0.74, 0.52],
+            "colorEnd": [0.86, 0.74, 0.52],
+            "alphaStart": 0.45,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 6.0,
+            "colorStart": [0.28, 0.26, 0.24],
+            "colorEnd": [0.28, 0.26, 0.24],
+            "alphaStart": 0.45,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "embers",
+      "name": "Embers",
+      "model": "lsp_embers",
+      "where": "above fire placeables",
+      "shows": "always",
+      "loops": false,
+      "budget": 15,
+      "live": {
+        "day": 15.0,
+        "night": 15.0
+      },
+      "stock": "c_fire's sparks: fxpa_flare, additive",
+      "emitters": {
+        "embers": {
+          "day": {
+            "birthrate": 5.0,
+            "colorStart": [1.0, 0.65, 0.25],
+            "colorEnd": [0.9, 0.25, 0.05],
+            "alphaStart": 1.0,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 5.0,
+            "colorStart": [1.0, 0.65, 0.25],
+            "colorEnd": [0.9, 0.25, 0.05],
+            "alphaStart": 1.0,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "shafts",
+      "name": "Light shafts",
+      "model": "lsp_lightshaft",
+      "where": "forest gaps, cave openings; the shafts lean towards the model's +x",
+      "shows": "day",
+      "loops": false,
+      "budget": 30,
+      "live": {
+        "day": 24.0,
+        "night": 0.0
+      },
+      "stock": "tnp_gsol1's shafts, as two crossed quads, with motes",
+      "emitters": {
+        "motes": {
+          "day": {
+            "birthrate": 2.0,
+            "colorStart": [1.0, 0.92, 0.7],
+            "colorEnd": [1.0, 0.92, 0.7],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 0.0,
+            "colorStart": [1.0, 0.92, 0.7],
+            "colorEnd": [1.0, 0.92, 0.7],
+            "alphaStart": 0.8,
+            "alphaEnd": 0.0
+          }
+        }
+      },
+      "meshes": {
+        "shaft_a": {
+          "day": {
+            "alpha": 1.0
+          },
+          "night": {
+            "alpha": 0.0
+          }
+        },
+        "shaft_b": {
+          "day": {
+            "alpha": 1.0
+          },
+          "night": {
+            "alpha": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "groundfog",
+      "name": "Ground fog",
+      "model": "lsp_groundfog",
+      "where": "hollows, swamp",
+      "shows": "always",
+      "loops": true,
+      "budget": 10,
+      "live": {
+        "day": 10.0,
+        "night": 10.0
+      },
+      "stock": "silm_fog_50_lo's clouds, flat and fewer: silm_fog_cloud",
+      "emitters": {
+        "fog": {
+          "day": {
+            "birthrate": 1.0,
+            "colorStart": [0.85, 0.87, 0.9],
+            "colorEnd": [0.85, 0.87, 0.9],
+            "alphaStart": 0.4,
+            "alphaEnd": 0.0
+          },
+          "night": {
+            "birthrate": 1.0,
+            "colorStart": [0.28, 0.31, 0.38],
+            "colorEnd": [0.28, 0.31, 0.38],
+            "alphaStart": 0.5,
+            "alphaEnd": 0.0
+          }
+        }
+      }
+    }
+  ]
+}

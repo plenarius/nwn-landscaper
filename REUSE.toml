@@ -48,3 +48,12 @@ path = "vendor/tiny_http/**"
 precedence = "override"
 SPDX-FileCopyrightText = "Copyright (c) 2014-2019 The tiny-http contributors"
 SPDX-License-Identifier = "MIT OR Apache-2.0"
+
+# The particle pack: models, pack.json, sample placeables.2da rows, placeholder textures and their script, written for this
+# repository, nothing taken from the game (the models name stock textures, which the game supplies). CC0-1.0, so any team can
+# ship it in its haks; the rest of the repository stays GPL-3.0-or-later.
+[[annotations]]
+path = "packs/particles/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 plenarius"
+SPDX-License-Identifier = "CC0-1.0"

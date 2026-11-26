@@ -1,0 +1,212 @@
+# Landscaper particle pack: Light shafts. Written from scratch; derived from the stock tnp_gsol1's shafts, as two crossed quads, with motes.
+newmodel lsp_lightshaft
+setsupermodel lsp_lightshaft NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_lightshaft
+node dummy lsp_lightshaft
+  parent NULL
+endnode
+node trimesh shaft_a
+  parent lsp_lightshaft
+  position 0 0 0
+  ambient 1 1 1
+  diffuse 1 1 1
+  specular 0 0 0
+  shininess 1
+  selfillumcolor 1 1 1
+  alpha 1
+  shadow 0
+  render 1
+  beaming 0
+  transparencyhint 1
+  bitmap lspt_shaft
+  verts 4
+    -1 0 0
+    1 0 0
+    6.8957 0 12
+    4.2957 0 12
+  tverts 4
+    0 0 0
+    1 0 0
+    1 1 0
+    0 1 0
+  faces 4
+    0 1 2 1 0 1 2 1
+    0 2 3 1 0 2 3 1
+    0 2 1 1 0 2 1 1
+    0 3 2 1 0 3 2 1
+endnode
+node trimesh shaft_b
+  parent lsp_lightshaft
+  position 0 0 0
+  ambient 1 1 1
+  diffuse 1 1 1
+  specular 0 0 0
+  shininess 1
+  selfillumcolor 1 1 1
+  alpha 1
+  shadow 0
+  render 1
+  beaming 0
+  transparencyhint 1
+  bitmap lspt_shaft
+  verts 4
+    0 -1 0
+    0 1 0
+    0 6.8957 12
+    0 4.2957 12
+  tverts 4
+    0 0 0
+    1 0 0
+    1 1 0
+    0 1 0
+  faces 4
+    0 1 2 1 0 1 2 1
+    0 2 3 1 0 2 3 1
+    0 2 1 1 0 2 1 1
+    0 3 2 1 0 3 2 1
+endnode
+node emitter motes
+  parent lsp_lightshaft
+  position 1 0 1.5
+  update Fountain
+  render Normal
+  blend Lighten
+  texture lspt_motes
+  xgrid 2
+  ygrid 2
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 0
+  m_isTinted 0
+  bounce 0
+  random 1
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 2
+  lifeExp 12
+  colorStart 1 0.92 0.7
+  colorEnd 1 0.92 0.7
+  alphaStart 0.8
+  alphaEnd 0
+  sizeStart 0.45
+  sizeEnd 0.45
+  velocity 0.05
+  randvel 0.12
+  spread 3.14
+  grav 0
+  drag 0
+  particleRot 0
+  mass 0
+  fps 0
+  frameStart 0
+  frameEnd 3
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 250
+  ysize 250
+endnode
+endmodelgeom lsp_lightshaft
+
+newanim default lsp_lightshaft
+  length 0.0333
+  transtime 0.25
+  animroot lsp_lightshaft
+  node dummy lsp_lightshaft
+    parent NULL
+  endnode
+  node emitter motes
+    parent lsp_lightshaft
+    birthratekey 1
+      0 2
+    endlist
+  endnode
+  node trimesh shaft_a
+    parent lsp_lightshaft
+    alphakey 1
+      0 1
+    endlist
+  endnode
+  node trimesh shaft_b
+    parent lsp_lightshaft
+    alphakey 1
+      0 1
+    endlist
+  endnode
+doneanim default lsp_lightshaft
+
+newanim on lsp_lightshaft
+  length 0.0333
+  transtime 0.25
+  animroot lsp_lightshaft
+  node dummy lsp_lightshaft
+    parent NULL
+  endnode
+  node emitter motes
+    parent lsp_lightshaft
+    birthratekey 1
+      0 2
+    endlist
+  endnode
+  node trimesh shaft_a
+    parent lsp_lightshaft
+    alphakey 1
+      0 1
+    endlist
+  endnode
+  node trimesh shaft_b
+    parent lsp_lightshaft
+    alphakey 1
+      0 1
+    endlist
+  endnode
+doneanim on lsp_lightshaft
+
+newanim off lsp_lightshaft
+  length 0.0333
+  transtime 0.25
+  animroot lsp_lightshaft
+  node dummy lsp_lightshaft
+    parent NULL
+  endnode
+  node emitter motes
+    parent lsp_lightshaft
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+  node trimesh shaft_a
+    parent lsp_lightshaft
+    alphakey 1
+      0 0
+    endlist
+  endnode
+  node trimesh shaft_b
+    parent lsp_lightshaft
+    alphakey 1
+      0 0
+    endlist
+  endnode
+doneanim off lsp_lightshaft
+
+donemodel lsp_lightshaft

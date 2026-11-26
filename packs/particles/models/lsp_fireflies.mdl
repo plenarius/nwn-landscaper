@@ -1,0 +1,116 @@
+# Landscaper particle pack: Fireflies. Written from scratch; derived from the stock c_fairy's fairy dust.
+newmodel lsp_fireflies
+setsupermodel lsp_fireflies NULL
+classification Character
+setanimationscale 1
+beginmodelgeom lsp_fireflies
+node dummy lsp_fireflies
+  parent NULL
+endnode
+node emitter flies
+  parent lsp_fireflies
+  position 0 0 0.8
+  update Fountain
+  render Normal
+  blend Lighten
+  texture lspt_firefly
+  xgrid 2
+  ygrid 2
+  spawntype 0
+  twosidedtex 0
+  loop 0
+  renderorder 0
+  deadspace 0
+  blastRadius 0
+  blastLength 0
+  p2p 0
+  p2p_sel 0
+  affectedByWind 0
+  m_isTinted 0
+  bounce 0
+  random 1
+  inherit 0
+  inheritvel 0
+  inherit_local 0
+  splat 0
+  inherit_part 0
+  birthrate 3
+  lifeExp 6
+  colorStart 0.75 1 0.35
+  colorEnd 0.6 0.9 0.25
+  alphaStart 1
+  alphaEnd 0.2
+  sizeStart 0.3
+  sizeEnd 0.25
+  velocity 0.15
+  randvel 0.25
+  spread 3.14
+  grav 0
+  drag 0
+  particleRot 0
+  mass 0
+  fps 2
+  frameStart 0
+  frameEnd 3
+  blurlength 10
+  sizeStart_y 0
+  sizeEnd_y 0
+  bounce_co 0
+  threshold 0
+  combinetime 0
+  lightningDelay 0
+  lightningRadius 0
+  lightningScale 0
+  p2p_bezier2 0
+  p2p_bezier3 0
+  xsize 800
+  ysize 800
+endnode
+endmodelgeom lsp_fireflies
+
+newanim default lsp_fireflies
+  length 0.0333
+  transtime 0.25
+  animroot lsp_fireflies
+  node dummy lsp_fireflies
+    parent NULL
+  endnode
+  node emitter flies
+    parent lsp_fireflies
+    birthratekey 1
+      0 3
+    endlist
+  endnode
+doneanim default lsp_fireflies
+
+newanim on lsp_fireflies
+  length 0.0333
+  transtime 0.25
+  animroot lsp_fireflies
+  node dummy lsp_fireflies
+    parent NULL
+  endnode
+  node emitter flies
+    parent lsp_fireflies
+    birthratekey 1
+      0 3
+    endlist
+  endnode
+doneanim on lsp_fireflies
+
+newanim off lsp_fireflies
+  length 0.0333
+  transtime 0.25
+  animroot lsp_fireflies
+  node dummy lsp_fireflies
+    parent NULL
+  endnode
+  node emitter flies
+    parent lsp_fireflies
+    birthratekey 1
+      0 0
+    endlist
+  endnode
+doneanim off lsp_fireflies
+
+donemodel lsp_fireflies
