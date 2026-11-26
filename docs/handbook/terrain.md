@@ -42,6 +42,6 @@ it or across it. Shift-drag fills it in again, the ground as it was.
 
 ## Cave mouths
 
-**Entrance** (`7`): click a slope or a cave wall to carve an entrance, as wide as the brush; Shift-click one to remove it. Each entrance has a door.
-Pick where it leads (an entrance door in the same module), or link it in the toolset. See [Caves and interiors](caves.md) for
-the door's tag.
+**Entrance** (`7`): click a slope or a cave wall to carve an entrance, as wide as the brush; Shift-click one to remove it. Each
+entrance has a door. Pick where it leads (an entrance door in the same module), or link it in the toolset. See
+[Caves and interiors](caves.md) for the door's tag.
