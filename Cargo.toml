@@ -52,6 +52,12 @@ description = "Paint terrain, get a Neverwinter Nights area with its own generat
 repository = "https://github.com/plenarius/nwn-landscaper"
 readme = "README.md"
 
+# Real Skies for modules (docs/REAL-SKIES.md): a step outside the Landscaper, kept with it for its DDS encoder and hak writer.
+[[example]]
+name = "real-skies"
+path = "scripts/real-skies.rs"
+test = true
+
 [dependencies]
 # A release of nwn-bake. To work on both at once, point a local, uncommitted
 # `[patch."https://github.com/plenarius/nwn-bake"]` at a checkout (README, "Development").
