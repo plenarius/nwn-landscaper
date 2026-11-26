@@ -1,0 +1,24 @@
+# The browser build's Moonglow (scripts/build-wasm.sh): its patched copy on the maintainer's fork, branch wasi/v4.0.0, the pinned
+# commit plus its WASI fixes (docs/DESIGN-web-demo.md, question 9). Native builds never read this file; a Moonglow bump moves the
+# branch and this rev with it.
+[patch."https://github.com/jadzziaa/moonglow-toolset"]
+mg-2da = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-core = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-erf = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-gff = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-image = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-key = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-mdl = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-module = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-preview = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-render = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-resman = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-rules = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-schema = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-script = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-set = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-shader = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-ssf = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-tiles = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+mg-tlk = { git = "https://github.com/plenarius/moonglow-toolset", rev = "d5f54c195ae1658d51b757bfedd062045eecccca" }
+

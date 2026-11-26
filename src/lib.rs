@@ -67,11 +67,31 @@ mod workspace;
 use anyhow::{Context, Result};
 use mg_core::ResType;
 
+/// This process's id, for naming temporary files: WASI (the browser build) has none, and one page runs one engine.
+pub(crate) fn pid() -> u32 {
+    #[cfg(target_family = "wasm")]
+    return 1;
+    #[cfg(not(target_family = "wasm"))]
+    std::process::id()
+}
+
 /// The command line (cli.rs): a mistake there exits with 2 and the usage, a failed command with 1 and what went wrong. With no
 /// arguments at all, as a double-click starts it: the editor on this machine (`quick_start`).
 pub fn main() -> std::process::ExitCode {
     if std::env::args_os().len() <= 1 {
         return quick_start();
+    }
+    // The browser build: one API request, its answer (`serve::wasi_request`). Not a clap command: it is the page's, not a builder's.
+    #[cfg(feature = "web")]
+    if std::env::args().nth(1).as_deref() == Some("wasi-request") {
+        let files: Vec<PathBuf> = std::env::args_os().skip(2).map(PathBuf::from).collect();
+        return match serve::wasi_request(files.first().map(PathBuf::as_path), files.get(1).map(PathBuf::as_path)) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("error: {e:#}");
+                std::process::ExitCode::FAILURE
+            }
+        };
     }
     let cli = <cli::Cli as clap::Parser>::parse();
     match run(cli) {

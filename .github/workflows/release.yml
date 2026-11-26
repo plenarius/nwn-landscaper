@@ -4,8 +4,8 @@ name: Release
 # runs on glibc 2.36 and newer), Windows (x86-64, signed with Azure Artifact Signing) and macOS (one universal binary for Apple
 # silicon and Intel, signed with a Developer ID and notarized by Apple), packs each with the editor (nwn-landscaper-web at the same
 # tag) in web/ beside the program, starts each package on its own system to check that it serves the editor
-# (scripts/release-smoke.sh), and makes a DRAFT GitHub release with the archives, SHA256SUMS and the complete source with every
-# dependency vendored, as the GPL asks. The release is published by hand.
+# (scripts/release-smoke.sh), and makes a DRAFT GitHub release with the archives, the engine for the browser (landscaper-wasm.zip,
+# wasm.yml), SHA256SUMS and the complete source with every dependency vendored, as the GPL asks. The release is published by hand.
 #
 # Run by hand (workflow_dispatch), or on a pull request that changes how the releases are made, it builds, packs and checks the
 # same way, with the editor's branch or tag given (default main), and keeps the archives as the run's artifacts; it makes no
@@ -218,8 +218,12 @@ jobs:
             nwn-landscaper-*-source.tar.gz
             THIRD-PARTY-LICENSES.html
 
+  # The engine for the browser: wasm.yml's build, kept as landscaper-wasm.zip.
+  wasm:
+    uses: ./.github/workflows/wasm.yml
+
   package:
-    needs: [linux, windows, macos, source]
+    needs: [linux, windows, macos, source, wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -270,6 +274,8 @@ jobs:
           pack windows-x86_64 artifacts/bin-windows-x86_64/landscaper.exe zip
           pack macos-universal artifacts/bin-macos-universal/landscaper tar
           cp artifacts/source/nwn-landscaper-*-source.tar.gz dist/
+          # (Under one name in every release, for the handbook site's /try/ to download.)
+          cp artifacts/wasm/landscaper-wasm.zip dist/
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS
           ls -l dist

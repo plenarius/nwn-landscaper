@@ -10,6 +10,10 @@
 //! This file holds the import's shared types and [`import`], which reads each tile. The rest is in `import/`: reading a tile
 //! model (`tile`), drawing its picture (`picture`), writing the import's files (`files`), the kept original (`original`), and
 //! where an import comes from and the whole import of one (`source`).
+#![cfg_attr(
+    target_family = "wasm",
+    allow(unused_imports, unused_variables, dead_code, reason = "importing needs mg-area, which the browser build leaves out")
+)]
 
 mod files;
 mod original;
@@ -210,6 +214,14 @@ struct TileMade {
 
 /// Imports the area whose ARE root is `are`.
 pub fn import(game: &GameData, are: &mg_gff::Struct) -> Result<Imported> {
+    #[cfg(target_family = "wasm")]
+    anyhow::bail!("importing an area isn't in the browser build yet (mg-area draws with wgpu, which doesn't build for WASI)");
+    #[cfg(not(target_family = "wasm"))]
+    import_native(game, are)
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn import_native(game: &GameData, are: &mg_gff::Struct) -> Result<Imported> {
     let tileset_ref = are.resref("Tileset").context("the area has no tileset")?;
     let read = span("  tileset", || nwn_bake::area::tileset(game, tileset_ref)).with_context(|| {
         format!(
