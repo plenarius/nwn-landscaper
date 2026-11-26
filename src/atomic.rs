@@ -51,6 +51,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The file at `path`, read while other threads replace it. On Windows an open at the moment a rename replaces the file
+    /// can fail with "Access is denied" (or not find it), and succeeds when tried again; Go's own tools retry the same
+    /// (cmd/internal/robustio, golang/go#31247). The file is never cut off: what is read is still checked whole.
+    fn read_while_replaced(path: &Path) -> Vec<u8> {
+        let mut tries = 0;
+        loop {
+            match std::fs::read(path) {
+                Ok(d) => return d,
+                Err(e)
+                    if cfg!(windows)
+                        && matches!(e.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound)
+                        && tries < 200 =>
+                {
+                    tries += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(e) => panic!("{}: {e}", path.display()),
+            }
+        }
+    }
+
     #[test]
     fn writers_on_many_threads_never_leave_a_cut_off_file() {
         let dir = std::env::temp_dir().join(format!("landscaper-atomic-race-{}", std::process::id()));
@@ -64,7 +85,7 @@ mod tests {
                     for _ in 0..5 {
                         write(path, b).unwrap();
                         // Whatever is there now is one writer's content, whole.
-                        let now = std::fs::read(path).unwrap();
+                        let now = read_while_replaced(path);
                         assert_eq!(now.len(), 256 * 1024);
                         assert!(now.iter().all(|c| *c == now[0]));
                     }
