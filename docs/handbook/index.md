@@ -11,7 +11,7 @@ The order follows the work on an area:
 4. **[Caves and interiors](caves.md):** dig passages, cut rooms, lay ramps and whole descents.
 5. **[Scatter and Place](scatter.md):** trees, rocks and bushes, painted on or set one by one.
 6. **[Things](things.md):** creatures, doors, transitions, triggers and the rest, with their settings.
-7. **[Light](light.md):** the area's sun and moon, and the light of each tile.
+7. **[Light](light.md):** the area's sun and moon, and each tile's two lights.
 8. **[Ambience](ambience.md):** mist, fireflies, leaves, light shafts and the other particles, baked into the tiles.
 9. **[Atmosphere and skies](atmosphere.md):** light and fog presets, sky boxes, sky packs and Real Skies.
 10. **[Texture packs](texture-packs.md):** more textures to paint with.
