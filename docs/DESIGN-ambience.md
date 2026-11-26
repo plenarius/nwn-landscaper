@@ -479,5 +479,5 @@ start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 an
 - **`DayToNight` in an area that doesn't cycle,** and whether it shows the night sky as well as the night light.
 - **Dawn in a cycling area:** spike 0 watched dusk switch the tiles, not dawn.
 - **Emitter culling:** whether the client drops a tile's emitters with the tile when it is out of view, as it does meshes (T52).
-- **Baked self-illumination** is dropped judging by the code (`src/objects.rs` keeps texture and transparency per group), not
-  seen in game.
+- **Baked self-illumination** was dropped judging by the code (`src/objects.rs` kept texture and transparency per group). Step 8
+  keeps it, and a baked crystal ball's globe glows in the game client, also on a tile whose lights are off.
