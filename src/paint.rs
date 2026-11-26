@@ -48,6 +48,9 @@ pub fn resref(id: &str) -> String {
 pub struct Texture {
     /// The picture, repeated over the ground.
     pub image: Rgba,
+    /// The picture halved again and again (each half the last's size, down to 1 pixel), for drawing it small without
+    /// glitter; none for an import.
+    pub smaller: std::sync::Arc<Vec<Rgba>>,
     /// Average colour (0..1), for minimaps.
     pub mean: [f32; 3],
     /// surfacemat.2da row of walkable ground painted with it (footsteps).
@@ -99,7 +102,16 @@ pub fn import_dir(name: &str) -> PathBuf {
 impl Texture {
     /// Bilinear colour (0..1) at texture coordinates, repeating.
     pub fn sample(&self, u: f32, v: f32) -> [f32; 3] {
-        let (w, h) = (self.image.width as usize, self.image.height as usize);
+        self.sample_level(u, v, 0)
+    }
+
+    /// Bilinear colour (0..1) at texture coordinates, repeating, from the picture halved `level` times (as far as it goes).
+    fn sample_level(&self, u: f32, v: f32, level: usize) -> [f32; 3] {
+        let image = match level.min(self.smaller.len()) {
+            0 => &self.image,
+            l => &self.smaller[l - 1],
+        };
+        let (w, h) = (image.width as usize, image.height as usize);
         let fx = u.rem_euclid(1.0) * w as f32 - 0.5;
         let fy = v.rem_euclid(1.0) * h as f32 - 0.5;
         let (x0, y0) = (fx.floor(), fy.floor());
@@ -108,7 +120,7 @@ impl Texture {
         let (x0, x1, y0, y1) = (wrap(x0, w), wrap(x0 + 1.0, w), wrap(y0, h), wrap(y0 + 1.0, h));
         let px = |x: usize, y: usize| {
             let i = (y * w + x) * 4;
-            let d = &self.image.data;
+            let d = &image.data;
             [f32::from(d[i]), f32::from(d[i + 1]), f32::from(d[i + 2])]
         };
         let (a, b, c, d) = (px(x0, y0), px(x1, y0), px(x0, y1), px(x1, y1));
@@ -130,16 +142,21 @@ impl Texture {
     }
 
     /// Colour at area point `p` (x, y and height) of ground facing `n`: a library texture drawn from three sides ([`triplanar`]), as
-    /// the game's shader and the editor draw it; an import's picture lies over its tile as [`Texture::ground`] has it.
-    pub fn at(&self, p: [f32; 3], n: [f32; 3]) -> [f32; 3] {
+    /// the game's shader and the editor draw it; an import's picture lies over its tile as [`Texture::ground`] has it. For points
+    /// drawn `spacing` metres apart (0: full detail), a library texture is read from the halving whose pixels are about that far
+    /// apart, so detail finer than the points (gravel, grass blades) blends instead of glittering.
+    pub fn at(&self, p: [f32; 3], n: [f32; 3], spacing: f32) -> [f32; 3] {
         if self.tiles.is_some() {
             return self.ground(p[0], p[1]);
         }
+        // (Whole halvings only, rounded down: points at least as close as the picture's own pixels read the picture itself.)
+        let texels = spacing * self.image.width as f32 / TEXTURE_METRES;
+        let level = if texels >= 2.0 { texels.log2().floor() as usize } else { 0 };
         let w = triplanar::weights(n);
         let mut c = [0.0; 3];
         for (axis, w) in w.into_iter().enumerate().filter(|(_, w)| *w > 0.0) {
             let [u, v] = triplanar::uv(axis, p);
-            let s = self.sample(u, v);
+            let s = self.sample_level(u, v, level);
             for k in 0..3 {
                 c[k] += s[k] * w;
             }
@@ -194,9 +211,23 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
         let count = f64::from(image.width * image.height) * 255.0;
         let mean = [(sum[0] / count) as f32, (sum[1] / count) as f32, (sum[2] / count) as f32];
         let surface = entry["surface"].as_u64().unwrap_or(3) as u32;
-        out.insert(id.clone(), Texture { image, mean, surface, tiles: None });
+        let smaller = std::sync::Arc::new(halvings(&image));
+        out.insert(id.clone(), Texture { image, smaller, mean, surface, tiles: None });
     }
     Ok(out)
+}
+
+/// `img` halved again and again, down to 1 pixel.
+fn halvings(img: &Rgba) -> Vec<Rgba> {
+    let mut out: Vec<Rgba> = Vec::new();
+    loop {
+        let last = out.last().unwrap_or(img);
+        if last.width <= 1 && last.height <= 1 {
+            return out;
+        }
+        let next = half(last);
+        out.push(next);
+    }
 }
 
 /// An import's pictures as a texture (its mean colour over them all).
@@ -243,7 +274,13 @@ fn load_import(name: &str) -> Result<Texture> {
     let mean = [(sum[0] / count) as f32, (sum[1] / count) as f32, (sum[2] / count) as f32];
     let image = pictures[0].clone();
     let cliffs = std::fs::read(dir.join("cliffs.json")).ok().and_then(|d| serde_json::from_slice(&d).ok()).unwrap_or_default();
-    Ok(Texture { image, mean, surface: 3, tiles: Some(std::sync::Arc::new(TilePictures { width, pictures, cliffs })) })
+    Ok(Texture {
+        image,
+        smaller: std::sync::Arc::default(),
+        mean,
+        surface: 3,
+        tiles: Some(std::sync::Arc::new(TilePictures { width, pictures, cliffs })),
+    })
 }
 
 /// An 8-bit RGB(A) PNG, rows bottom first (its alpha kept).
@@ -454,6 +491,23 @@ mod tests {
         assert!(worst <= 24, "DXT1 error {worst}");
         // Rows keep their order: the first stored row is still the dark one.
         assert!(back.pixel(0, 0)[1] < 40 && back.pixel(0, 31)[1] > 200);
+    }
+
+    #[test]
+    fn points_far_apart_read_a_texture_halved_so_fine_detail_blends() {
+        // Black and white stripes a pixel wide: any point of the picture itself is near black or near white.
+        let image = picture(512, 512, |x, _| if x % 2 == 0 { [0.0; 3] } else { [1.0; 3] });
+        let t = Texture { smaller: std::sync::Arc::new(halvings(&image)), image, mean: [0.5; 3], surface: 3, tiles: None };
+        assert_eq!(t.smaller.len(), 9);
+        let up = [0.0, 0.0, 1.0];
+        // (A quarter of a pixel in: bilinear between two stripes, still mostly one of them.)
+        let at = |x: f32, spacing: f32| t.at([x * TEXTURE_METRES / 512.0, 0.3, 0.0], up, spacing)[0];
+        let px = TEXTURE_METRES / 512.0;
+        assert!(at(0.75, 0.0) < 0.3 && at(1.75, 0.0) > 0.7, "full detail");
+        // Points as close as the pixels (a 512 px bake's) still read the picture itself; 4 pixels apart (a 128 px bake's)
+        // read it halved twice, where the stripes are grey.
+        assert!(at(0.75, px * 1.25) < 0.3);
+        assert!((at(0.75, px * 5.0) - 0.5).abs() < 0.02 && (at(1.75, px * 5.0) - 0.5).abs() < 0.02);
     }
 
     #[test]

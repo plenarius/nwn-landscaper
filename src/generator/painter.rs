@@ -159,7 +159,8 @@ impl Painter {
     /// The ground's colour at (x, y): the four samples' textures blended, each drawn from three sides by the ground's slope there
     /// ([`paint::Texture::at`]), as the editor shows it and the game's shader draws a tile in one texture. `decals`: the ones on its
     /// tile.
-    fn ground(&self, x: f32, y: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
+    /// `spacing`: how far apart the points drawn are (m; 0 for the textures' full detail), see [`paint::Texture::at`].
+    fn ground(&self, x: f32, y: f32, spacing: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
         let (p, n) = ([x, y, self.hm.at(x, y)], self.hm.normal(x, y));
         let mut c = [0.0; 3];
         // (Corners of the same texture share its colour here: sampled once.)
@@ -168,7 +169,7 @@ impl Painter {
             if w > 0.0 {
                 let t = match last {
                     Some((lm, t)) if lm == m => t,
-                    _ => self.textures[m as usize].at(p, n),
+                    _ => self.textures[m as usize].at(p, n, spacing),
                 };
                 last = Some((m, t));
                 for k in 0..3 {
@@ -266,15 +267,18 @@ impl Painter {
         h.finalize().into()
     }
 
-    /// Tile (tx, ty)'s own texture, `size` pixels a side: its ground as painted, each pixel the mean of 2 x 2 samples.
+    /// Tile (tx, ty)'s own texture, `size` pixels a side: its ground as painted, each pixel the mean of 2 x 2 samples. A small
+    /// bake reads the library textures halved to its samples' spacing: 2 x 2 samples of their full detail would glitter.
     pub(super) fn bake(&self, tx: usize, ty: usize, size: u32) -> mg_image::Rgba {
         let (ox, oy) = (tx as f32 * TILE, ty as f32 * TILE);
+        let spacing = TILE / size as f32 / 2.0;
         // (Every point drawn is on this tile: its decals, looked up once.)
         let decals = self.decals.get(&(tx, ty)).map_or(&[][..], Vec::as_slice);
         paint::picture(size, size, |px, py| {
             let mut c = [0.0; 3];
             for (dx, dy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
-                let g = self.ground(ox + (px as f32 + dx) / size as f32 * TILE, oy + (py as f32 + dy) / size as f32 * TILE, decals);
+                let g =
+                    self.ground(ox + (px as f32 + dx) / size as f32 * TILE, oy + (py as f32 + dy) / size as f32 * TILE, spacing, decals);
                 for k in 0..3 {
                     c[k] += g[k] / 4.0;
                 }
@@ -286,8 +290,8 @@ impl Painter {
 
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
-/// (2: drawn from three sides by the slope.)
-const BAKE_VERSION: u32 = 2;
+/// (2: drawn from three sides by the slope. 3: small bakes read the textures halved.)
+const BAKE_VERSION: u32 = 3;
 
 /// A picture's digest: its size and pixels.
 fn digest(img: &mg_image::Rgba) -> [u8; 20] {
