@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! A test build for the dev server: the production module (built from `ee`) plus a builder's area, a temporary
-//! way in from an existing area, and the files the area needs (its hak and the shared one).
+//! way in from an existing area, and the files the area needs (its hak, the shared one, and the skies' when it has a Landscaper
+//! sky).
 //!
 //! ```text
 //! landscaper dev-pack <base.mod> <workspace.mod> <hak-dir> <area> <waypoint> <out-dir> [entry-area]
@@ -153,7 +154,9 @@ pub fn pack(base: &Path, workspace: &Path, hak_dir: &Path, area: &str, wp: &str,
     std::fs::write(&test, m.to_archive_bytes()?)?;
 
     let mut haks: Vec<String> = Vec::new();
-    for name in added.iter().map(|a| a.2.as_str()).chain([crate::shared::HAK]) {
+    // (The skies' hak when an area has a Landscaper sky: its sky row is in that hak's skyboxes.2da.)
+    let sky = m.haks()?.iter().any(|h| h.eq_ignore_ascii_case(crate::skies::HAK)).then_some(crate::skies::HAK);
+    for name in added.iter().map(|a| a.2.as_str()).chain([crate::shared::HAK]).chain(sky) {
         if haks.iter().any(|h| h == &format!("{name}.hak")) {
             continue;
         }

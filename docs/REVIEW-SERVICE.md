@@ -167,11 +167,11 @@ here: they go through Publish. Refusals are a `detail` sentence, which the edito
 requests would hold; the editor shows that before the builder confirms, then sends the same with `dry_run` false. The service opens
 the pull requests; the Landscaper never merges anything. Each zip holds files at the paths they go to.
 
-A dry run names the tile and library files instead of sending them: `hak_manifest` (`tiles.json`) and `library_manifest`
-(`library.json`) in place of `hak_files` and `library_files`, each a JSON object `{ "<file>": ["<git blob id>", <size>] }`, so
-the service can compare them with the files the module's haks already have. A service that wants the files themselves answers
-422 to a form without `hak_files` (FastAPI's own refusal does), and the team server sends the check again with the zips. A real
-publish always sends the zips.
+A dry run names the tile, library and skies files instead of sending them: `hak_manifest` (`tiles.json`), `library_manifest`
+(`library.json`) and `skies_manifest` (`skies.json`) in place of `hak_files`, `library_files` and `skies_files`, each a JSON
+object `{ "<file>": ["<git blob id>", <size>] }`, so the service can compare them with the files the module's haks already have. A
+service that wants the files themselves answers 422 to a form without `hak_files` (FastAPI's own refusal does), and the team
+server sends the check again with the zips. A real publish always sends the zips.
 
 ### `POST /api/v1/areas/publish`
 
@@ -189,13 +189,15 @@ One area. Fields:
 | `module_files` (`module.zip`) | The area's `.are.json`, `.git.json` and `.gic.json` in the module's source layout (CONFIGURATION.md, `LANDSCAPER_LAYOUT`), without the builder's hidden mark |
 | `hak_files` (`tiles.zip`) | The area's tileset files: models, walkmeshes, textures, minimaps, the `.set` |
 | `library_files` (`library.zip`) | Optional: the shared texture library hak's files, for the service to add when the module's haks lack them |
+| `skies_files` (`skies.zip`) | Only when the area has a Landscaper sky ([SKY-PACKS.md](SKY-PACKS.md)): the skies' hak's files, its `skyboxes.2da` among them (the module's table with the skies' rows added). The area's `SkyBox` is one of those rows, so the service must add them, and list `ls_skies` above every hak of the module with its own `skyboxes.2da` |
 | `blueprint_files` (`blueprints.zip`) | Optional: the builder's own blueprints the area uses |
 
 ### `POST /api/v1/areas/publish-module`
 
 Several areas as one set of pull requests. Fields: `user`, `note`, `dry_run`, `areas` (a JSON list of
 `{ "name", "area", "new", "kind", "export" }`), then for each area `module_<name>` and `hak_<name>` (zips as above; on a dry run
-`hakmanifest_<name>` instead of `hak_<name>`), and the optional `library_files` (or `library_manifest`) and `blueprint_files`.
+`hakmanifest_<name>` instead of `hak_<name>`), and the optional `library_files` (or `library_manifest`), `skies_files` (or
+`skies_manifest`) and `blueprint_files`.
 `kind` is the group (the folder inside the areas folder) the area's files go in, as in a package: the folder the area is already
 in when the team server has a module checkout, else `LANDSCAPER_AREA_FOLDER` (`core` in the `folders` layout, empty, for none,
 in nasher's). A service that knows where a reworked area is should keep it there.
@@ -251,12 +253,12 @@ The builder's exports that can be fetched, by name.
 ```json
 [ { "name": "elmwood", "area": "elmwood", "new": false, "module": "elmwood", "exported_at": 1795000000,
     "export": "<the export id>", "hak": { "bytes": 7340032, "sha256": "<hex>" },
-    "library": { "bytes": 10485760, "sha256": "<hex>" } } ]
+    "library": { "bytes": 10485760, "sha256": "<hex>" }, "skies": null } ]
 ```
 
 `area` is the resref the module will know it by (an existing area's for a rework, as `new` says), `module` the module the export
 went into, `exported_at` when its hak was written (Unix seconds). `hak` is `nwn/hak/<name>.hak`; `library` is the workspace's
-shared texture library hak (the same in every entry), or `null` when there is none.
+shared texture library hak (the same in every entry), or `null` when there is none; `skies` the same for the skies' hak.
 
 ### `GET /api/service/export?user=<user>&name=<name>`
 
@@ -281,3 +283,7 @@ The export's hak (`application/octet-stream`), checked as `export` is.
 ### `GET /api/service/library?user=<user>`
 
 The workspace's shared texture library hak, the same way; 404 when there is none.
+
+### `GET /api/service/skies?user=<user>`
+
+The workspace's skies hak (`ls_skies.hak`, with its `skyboxes.2da`), the same way; 404 when there is none.

@@ -36,6 +36,10 @@ An area keeps its sky's id in its light and fog, `"atmosphere": { ..., "sky": "d
 
 Underground areas have no sky, whatever their atmosphere says.
 
+**Where the area goes, the hak goes.** Publish (and Try on dev) sends the hak's files with an area that has a Landscaper sky, the
+package for a module has them in `haks/ls_skies/`, and `dev-pack` copies the hak and lists it. An area without one sends nothing
+more than before.
+
 ## What an install checks
 
 Everything a texture pack's install checks about the download, the index's hash, each file's sha256 and the zip's names, and:
