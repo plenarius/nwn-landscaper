@@ -426,7 +426,11 @@ fn install_into(
     let mut taken = library.rows_but(&m.id);
     let mut rows: BTreeMap<&str, usize> = BTreeMap::new();
     for s in &m.skies {
-        if let Some(r) = row_of(&library, &s.id).filter(|&r| free(&module.table, r) && !taken.contains(&r)) {
+        // (The module's row may be this sky's own already: a publish put the skies' table into the module.)
+        let had = library.sky(&s.id).cloned();
+        if let Some(r) =
+            row_of(&library, &s.id).filter(|&r| had.as_ref().is_some_and(|h| free_for(&module.table, r, h)) && !taken.contains(&r))
+        {
             rows.insert(&s.id, r);
             taken.insert(r);
         }
@@ -615,25 +619,46 @@ fn merged(table: &mg_2da::TwoDa, skies: &[Value]) -> Result<mg_2da::TwoDa> {
     }
     let width = t.columns().len();
     for s in skies {
-        let (Some(id), Some(row)) = (s["id"].as_str(), s["row"].as_u64().map(|r| r as usize)) else { continue };
+        let (Some(_), Some(row)) = (s["id"].as_str(), s["row"].as_u64().map(|r| r as usize)) else { continue };
         while t.rows.len() <= row {
             t.rows.push(vec![None; width]);
         }
-        let mut cells = vec![None; width];
-        let mut put = |col: &str, v: &str| {
-            if let Some(c) = t.column(col) {
-                cells[c] = Some(v.to_string());
-            }
-        };
-        put("LABEL", &format!("LS_{}", id.replace('-', "_")));
-        put("CYCLICAL", "1");
-        for (time, col) in TIMES {
-            let model = s["models"][time].as_str().with_context(|| format!("the sky {id} has no {time} model"))?;
-            put(col, model);
-        }
-        t.rows[row] = cells;
+        t.rows[row] = sky_cells(&t, s)?;
     }
     Ok(t)
+}
+
+/// The row an installed sky `s` has in `table`'s columns: its label, no name in the talk table, cycling with the time of day, and
+/// its four models.
+fn sky_cells(table: &mg_2da::TwoDa, s: &Value) -> Result<Vec<Option<String>>> {
+    let id = s["id"].as_str().context("a sky without an id")?;
+    let mut cells = vec![None; table.columns().len()];
+    let mut put = |col: &str, v: &str| {
+        if let Some(c) = table.column(col) {
+            cells[c] = Some(v.to_string());
+        }
+    };
+    put("LABEL", &format!("LS_{}", id.replace('-', "_")));
+    put("CYCLICAL", "1");
+    for (time, col) in TIMES {
+        let model = s["models"][time].as_str().with_context(|| format!("the sky {id} has no {time} model"))?;
+        put(col, model);
+    }
+    Ok(cells)
+}
+
+/// Whether row `row` of the module's `table` is free for the installed sky `s`: free, or already the sky's own row (as after a
+/// publish put the skies' table into the module), cells compared without regard to case.
+fn free_for(table: &mg_2da::TwoDa, row: usize, s: &Value) -> bool {
+    if free(table, row) {
+        return true;
+    }
+    let (Some(have), Ok(want)) = (table.rows.get(row), sky_cells(table, s)) else { return false };
+    have.len() == want.len()
+        && have.iter().zip(&want).all(|(a, b)| match (a, b) {
+            (Some(a), Some(b)) => a.trim().eq_ignore_ascii_case(b.trim()),
+            (a, b) => a.is_none() && b.is_none(),
+        })
 }
 
 /// The sky the loaded area names, if it names one and isn't underground (a cave has no sky).
@@ -677,7 +702,7 @@ fn prepare_in(dir: &Path, id: &str, table: &mg_2da::TwoDa, codepage: mg_core::Co
     let row = sky["row"].as_u64().context("the sky has no row: install its pack again")? as usize;
     for s in &library.skies {
         let r = s["row"].as_u64().unwrap_or(0) as usize;
-        if !free(table, r) {
+        if !free_for(table, r, s) {
             let label = table.get(r, "LABEL").unwrap_or("?");
             bail!(
                 "the module's skyboxes.2da has its own row {r} ({label}) now, which the sky {} took when it was installed. Remove its \
@@ -1165,6 +1190,34 @@ mod tests {
         later.rows.push(vec![Some("Team_New".into()), None, Some("1".into()), None, None, None, None]);
         let e = prepare_in(&dir, "dusk", &later, cp, &haks).unwrap_err();
         assert!(e.to_string().contains("row 33 (Team_New)"), "{e}");
+        // After a publish the module's table has the sky's own row: that is ours, not a clash (case aside).
+        let published = t.clone();
+        assert_eq!(prepare_in(&dir, "dusk", &published, cp, &haks).unwrap(), 33);
+        let mut shouting = published.clone();
+        shouting.rows[33][4] = Some("DK_DAY".into());
+        assert_eq!(prepare_in(&dir, "dusk", &shouting, cp, &haks).unwrap(), 33);
+        // A row that differs (another night model) still refuses.
+        let mut changed = published.clone();
+        changed.rows[33][6] = Some("sky_001".into());
+        let e = prepare_in(&dir, "dusk", &changed, cp, &haks).unwrap_err();
+        assert!(e.to_string().contains("row 33 (LS_dusk)"), "{e}");
+        // A new version installed over a module that has the sky's own row keeps the row.
+        let published_module = Module { table: published, has: &stock };
+        let v2 = make_with(
+            &list(
+                &src,
+                "dusky",
+                "2.0",
+                "dk",
+                &[("dusk", ["dk_dawn", "dk_day", "dk_dusk", "sky_005"]), ("dawn", ["dk_dawn", "dk_dawn", "dk_dawn", "dk_dawn"])],
+            ),
+            &src.join("out"),
+            None,
+            None,
+        )
+        .unwrap();
+        let r = install_with(&dir, &v2.zip, &published_module).unwrap();
+        assert_eq!(r.rows, [("dusk".to_string(), 33), ("dawn".to_string(), 34)]);
     }
 
     #[test]
