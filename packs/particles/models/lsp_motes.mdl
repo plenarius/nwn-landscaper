@@ -40,8 +40,8 @@ node emitter motes
   colorEnd 1 0.92 0.7
   alphaStart 0.8
   alphaEnd 0
-  sizeStart 0.35
-  sizeEnd 0.35
+  sizeStart 0.45
+  sizeEnd 0.45
   velocity 0.05
   randvel 0.12
   spread 3.14

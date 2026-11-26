@@ -47,7 +47,10 @@ The models are written from scratch: no stock model is copied. *Derived from* na
 - **Direction:** snow and sand blow along the model's +x, and the light shafts lean towards it. A placement's bearing turns them
   downwind, or away from the sun.
 - **Mist and spray** float at the placement's height: place them on the water's surface.
-- **Leaves** fall from 6 m, under a tree's crown. **Embers** start 0.6 m up, over a fire's flames.
+- **Leaves** fall from 4 m, under a tree's crown: started higher, they spent their life inside it. **Embers** start 0.6 m up, over
+  a fire's flames. **Ground fog** lies flat 1 m up: lower, rolling ground hid most of each 10 m sprite.
+- **Birth rates are whole numbers:** in the client, an emitter at 0.5 a second drew nothing. A kind gets a small count from a short
+  life instead.
 
 ## Day and night
 
@@ -120,11 +123,14 @@ The pack's own four textures are **placeholders for an artist**, written by `tex
 - `lspt_firefly`: a soft glow, four frames of brightness, so a firefly flickers as its frames run.
 - `lspt_motes`: four frames of three or four soft specks, so one particle reads as several motes.
 - `lspt_sandstrk`: a thin, grainy horizontal wisp.
-- `lspt_shaft`: the light shafts' quads, bright at the foot and fading upwards and to the edges.
+- `lspt_shaft`: the light shafts' quads, bright at the foot and fading upwards and to the edges, drawn additively
+  (`lspt_shaft.txi`).
 
-The design listed three new textures; the fourth, `lspt_shaft`, is there because the stock shaft texture (`plc_lightshaft`) has
-no alpha, so a mesh drawn with it would be an opaque grey band. Each is white with its shape in the alpha (and in the colour for
-the additive ones), so the emitter's colours tint it. Replace a file with one of the same name, size and frame layout.
+The design listed three new textures. The fourth, `lspt_shaft`, is there because a mesh is drawn additively only when its
+texture's TXI says so, and a TXI for the stock shaft texture (`plc_lightshaft`) would change every stock model that draws it.
+In the client, an alpha-blended shaft drew as a flat, even band; the additive one reads as light. Each texture has its shape in
+its alpha, and in its colour for the additive ones, so the emitter's colours tint it. Replace a file with one of the same name,
+size and frame layout.
 
 ## Not measured
 

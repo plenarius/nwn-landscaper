@@ -56,17 +56,17 @@
       "emitters": {
         "mist": {
           "day": {
-            "birthrate": 1.5,
+            "birthrate": 2.0,
             "colorStart": [0.92, 0.94, 0.96],
             "colorEnd": [0.85, 0.87, 0.9],
-            "alphaStart": 0.35,
+            "alphaStart": 0.5,
             "alphaEnd": 0.0
           },
           "night": {
-            "birthrate": 1.5,
+            "birthrate": 2.0,
             "colorStart": [0.3, 0.34, 0.43],
             "colorEnd": [0.26, 0.3, 0.38],
-            "alphaStart": 0.45,
+            "alphaStart": 0.55,
             "alphaEnd": 0.0
           }
         }
@@ -220,7 +220,7 @@
       "id": "leaves",
       "name": "Falling leaves",
       "model": "lsp_leaves",
-      "where": "under tree crowns, one a tree",
+      "where": "under tree crowns, one a tree; they start 4 m up",
       "shows": "always",
       "loops": false,
       "budget": 4,
@@ -232,14 +232,14 @@
       "emitters": {
         "leaves": {
           "day": {
-            "birthrate": 0.5,
+            "birthrate": 1.0,
             "colorStart": [1.0, 1.0, 1.0],
             "colorEnd": [1.0, 1.0, 1.0],
             "alphaStart": 1.0,
             "alphaEnd": 0.6
           },
           "night": {
-            "birthrate": 0.5,
+            "birthrate": 1.0,
             "colorStart": [0.3, 0.32, 0.4],
             "colorEnd": [0.3, 0.32, 0.4],
             "alphaStart": 1.0,
@@ -255,7 +255,7 @@
       "where": "ridges and crests in snowy areas; blows along the model's +x",
       "shows": "always",
       "loops": false,
-      "budget": 56,
+      "budget": 60,
       "live": {
         "day": 56.0,
         "night": 56.0
@@ -360,7 +360,7 @@
       "emitters": {
         "motes": {
           "day": {
-            "birthrate": 2.4,
+            "birthrate": 2.0,
             "colorStart": [1.0, 0.92, 0.7],
             "colorEnd": [1.0, 0.92, 0.7],
             "alphaStart": 0.8,
@@ -410,17 +410,17 @@
       "emitters": {
         "fog": {
           "day": {
-            "birthrate": 0.5,
+            "birthrate": 1.0,
             "colorStart": [0.85, 0.87, 0.9],
             "colorEnd": [0.85, 0.87, 0.9],
-            "alphaStart": 0.3,
+            "alphaStart": 0.4,
             "alphaEnd": 0.0
           },
           "night": {
-            "birthrate": 0.5,
+            "birthrate": 1.0,
             "colorStart": [0.28, 0.31, 0.38],
             "colorEnd": [0.28, 0.31, 0.38],
-            "alphaStart": 0.42,
+            "alphaStart": 0.5,
             "alphaEnd": 0.0
           }
         }

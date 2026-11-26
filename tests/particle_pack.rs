@@ -99,7 +99,10 @@ fn every_kind_matches_its_model() {
             }
             let life = f64::from(value(&m, node, "lifeexp")[0]);
             for (n, t) in ["day", "night"].into_iter().enumerate() {
-                live[n] += looks[t]["birthrate"].as_f64().unwrap() * life;
+                let rate = looks[t]["birthrate"].as_f64().unwrap();
+                // In the client, an emitter born at 0.5 a second drew nothing.
+                assert!(rate == 0.0 || rate >= 1.0, "{id}: {node}'s {t} birth rate {rate} is between 0 and 1");
+                live[n] += rate * life;
             }
             // A script switches the placeable: `off` stops the particles, `on` and `default` give the look's.
             let rate = looks[worn]["birthrate"].as_f64().unwrap();

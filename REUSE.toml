@@ -52,7 +52,7 @@ SPDX-License-Identifier = "MIT OR Apache-2.0"
 # The particle pack's models, sample placeables.2da rows and placeholder textures: written for this repository, nothing taken
 # from the game. The models name stock textures, which the game supplies.
 [[annotations]]
-path = ["packs/particles/models/*.mdl", "packs/particles/placeables.2da", "packs/particles/textures/*.tga"]
+path = ["packs/particles/models/*.mdl", "packs/particles/placeables.2da", "packs/particles/textures/*.tga", "packs/particles/textures/*.txi"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Copyright (C) 2026 plenarius"
 SPDX-License-Identifier = "GPL-3.0-or-later"

@@ -5,8 +5,8 @@
 
     python3 placeholders.py
 
-Each is a 32-bit uncompressed TGA, white with the shape in its alpha (and in its colour, for the additive ones), so the
-emitter's colours tint it. Seeded, so a run writes the same files.
+Each is a 32-bit uncompressed TGA with the shape in its alpha, and in its colour for the additive ones, so the emitter's colours
+tint it. The light shaft's TXI makes its quads additive. Seeded, so a run writes the same files.
 """
 
 import math
@@ -81,11 +81,12 @@ def sand(x, y):
     return (1.0, 1.0, 1.0, a)
 
 
-# Light shaft: brightest at the foot, fading upwards and to both edges.
+# Light shaft: brightest at the foot, fading upwards and to both edges. Drawn additively (its TXI), so the colour carries the
+# shape; an alpha-blended quad drew in the client as a flat, even band.
 def shaft(x, y):
     u, v = (x + 0.5) / 16 - 1, (y + 0.5) / 128
     a = 0.45 * soft(abs(u), 1.0) * (1 - v) ** 1.5 * min(1.0, v * 12)
-    return (1.0, 0.96, 0.85, a)
+    return (a, 0.96 * a, 0.85 * a, a)
 
 
 if __name__ == "__main__":
@@ -93,3 +94,5 @@ if __name__ == "__main__":
     write_tga("lspt_motes", 64, 64, frames(64, motes))
     write_tga("lspt_sandstrk", 64, 64, sand)
     write_tga("lspt_shaft", 32, 128, shaft)
+    with open(os.path.join(HERE, "lspt_shaft.txi"), "w") as f:
+        f.write("blending additive\n")

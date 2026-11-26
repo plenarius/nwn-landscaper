@@ -9,7 +9,7 @@ node dummy lsp_leaves
 endnode
 node emitter leaves
   parent lsp_leaves
-  position 0 0 6
+  position 0 0 4
   update Fountain
   render Normal
   blend Normal
@@ -34,18 +34,18 @@ node emitter leaves
   inherit_local 0
   splat 0
   inherit_part 0
-  birthrate 0.5
-  lifeExp 8
+  birthrate 1
+  lifeExp 4
   colorStart 1 1 1
   colorEnd 1 1 1
   alphaStart 1
   alphaEnd 0.6
-  sizeStart 0.22
-  sizeEnd 0.22
+  sizeStart 0.8
+  sizeEnd 0.8
   velocity 0.2
   randvel 0.3
   spread 3.14
-  grav 0.25
+  grav 0.75
   drag 0
   particleRot 0.4
   mass 0
@@ -78,7 +78,7 @@ newanim default lsp_leaves
   node emitter leaves
     parent lsp_leaves
     birthratekey 1
-      0 0.5
+      0 1
     endlist
   endnode
 doneanim default lsp_leaves
@@ -93,7 +93,7 @@ newanim on lsp_leaves
   node emitter leaves
     parent lsp_leaves
     birthratekey 1
-      0 0.5
+      0 1
     endlist
   endnode
 doneanim on lsp_leaves

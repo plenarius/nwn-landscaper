@@ -94,14 +94,14 @@ node emitter motes
   inherit_local 0
   splat 0
   inherit_part 0
-  birthrate 2.4
-  lifeExp 10
+  birthrate 2
+  lifeExp 12
   colorStart 1 0.92 0.7
   colorEnd 1 0.92 0.7
   alphaStart 0.8
   alphaEnd 0
-  sizeStart 0.35
-  sizeEnd 0.35
+  sizeStart 0.45
+  sizeEnd 0.45
   velocity 0.05
   randvel 0.12
   spread 3.14
@@ -138,7 +138,7 @@ newanim default lsp_lightshaft
   node emitter motes
     parent lsp_lightshaft
     birthratekey 1
-      0 2.4
+      0 2
     endlist
   endnode
   node trimesh shaft_a
@@ -165,7 +165,7 @@ newanim on lsp_lightshaft
   node emitter motes
     parent lsp_lightshaft
     birthratekey 1
-      0 2.4
+      0 2
     endlist
   endnode
   node trimesh shaft_a

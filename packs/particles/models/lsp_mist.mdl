@@ -34,11 +34,11 @@ node emitter mist
   inherit_local 0
   splat 0
   inherit_part 0
-  birthrate 1.5
-  lifeExp 12
+  birthrate 2
+  lifeExp 9
   colorStart 0.92 0.94 0.96
   colorEnd 0.85 0.87 0.9
-  alphaStart 0.35
+  alphaStart 0.5
   alphaEnd 0
   sizeStart 3
   sizeEnd 7
@@ -78,7 +78,7 @@ newanim default lsp_mist
   node emitter mist
     parent lsp_mist
     birthratekey 1
-      0 1.5
+      0 2
     endlist
   endnode
 doneanim default lsp_mist
@@ -93,7 +93,7 @@ newanim on lsp_mist
   node emitter mist
     parent lsp_mist
     birthratekey 1
-      0 1.5
+      0 2
     endlist
   endnode
 doneanim on lsp_mist

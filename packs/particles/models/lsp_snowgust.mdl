@@ -41,8 +41,8 @@ node emitter gust
   colorEnd 0.95 0.97 1
   alphaStart 0.9
   alphaEnd 0
-  sizeStart 0.07
-  sizeEnd 0.04
+  sizeStart 0.1
+  sizeEnd 0.06
   velocity 4
   randvel 1.2
   spread 0.35

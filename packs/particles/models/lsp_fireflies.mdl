@@ -40,8 +40,8 @@ node emitter flies
   colorEnd 0.6 0.9 0.25
   alphaStart 1
   alphaEnd 0.2
-  sizeStart 0.15
-  sizeEnd 0.12
+  sizeStart 0.3
+  sizeEnd 0.25
   velocity 0.15
   randvel 0.25
   spread 3.14
