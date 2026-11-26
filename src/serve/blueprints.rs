@@ -5,7 +5,9 @@
 //! fields, a creature's gear, an item's properties), the placeables and door looks there are, and a model or texture from the
 //! game's data (read through Moonglow).
 
-use anyhow::Context;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, ensure};
 use tiny_http::{Method, Response};
 
 use super::query::percent_decode;
@@ -166,6 +168,11 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             ),
             Err(e) => fail(500, &e),
         },
+        // The particle pack's kinds: the Ambience tool's palette, colours and live counts.
+        (Method::Get, "/api/particles") => match particle_pack() {
+            Ok(pack) => json_response(200, &pack),
+            Err(e) => fail(404, &e),
+        },
         // Every door look there is: the generic doors (genericdoors.2da) and the tile doors (doortypes.2da).
         (Method::Get, "/api/door-appearances") => match crate::models::game().and_then(crate::models::door_appearances) {
             Ok(list) => json_response(200, &serde_json::json!({ "doors": list })),
@@ -196,4 +203,50 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
         }
         _ => return None,
     })
+}
+
+/// Where the particle pack is when not beside the program: a folder holding its `pack.json`.
+const PARTICLES_ENV: &str = "LANDSCAPER_PARTICLES";
+
+/// The particle pack's `pack.json`, from the folder [`PARTICLES_ENV`] names, else `packs/particles` beside the program (and, in a
+/// debug build, in the source tree): where the export reads it from.
+fn particle_pack() -> anyhow::Result<serde_json::Value> {
+    let named = std::env::var_os(PARTICLES_ENV).filter(|d| !d.is_empty()).map(PathBuf::from);
+    let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.join("packs").join("particles")));
+    let source = cfg!(debug_assertions).then(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("packs").join("particles"));
+    let dir = named
+        .or_else(|| beside.into_iter().chain(source).find(|d| d.join("pack.json").is_file()))
+        .with_context(|| format!("no particle pack: set {PARTICLES_ENV} to its folder, or keep packs/particles beside the program"))?;
+    read_particle_pack(&dir)
+}
+
+/// The `pack.json` in `dir`, as it is, once it reads as a pack of format 1 with kinds.
+fn read_particle_pack(dir: &Path) -> anyhow::Result<serde_json::Value> {
+    let path = dir.join("pack.json");
+    let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let pack: serde_json::Value = serde_json::from_str(&text).with_context(|| format!("reading {}", path.display()))?;
+    ensure!(pack["format"].as_u64() == Some(1), "{}: format {} (this Landscaper reads format 1)", path.display(), pack["format"]);
+    ensure!(pack["kinds"].as_array().is_some_and(|k| !k.is_empty()), "{}: no kinds", path.display());
+    Ok(pack)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_particle_pack_is_read_as_it_is_and_only_in_its_format() {
+        let dir = std::env::temp_dir().join(format!("ls-particles-route-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |j: &str| std::fs::write(dir.join("pack.json"), j).unwrap();
+        write(r#"{ "format": 1, "id": "p", "kinds": [{ "id": "mist", "shows": "always", "live": { "day": 18, "night": 18 } }] }"#);
+        let pack = read_particle_pack(&dir).unwrap();
+        assert_eq!(pack["kinds"][0]["live"]["night"], 18);
+        write(r#"{ "format": 2, "kinds": [{ "id": "mist" }] }"#);
+        assert!(format!("{:#}", read_particle_pack(&dir).unwrap_err()).contains("format 2"));
+        write(r#"{ "format": 1, "kinds": [] }"#);
+        assert!(format!("{:#}", read_particle_pack(&dir).unwrap_err()).contains("no kinds"));
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(read_particle_pack(&dir).is_err());
+    }
 }
