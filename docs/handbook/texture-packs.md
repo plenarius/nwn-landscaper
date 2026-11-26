@@ -11,8 +11,6 @@ export's texture hak, `ls_textures.hak`.
 
 **Remove** takes a pack out again, unless an area still paints with one of its textures.
 
-![The texture packs dialog](../assets/handbook/texture-packs.webp)
-
 !!! note "On a team server"
     The library is the whole team's, so only admins install or remove packs.
 
