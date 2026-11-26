@@ -1,6 +1,6 @@
 # Design: areas that look alive
 
-Status: design, not built. Written 2026-11-25 for the maintainer's review before any code; questions 1 and 5 decided the same
+Status: design, not built. Written 2026-11-25 for the maintainer's review before any code; every question decided the same
 day.
 
 Landscaper areas get skies that match their light, particles (mist, spray, fireflies, leaves, dust, light shafts) placed where
@@ -115,11 +115,13 @@ a bright sky with pink clouds over flat grey light, thick mist a sunny sky over 
 
 ## Questions to settle
 
-Each open question lists the options with the recommendation first.
+Each question gives the decision first and the options not chosen after it.
 
-**Decided (2026-11-25):** Real Skies replaces the five stock skies module-wide, and the presets get new rows as well (question 1,
-the recommendation); particles are baked into the tiles, with placeables only for a kind a script must switch off (question 5,
-the recommendation). Questions 2, 3, 4 and 6 stand at their recommendations until the maintainer answers them.
+**Decided (2026-11-25), every question at its recommendation:** Real Skies replaces the five stock skies module-wide, and the
+presets get new rows as well (question 1); all ten skies, the re-used and generated ones first (question 2); the preset sets the
+sky, and the Sky & fog panel shows it and offers the others (question 3); sky packs with their own hak, adding rows after the
+module's own (question 4); particles baked into the tiles, with placeables only for a kind a script must switch off (question 5);
+the Light brush, with baked objects keeping their glow (question 6). The build order below follows these.
 
 ### 1. Real Skies: replace the stock skies, and add rows
 
@@ -135,8 +137,8 @@ Considered and not chosen:
 
 ### 2. Which skies to add
 
-Each preset that shows a sky names one. Rows are new; *re-use* means Real Skies' pictures in other columns, with new models
-(about 5 KB each) and no new art.
+**Decided: all ten,** the generated and re-used ones first, the artist's two later. Each preset that shows a sky names one. Rows
+are new; *re-use* means Real Skies' pictures in other columns, with new models (about 5 KB each) and no new art.
 
 | Sky | For preset | Dawn, day, dusk, night | Art |
 |---|---|---|---|
@@ -151,34 +153,40 @@ Each preset that shows a sky names one. Rows are new; *re-use* means Real Skies'
 | Desert glare | (new preset) | a white-hot day, Desert dawn, dusk and night | artist: one day panorama |
 | Storm front | (new preset) | the replaced Grass_Storm | none |
 
-**Recommended:** all ten, generated and re-used ones first; the artist's two later. A generated sky is a panorama the engine paints
-from the preset's fog colour at the horizon and its diffuse colour at the top, so it always matches. The trial's thick mist shows
-why that matters: ground fogged at 20 m under a sunny sky with clouds.
+A generated sky is a panorama the engine paints from the preset's fog colour at the horizon and its diffuse colour at the top, so
+it always matches. The trial's thick mist shows why that matters: ground fogged at 20 m under a sunny sky with clouds.
+
+Considered and not chosen: **only the re-used skies**, leaving thick mist and swamp under a mismatched sky and dropping the two new
+presets that need art.
 
 ### 3. How the Sky & fog panel chooses a sky
 
-- **A. The preset names a sky; the panel shows it and offers the others (recommended).** Choosing a preset sets the sky too. A
-  **Sky** row in the panel shows the chosen sky's day picture as a strip, with a list of the installed skies. The area saves the
-  sky's id (`"sky": "dusk"`), and Area settings stops offering the raw number for Landscaper skies. Without the sky pack a preset
-  falls back to the nearest stock row, as the sample landscapes do today.
-- **B. A separate dropdown in Area settings**, as today, with names instead of numbers. Builders would pick light and sky apart
-  and get the mismatch this design is about.
+**Decided: the preset names a sky; the panel shows it and offers the others.** Choosing a preset sets the sky too. A **Sky** row
+in the panel shows the chosen sky's day picture as a strip, with a list of the installed skies. The area saves the sky's id
+(`"sky": "dusk"`), and Area settings stops offering the raw number for Landscaper skies. Without the sky pack a preset falls back
+to the nearest stock row, as the sample landscapes do today.
 
 The editor's 3D view can draw the sky's day or night panorama as its background, so the preview matches the game's horizon.
+
+Considered and not chosen: **a separate dropdown in Area settings**, as today, with names instead of numbers. Builders would pick
+light and sky apart and get the mismatch this design is about.
 
 ### 4. How skies ship
 
 Texture packs can't carry skies: they take only PNGs up to 512 px, and they build one hak of textures. A sky needs models, textures
 of 8,192 px and a `skyboxes.2da` row.
 
-- **A. Sky packs, a sibling (recommended).** The same index, download, hash and atomic install as texture packs, with a `kind:
-  "sky"` in the index. A sky pack holds models, DDS textures (at most 8,192 px wide, under NWSync's 15 MB) and one entry per sky
-  (id, name, the four models, the preset it suits). Installed skies go into `ls_skies.hak`.
-  - **Rows never clash:** the module's `skyboxes.2da` (from its haks, as placeables are read today) decides the rows. At
-    install the Landscaper takes the first free run of rows from 32 up and records it. Export writes a `skyboxes.2da` into
-    `ls_skies.hak`: the module's table with the pack's rows added. That hak must sit above the module's other haks with a
-    `skyboxes.2da`; the export refuses otherwise and says which hak.
-- **B. One fixed hak with fixed rows** (say 200 to 220). Simpler, and wrong for any module whose table already uses those rows.
+**Decided: sky packs, a sibling of texture packs.** The same index, download, hash and atomic install as texture packs, with a
+`kind: "sky"` in the index. A sky pack holds models, DDS textures (at most 8,192 px wide, under NWSync's 15 MB) and one entry per
+sky (id, name, the four models, the preset it suits). Installed skies go into `ls_skies.hak`.
+
+- **Rows never clash:** the module's `skyboxes.2da` (from its haks, as placeables are read today) decides the rows. At install
+  the Landscaper takes the first free run of rows from 32 up and records it. Export writes a `skyboxes.2da` into `ls_skies.hak`:
+  the module's table with the pack's rows added. That hak must sit above the module's other haks with a `skyboxes.2da`; the export
+  refuses otherwise and says which hak.
+
+Considered and not chosen: **one fixed hak with fixed rows** (say 200 to 220). Simpler, and wrong for any module whose table
+already uses those rows.
 
 ### 5. Particles: baked into tiles, placeables as the fallback
 
@@ -198,13 +206,18 @@ would need a script on a heartbeat or the area's enter event.
 
 ### 6. Local light
 
-- **A. A Light brush (recommended).** Paints each tile's two main light colours (`lightcolor.2da`'s rows 0 to 31, the
-  `TILE_MAIN_LIGHT_COLOR_*` names), with presets per area kind: none outdoors by day, warm pools in a village at night, cold blue
-  in a cave. The colours go into `Tile_MainLight1` and `Tile_MainLight2`. A tile is 10 m, so this is a broad wash, not a lamp.
+**Decided: a Light brush, and baked objects keep their glow.**
+
+- **The Light brush** paints each tile's two main light colours (`lightcolor.2da`'s rows 0 to 31, the `TILE_MAIN_LIGHT_COLOR_*`
+  names), with presets per area kind: none outdoors by day, warm pools in a village at night, cold blue in a cave. The colours go
+  into `Tile_MainLight1` and `Tile_MainLight2`. A tile is 10 m, so this is a broad wash, not a lamp.
 - **Lamps and glowing things** stay placeables: `placeables.2da`'s `LightColor` gives an object a light. Baking keeps a mesh's
   self-illumination colour (today it is dropped), so glowing mushrooms or crystals glow when baked.
 - **Baked shade must not darken local light.** Today the shadow map multiplies everything. The fix is to apply it to the area's
   sun or moon term only. Whether the stock `fslit` lets the shader split them is the first thing to check (Risks).
+
+Considered and not chosen: **light from placeables alone.** Every lit spot would be a game object, and a wash over a village or a
+cave would need many of them.
 
 ## The particle pack
 
