@@ -9,7 +9,7 @@
     { "id": "grassSwamp", "name": "Swamp grass", "category": "Grass", "surface": 3, "resref": "trm02_grass01" },
     { "id": "grassDry", "name": "Dry grass", "category": "Grass", "surface": 3, "resref": "tcn01_grass02" },
 
-    { "id": "dirt", "name": "Dirt", "category": "Earth", "surface": 1, "resref": "tcm02_dirt02" },
+    { "id": "dirt", "name": "Dirt", "category": "Earth", "surface": 1, "resref": "tni01_dirt02" },
     { "id": "dirtDark", "name": "Dark soil", "category": "Earth", "surface": 1, "resref": "tno01_dirt01" },
     { "id": "dirtBrown", "name": "Brown earth", "category": "Earth", "surface": 1, "resref": "ttr01_dirt03" },
     { "id": "dirtForest", "name": "Forest floor", "category": "Earth", "surface": 1, "resref": "ttf02_dirt03" },
