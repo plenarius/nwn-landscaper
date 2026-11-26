@@ -26,8 +26,8 @@ Words used here:
   the sky's id, and the export turns it into a row number, as textures keep ids today.
 - **Shipping skies:** a *sky pack*, a sibling of texture packs, with its own checks (models, big textures, rows) and its own hak.
 - **Particles:** a pack of eleven emitters, each tuned for one job, with a day and a night colour (particles don't take the
-  area's light). Night-only kinds need a switch: the tile's own animations didn't drive keyed emitters in the trial, so a spike
-  settles that first.
+  area's light). Night-only and day-only kinds switch with the tile's own `day` and `night` animations, **confirmed in game**
+  once the emitters hang under a dummy named after the tile plus `a`, as stock tiles do (spike 0).
 - **Placing them:** an **Ambience** tool beside Scatter. It proposes placements from what the area knows (water, trees, slopes,
   drops, caves) and the builder brushes more or fewer. The export bakes them into the tiles: no `placeables.2da` rows, no objects.
   **Confirmed in game:** an emitter written into a Landscaper tile model draws.
@@ -196,12 +196,14 @@ already uses those rows.
 
 **Decided: baked into the tiles.** The export writes each placement's emitter nodes into the tile under it, in the tile's
 coordinates. No `placeables.2da` rows, no objects on the server, nothing sent per object. Day and night come from the tile's `day`
-and `night` animations, as stock tiles key their lights and meshes (`ttr01_f13_01` keys a light's colour and two meshes' alpha in
-`night`), once spike 0 finds why the trial's keyed emitters didn't draw. The cost: a script can't switch one off, and changing one
-means exporting the area again.
+and `night` animations, as stock tiles key their lights, meshes and emitters (`ttr01_f13_01` keys a light's colour and two meshes'
+alpha in `night`; `ttf02_m21_02` keys two candle flames on in `night`). Spike 0 confirmed it in game and found the rule the
+trial missed (the emitters hang under the tile's `<tile>a` dummy, "Spike 0" below). The cost: changing one means exporting the
+area again, and a script can switch them only a whole tile at a time, through the tile's animation loops.
 
-**Placeables only as the fallback,** for a kind a script must switch off (a quest that clears the mist) or, if spike 0 says so,
-night-only kinds. The pack carries each kind as a placeable model too, with a sample `placeables.2da` row for teams to merge;
+**Placeables only as the fallback,** for a kind a script must switch off placement by placement. A kind a script switches for a
+whole tile (a quest that clears the mist) can be keyed in the tile's `animloop01` instead, which `SetTileAnimationLoops` turns off
+and on (spike 0). The pack carries each kind as a placeable model too, with a sample `placeables.2da` row for teams to merge;
 filming uses them as well.
 
 Considered and not chosen: **placeables for everything.** Scripts could switch every kind and the toolset could move them, but the
@@ -228,8 +230,8 @@ cave would need many of them.
 Each kind is one emitter node (two for spray and light shafts), with its own texture where a stock one doesn't fit. Authoring
 and tuning happens in NeverBlender; plenarius/nwn-mdl-spec documents every emitter field and controller. *Live* is the number of
 particles one placement keeps alive: birth rate times life. Every kind has a day colour and a darker night colour, since the
-trial's mist was as bright at night as by day. The day and night column is the goal; how night-only kinds switch waits on
-spike 0.
+trial's mist was as bright at night as by day. Day-only and night-only kinds switch with the tile's `day` and `night`
+animations (spike 0's rule).
 
 | Kind | Where | Build | Day and night | Live |
 |---|---|---|---|---|
@@ -269,8 +271,8 @@ A tool beside Scatter, with the pack's kinds as a palette.
 - **The brush** adds or clears placements of the chosen kind; Shift clears.
 - The area saves them as a list (`"ambience": [{ "kind": "mist", "x": 22, "y": 20, "z": 10.3, "scale": 1, "seed": 7 }]`).
 - The editor's view draws them as animated points in the kind's colour, and shows night-only kinds when the view shows night.
-- **Export** writes each placement's emitter nodes, taken from the pack's model, into the tile that holds its point, and its
-  `day` and `night` keys into that tile's animations.
+- **Export** writes each placement's emitter nodes, taken from the pack's model, under the `<tile>a` dummy of the tile that holds
+  its point, and its `day` and `night` keys into that tile's animations (spike 0's rule).
 
 ### Trial: does a tile model keep its emitters?
 
@@ -288,19 +290,52 @@ off screen on the CPU (Xvfb and llvmpipe) and took 42 stills in three runs, the 
 | So particles aren't lit by the area's light, and each kind needs a night colour | **inferred** |
 | `SetTileMainLightColor` lights Landscaper tiles, and the baked trees in them, through their `ml1` and `ml2` | **confirmed** (in game) |
 | Emitters whose birth rate is keyed in the tile's `night` or `animloop01` animation never drew: not in a fixed-night area, a cycling one at 23:00, or by day | **confirmed** (in game) |
-| Why: the client plays no animation on Landscaper tiles, or keyed birth rates need something the hand-written models lacked (stock animated tiles also carry `tiledefault`) | **not settled** |
+| Why: the hand-written emitters hung straight under the tile's root; keyed emitters switch only under a dummy named `<tile>a` | **confirmed** (in game, spike 0) |
 | Area tiles keep emitters and lights; edge models keep meshes only | **inferred** for edges (tileset spec T53; the trial built no edge emitters) |
 | `SetFogColor`, `SetFogAmount`, `SetSkyBox` and `SetTileMainLightColor` together make a scripted look on a Landscaper area | **confirmed** (in game, picture above) |
 
-So the day and night half of question 5 isn't settled. Spike 0 in the build order compares a stock animated tile with a
-Landscaper one in the client. If tile animations can't be made to play, night-only kinds use one of:
-
-- **The tile's animation loops** switched by `SetTileAnimationLoops` from a small dusk and dawn script, if keyed emitters work at
-  all once the cause is found.
-- **Night-only kinds as placeables**, switched by the same script (question 5's fallback).
+Spike 0 below found the cause and the rule.
 
 ![Emitters and lights on a Landscaper tile: mist by day and by night, then the area at night with its tile lights black and
 lit orange](ambience-3-tile-emitters.png)
+
+### Spike 0: what makes keyed emitters switch
+
+The spike ran the game client off screen, as the trial did, on the trial's area with test emitters in four tiles: one that loops in
+`animloop01`, one on by day and keyed off in `night`, one keyed on in `night`. It took 13 runs and looked at every still. A stock
+animated tile (the campfire `ttr01_h02_03`, whose flame loops in `animloop01`) sat in the same Landscaper area as the control.
+
+| Finding | Status |
+|---|---|
+| Keyed emitters switch only when they hang under a dummy named the tile model's name plus `a` (`amb_0202a`), as in every stock animated tile. The same emitters under a dummy of another name, or straight under the tile's root, keep their static birth rate | **confirmed** (in game) |
+| Nothing else about a Landscaper tile matters: its ground mesh, lights and walkmesh, the root's orientation, where the dummy sits among the root's children (first, or last after the walkmesh), the emitters' names and settings (the trial's, or the stock flame's) | **confirmed** (in game) |
+| Nor does the compiler: the game compiling the trial's ASCII itself failed the same way as cleanmodels' binary | **confirmed** (in game) |
+| `tiledefault` isn't needed for day and night: the stock tiles that switch emitters by day and night have none. Every spike tile that switched had one, keying the loop off | **inferred** (the base game's tiles) |
+| A fixed-night area plays the tiles' `night`, a fixed-day area their `day` | **confirmed** (in game) |
+| A cycling area plays the hour's animation when the player enters, and switches at dusk while the player stays (`night` emitters came on as the clock passed 18:00) | **confirmed** (in game) |
+| `SetTime` jumping the clock past dusk doesn't switch the tiles of the area the player is in; they switch at the next dusk, or when the area is entered again | **confirmed** (in game) |
+| The `.are`'s `Tile_AnimLoop1` to `3` start a tile's loops (the export writes 1); the `.set`'s `AnimLoop` lines don't matter | **confirmed** (in game) |
+| `SetTileAnimationLoops` turns a tile's loops off (seen on the stock campfire) and on (on the spike's tiles) at once, with a location in metres (the tile's centre, column × 10 + 5); the trial passed grid coordinates and so switched another tile | **confirmed** (in game) |
+| In the base game's tiles, every emitter keyed in `day`, `night` or their transitions hangs under `<model>a`, and 1,067 of the 1,109 keyed in `animloop01`; the other 42 hang under a dummy named after another tile plus `a` (copied tiles) | **confirmed** (the base game's models) |
+| Whether those 42 switch in game, so whether the client matches the name exactly | **not checked** |
+
+![Spike 0: the trial's emitter settings under a dummy named after the tile plus a, in a Landscaper tile; the right-hand tile of
+the fifth and last pictures has the same emitters under a dummy of another name](ambience-4-keyed-emitters.png)
+
+**The rule for step 5** (baked emitters):
+
+- Write every baked emitter of a tile under one dummy named the tile model's name plus `a` (`amb_0202a`), a child of the tile's
+  root with no offset. Its place among the root's children and the emitters' names are free.
+- A day-only kind has its static birth rate on; `night` and `day2night` key it to 0, `day` and `night2day` key it back. A
+  night-only kind is the reverse, with its static birth rate 0. As stock tiles: `day` and `night` 0.3 s long, the two transitions
+  one frame (0.0333 s), all with a transition time of 0.25 s.
+- Write each animation's whole node tree, as stock tiles do and as tested; a tree of the root, the dummy and the keyed emitters
+  alone wasn't tried.
+- Always-on kinds need no keys (the trial).
+- A kind a script switches for a whole tile is keyed on in `animloop01` and off in `tiledefault`, under the same dummy;
+  `SetTileAnimationLoops` then switches it per tile.
+- No engine change is needed before step 5: the export already writes the loop flags the `.are` needs, and nothing else reads the
+  `.set`'s.
 
 ## Filming
 
@@ -330,6 +365,8 @@ Every call below is in the current `nwscript.nss` (build 37-17).
   only the colour during the take.
 - **`SetTime` only goes forward:** an earlier hour advances the calendar a day. Harmless for filming. In an area that doesn't
   cycle day and night, the time changes nothing; `DayToNight` and `NightToDay` act on one player's view, which suits the cameraman.
+- **`SetTime` doesn't switch baked day and night emitters** in the area the camera is in (spike 0). A night look sets the time
+  before the cameraman enters the area.
 - **`SetTime` runs pending delays:** in the trial, jumping to 23:00 ran the script's queued `DelayCommand`s at once, so two shots
   fired before their area had loaded. The director sets the time before it schedules a shot's ticks.
 
@@ -353,8 +390,8 @@ bearable. Films need the GPU but not the maintainer's desktop.
   order it knows; a module's own `.hak` list edited by hand later can still undo it.
 - **Emitters in many tiles**: a 32 by 32 area filled with mist could reach thousands of live particles. The Fill rule caps live
   particles per area, and the editor shows the count.
-- **Baked particles can't be switched by script.** A team that wants a quest to clear the mist places the placeable version
-  instead (question 5).
+- **Baked particles switch only a tile at a time.** A kind keyed in `animloop01` goes off with `SetTileAnimationLoops` for the
+  whole tile; a team that wants one placement switched places the placeable version instead (question 5).
 - **Real Skies' pictures** come from free wallpapers stitched together; a re-encoded copy should keep its credit, and the
   re-encoding is a step outside the Landscaper.
 
@@ -365,12 +402,12 @@ maintainer's time is review and testing. "Client" marks a check in the game clie
 
 | # | Step | Repository | Agent | Maintainer | Client |
 |---|---|---|---|---|---|
-| 0 | Spike: why keyed emitters didn't draw on Landscaper tiles; a stock animated tile beside a Landscaper one, `tiledefault`, `SetTileAnimationLoops` | engine | 3 h | 15 min | 15 min |
+| 0 | Spike: why keyed emitters didn't draw on Landscaper tiles; a stock animated tile beside a Landscaper one, `tiledefault`, `SetTileAnimationLoops`. **Done:** the `<tile>a` dummy ("Spike 0") | engine | 3 h (took 5) | 15 min | 15 min |
 | 1 | Real Skies for modules: DDS at 8,192 by 1,024, Icy's missing times, one hak; a script, not part of the editor | engine (`scripts/`) | 4 h | 30 min | 15 min: the five skies, a flyover |
 | 2 | Sky packs: index `kind`, checks, install, `ls_skies.hak`, row choice, the `skyboxes.2da` merge at export, the area's sky id | engine | 8 h | 45 min | 15 min: a new row in an exported area |
 | 3 | The first sky pack: the re-used skies, and generated mist and swamp skies from preset colours | engine | 5 h | 30 min | 20 min: each preset with its sky |
 | 4 | Sky & fog panel: presets name skies, the Sky row, the view's background; the sample landscapes pick preset skies | web | 5 h | 30 min | no |
-| 5 | Baked emitters: the area's `ambience` list into tile emitter nodes and `day`/`night` keys | engine | 6 h | 30 min | 20 min: each kind, day and night |
+| 5 | Baked emitters: the area's `ambience` list into tile emitter nodes under the tile's `<tile>a` dummy, `day`/`night` keys and `animloop01` for kinds a script switches (spike 0's rule) | engine | 6 h | 30 min | 20 min: each kind, day and night |
 | 6 | The particle pack, first cut: eleven kinds written as ASCII emitters from the stock ones, tuned against client stills; each also as a placeable model with a sample `placeables.2da` row | engine (`packs/`) | 7 h | 1 h | 30 min |
 | 7 | The Ambience tool: Fill rules, brush, points in the view, live particle count | web | 10 h | 1 h | no |
 | 8 | Local light: the Light brush, self-illumination kept in baking | web + engine | 5 h | 30 min | 15 min: a village at night |
@@ -398,6 +435,7 @@ start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 an
 - **Generated skies:** not made yet, so not seen in the game.
 - **VirtualGL with the game client:** the machine this was written on has no GPU.
 - **`DayToNight` in an area that doesn't cycle,** and whether it shows the night sky as well as the night light.
+- **Dawn in a cycling area:** spike 0 watched dusk switch the tiles, not dawn.
 - **Emitter culling:** whether the client drops a tile's emitters with the tile when it is out of view, as it does meshes (T52).
 - **Baked self-illumination** is dropped judging by the code (`src/objects.rs` keeps texture and transparency per group), not
   seen in game.
