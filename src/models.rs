@@ -223,9 +223,13 @@ pub struct Flat {
     /// Imported cliffs and blocked ground: fixed to their tile, heights their own (not set on the ground when touched).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fixed: bool,
+    /// Each group's self-illumination colour (the model's `selfillumcolor`), so a glowing mesh still glows when baked; empty
+    /// when no group glows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub glow: Vec<[f32; 3]>,
 }
 
-/// An `obj_*.json` file as read: every field of `nwn_bake::Flat` and the two of [`Flat`]. (A field added to `nwn_bake::Flat` stops
+/// An `obj_*.json` file as read: every field of `nwn_bake::Flat` and the three of [`Flat`]. (A field added to `nwn_bake::Flat` stops
 /// the conversion below from compiling, so it cannot be left out here.)
 #[derive(serde::Deserialize)]
 struct FlatFile {
@@ -240,19 +244,50 @@ struct FlatFile {
     decal: Option<Decal>,
     #[serde(default)]
     fixed: bool,
+    #[serde(default)]
+    glow: Vec<[f32; 3]>,
 }
 
 impl From<FlatFile> for Flat {
     fn from(f: FlatFile) -> Self {
-        let FlatFile { positions, uvs, groups, transparency, footprint, min, max, decal, fixed } = f;
-        Flat { mesh: nwn_bake::Flat { positions, uvs, groups, transparency, footprint, min, max }, decal, fixed }
+        let FlatFile { positions, uvs, groups, transparency, footprint, min, max, decal, fixed, glow } = f;
+        Flat { mesh: nwn_bake::Flat { positions, uvs, groups, transparency, footprint, min, max }, decal, fixed, glow }
     }
 }
 
 impl From<nwn_bake::Flat> for Flat {
     fn from(mesh: nwn_bake::Flat) -> Self {
-        Flat { mesh, decal: None, fixed: false }
+        Flat { mesh, decal: None, fixed: false, glow: Vec::new() }
     }
+}
+
+/// The self-illumination colour of each of `groups` (nwn-bake's: one a drawn, textured mesh, in node order) in `model`, the
+/// model they were flattened from; empty when none glows, or when the meshes don't line up with the groups (then nothing glows
+/// rather than the wrong mesh).
+pub fn glow_of(model: &mg_mdl::Model, groups: &[(String, usize, usize)]) -> Vec<[f32; 3]> {
+    let mut glow = Vec::with_capacity(groups.len());
+    for node in &model.nodes {
+        let Some(mesh) = node.mesh() else { continue };
+        // (nwn-bake's choice of meshes: drawn, with vertices, a texture, and at least one triangle)
+        let Some(texture) = mesh.textures[0].as_deref().filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("null")) else { continue };
+        if !mesh.render || mesh.vertices.is_empty() {
+            continue;
+        }
+        let count = mesh.triangles().count();
+        if count == 0 {
+            continue;
+        }
+        match groups.get(glow.len()) {
+            Some((t, _, n)) if t.eq_ignore_ascii_case(texture) && *n == count => {}
+            _ => return Vec::new(),
+        }
+        let c = node.value("selfillumcolor").filter(|v| v.len() >= 3).map_or([0.0; 3], |v| [v[0], v[1], v[2]]);
+        glow.push(c.map(|x| x.clamp(0.0, 1.0)));
+    }
+    if glow.len() != groups.len() || glow.iter().all(|c| *c == [0.0; 3]) {
+        return Vec::new();
+    }
+    glow
 }
 
 impl std::ops::Deref for Flat {
@@ -295,7 +330,14 @@ pub fn flat(game: &GameData, resref: &str) -> Result<Arc<Flat>> {
     if let Some(f) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&kept) {
         return Ok(f.clone());
     }
-    let f = Arc::new(Flat::from(nwn_bake::flatten(game, &kept.1)?));
+    let mut f = Flat::from(nwn_bake::flatten(game, &kept.1)?);
+    // (nwn-bake leaves self-illumination out: read again here, cached with the rest)
+    if let Ok(data) = game.resman.get_named(&kept.1, ResType::MDL)
+        && let Ok(model) = mg_mdl::Model::read(&data)
+    {
+        f.glow = glow_of(&model, &f.groups);
+    }
+    let f = Arc::new(f);
     cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(kept, f.clone());
     Ok(f)
 }
@@ -560,7 +602,7 @@ mod tests {
             min,
             max,
         };
-        let new = Flat { mesh, decal: decal.clone(), fixed };
+        let new = Flat { mesh, decal: decal.clone(), fixed, glow: Vec::new() };
         let old = Before { positions, uvs, groups, transparency: vec![2], footprint, min, max, decal, fixed };
         (new, old)
     }
@@ -595,6 +637,26 @@ mod tests {
         }
     }
 
+    /// A model of two textured meshes, the second glowing orange, and an untextured one between them (nwn-bake leaves it out).
+    const GLOWING: &str = "newmodel g\nbeginmodelgeom g\nnode dummy g\n  parent NULL\nendnode\n\
+        node trimesh stem\n  parent g\n  bitmap plc_stem\n  verts 3\n    0 0 0\n    1 0 0\n    0 1 0\n  faces 1\n    0 1 2 1 0 0 0 0\nendnode\n\
+        node trimesh bare\n  parent g\n  bitmap NULL\n  verts 3\n    0 0 0\n    1 0 0\n    0 1 0\n  faces 1\n    0 1 2 1 0 0 0 0\nendnode\n\
+        node trimesh cap\n  parent g\n  bitmap plc_cap\n  selfillumcolor 1 0.5 0\n  verts 3\n    0 0 1\n    1 0 1\n    0 1 1\n  faces 1\n    0 1 2 1 0 0 0 0\nendnode\n\
+        endmodelgeom g\ndonemodel g\n";
+
+    #[test]
+    fn a_glowing_mesh_keeps_its_glow() {
+        let model = mg_mdl::Model::read(GLOWING.as_bytes()).unwrap();
+        let groups = vec![("plc_stem".to_string(), 0, 1), ("plc_cap".to_string(), 1, 1)];
+        assert_eq!(super::glow_of(&model, &groups), [[0.0; 3], [1.0, 0.5, 0.0]]);
+        // Meshes that don't line up with the groups: no glow rather than the wrong mesh's.
+        assert!(super::glow_of(&model, &groups[1..]).is_empty());
+        assert!(super::glow_of(&model, &[("plc_stem".into(), 0, 1), ("plc_cap".into(), 1, 2)]).is_empty());
+        // Nothing glowing: none.
+        let dull = mg_mdl::Model::read(GLOWING.replace("  selfillumcolor 1 0.5 0\n", "").as_bytes()).unwrap();
+        assert!(super::glow_of(&dull, &groups).is_empty());
+    }
+
     /// The exact text, so a change to `nwn_bake::Flat` itself (a field renamed, added or reordered) shows here too.
     #[test]
     fn a_flat_mesh_is_written_as_the_exact_json_the_editor_reads() {
@@ -608,7 +670,7 @@ mod tests {
             min: [0.5, 1.0, 2.0],
             max: [1.5, 2.0, 2.25],
         };
-        let flat = Flat { mesh, decal: Some(decal), fixed: true };
+        let flat = Flat { mesh, decal: Some(decal), fixed: true, glow: Vec::new() };
         assert_eq!(
             serde_json::to_string(&flat).unwrap(),
             concat!(
