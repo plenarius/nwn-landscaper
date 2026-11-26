@@ -175,9 +175,9 @@ const IN_BODY: [&str; 4] = ["palette", "water", "entrances", "atmosphere"];
 ///
 /// The query string has the area's name and its simple settings: `tiles`, `tilesY`, `shadow`, `module`, `kind`, `roof` and
 /// `clearance`. The body is the heights (f32 a sample, rows from the south), then the paint (one byte a sample: an index into the
-/// palette), then JSON: `palette` (the paint's texture ids), `water`, `chasm`, `entrances`, `atmosphere`, `objects`, `things`,
-/// `settings`, `originals` and `ambience`. A query string that still has one of [`IN_BODY`] (an editor older than this engine) is
-/// refused.
+/// palette), then JSON: `palette` (the paint's texture ids), `water`, `chasm`, `lights`, `entrances`, `atmosphere`, `objects`,
+/// `things`, `settings`, `originals` and `ambience`. A query string that still has one of [`IN_BODY`] (an editor older than this
+/// engine) is refused.
 pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<serde_json::Value> {
     let query = Query::new(query);
     if let Some(key) = IN_BODY.iter().find(|k| query.raw(k).is_some()) {
@@ -228,9 +228,15 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     // The last export's header, a check's too: the scratch copy is only the last check's, by which an entrance undone and
     // redone between checks looked like a taken-out entrance's id given again.
     // (Freshly imported, not exported since: the installed module has never had this light, whatever the header says.)
-    let old_header = crate::atomic::read_to_string(&exports_dir().join(format!("{name}.json")))
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+    // (One that can't be read stops the export: taken as none, the area's entrance ids would start again, and a door's tag
+    // could be given twice.)
+    let old_header = match crate::atomic::read(&exports_dir().join(format!("{name}.json"))) {
+        Ok(d) => Some(serde_json::from_slice::<serde_json::Value>(&d).with_context(|| {
+            format!("{name}'s last export ({name}.json in its exports) doesn't parse: nothing was exported; restore it, or remove it to export afresh")
+        })?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => anyhow::bail!("{name}'s last export ({name}.json in its exports) can't be read ({e}): nothing was exported; fix or restore it"),
+    };
     let just_imported = old_header.as_ref().is_some_and(|h| h["imported"].as_bool() == Some(true));
     // The entrances (each with its id) and the area's next entrance id, which never goes down: an id is never given twice.
     let entrances = extra.get("entrances").cloned().unwrap_or_default();
@@ -280,9 +286,11 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     if let Some(water) = extra.get("water") {
         header["water"] = water.clone();
     }
-    // (checked as the header is read, `heightmap::chasm_of`)
-    if let Some(chasm) = extra.get("chasm").filter(|c| !c.is_null()) {
-        header["chasm"] = chasm.clone();
+    // (checked as the header is read, `heightmap::chasm_of` and `heightmap::lights_of`)
+    for key in ["chasm", "lights"] {
+        if let Some(v) = extra.get(key).filter(|v| !v.is_null()) {
+            header[key] = v.clone();
+        }
     }
     // Without one (an export not from the editor), the last one carries on.
     if let Some(a) = extra.get("atmosphere").or(old_atmosphere.as_ref().filter(|a| a.is_object())) {
@@ -404,6 +412,7 @@ fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightma
         originals: None,
         water: Vec::new(),
         shadow: None,
+        lights: Vec::new(),
         entrances: Vec::new(),
         objects: Vec::new(),
         ambience: Vec::new(),

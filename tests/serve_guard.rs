@@ -792,6 +792,30 @@ fn overlapping_saves_of_one_area_never_lose_it() {
 }
 
 #[test]
+fn a_saved_area_or_last_export_that_cant_be_read_is_never_written_over() {
+    let s = Server::start("unreadable", &[], false);
+    let (areas, exports) = (s.data().join("areas"), s.data().join("exports"));
+    let save = |body: &[u8]| s.editor("PUT", "/api/save?name=delta", &[], body);
+    assert_eq!(save(&area_json("delta", 10, Some("one"))).0, 200);
+    // A saved copy that can't be read (a folder where the file is): the save is refused, and nothing replaces it.
+    std::fs::remove_file(areas.join("delta.json")).unwrap();
+    std::fs::create_dir(areas.join("delta.json")).unwrap();
+    let (st, b) = save(&area_json("delta", 11, Some("one")));
+    assert_ne!(st, 200, "{b}");
+    assert!(b.contains("delta's saved copy (delta.json) can't be read") && b.contains("nothing was saved"), "{b}");
+    assert!(areas.join("delta.json").is_dir() && !areas.join("delta.json.bak").exists());
+    // A last export that doesn't parse: the export is refused before it writes anything, the header left as it was.
+    std::fs::create_dir_all(&exports).unwrap();
+    std::fs::write(exports.join("delta.json"), "{\"name\": \"delta\", \"ent").unwrap();
+    let body = export_body(&vec![0u8; 49 * 49 * 4], &serde_json::json!({ "palette": [], "objects": [] }));
+    let (st, b) = s.editor("POST", "/api/export?name=delta&tiles=3", &[], &body);
+    assert_ne!(st, 200, "{b}");
+    assert!(b.contains("delta's last export (delta.json in its exports) doesn't parse") && b.contains("nothing was exported"), "{b}");
+    assert_eq!(std::fs::read(exports.join("delta.json")).unwrap(), b"{\"name\": \"delta\", \"ent");
+    assert!(!exports.join("delta.f32").exists());
+}
+
+#[test]
 fn a_new_area_never_replaces_one_of_the_same_name_unless_asked() {
     let s = Server::start("new-area", &[], false);
     let areas = s.data().join("areas");
@@ -1465,4 +1489,25 @@ fn on_a_team_server_only_admins_install_or_remove_texture_packs() {
     assert_eq!(st, 200, "{b}");
     assert!(!catalog().contains("tpMoss") && !s.data().join("textures/tpMoss.png").exists());
     let _ = std::fs::remove_dir_all(&src);
+}
+
+/// The Ambience palette (`/api/particles`) is the pack the export bakes from: the one built into the program, with no pack folder
+/// beside it and none named, unless `LANDSCAPER_PARTICLES` names another.
+#[test]
+fn the_particle_route_serves_the_built_in_pack_unless_another_is_named() {
+    let exe = Path::new(env!("CARGO_BIN_EXE_landscaper"));
+    assert!(!exe.parent().unwrap().join("packs").exists(), "a packs folder beside the program");
+    let s = Server::start("particles", &[], false);
+    let (status, body) = s.editor("GET", "/api/particles", &[], b"");
+    assert_eq!(status, 200, "{body}");
+    let pack: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(pack["kinds"].as_array().map(Vec::len), Some(11), "{body}");
+    drop(s);
+    let other = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ambience-pack");
+    let s = Server::start("particles-named", &[("LANDSCAPER_PARTICLES", other.to_str().unwrap())], false);
+    let (status, body) = s.editor("GET", "/api/particles", &[], b"");
+    assert_eq!(status, 200, "{body}");
+    let pack: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ids: Vec<&str> = pack["kinds"].as_array().unwrap().iter().filter_map(|k| k["id"].as_str()).collect();
+    assert_eq!(ids, ["mist", "fireflies", "motes"]);
 }

@@ -434,8 +434,13 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let area = add_area_of(&mut m, game, &spec, &tileset, &mut rng)?;
     let are_key = ResKey { resref: area, restype: ResType::ARE };
     let mut are = m.gff(&are_key).context("no area")??;
+    // The Light brush's colours (none: black, as before).
+    let lights = heightmap::current().map_or_default(|h| h.lights.clone());
     let tiles = are.root.list_mut("Tile_List").context("no Tile_List")?;
     for (i, t) in tiles.iter_mut().enumerate() {
+        let [l1, l2] = lights.get(i).copied().unwrap_or_default();
+        t.set("Tile_MainLight1", Value::Byte(l1));
+        t.set("Tile_MainLight2", Value::Byte(l2));
         t.set("Tile_ID", Value::Int(i as i32));
         t.set("Tile_Orientation", Value::Int(0));
         t.set("Tile_Height", Value::Int(tile_level(i % tiles_x(), i / tiles_x())));

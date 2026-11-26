@@ -113,3 +113,5 @@ The list has the fields of `pack.json`, with `files` the paths of the pack's fil
 in as it is; a `.tga` or `.png` picture becomes a DDS (DXT1, with mipmaps) of the same name, halved until it is at most 8,192 px
 a side. The pack is checked as an install checks it, with the game when the Landscaper finds it. The same list makes the same
 bytes.
+
+[Preset skies](PRESET-SKIES.md), the first pack, is made this way from a script's list.
