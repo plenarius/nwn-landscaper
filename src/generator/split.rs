@@ -1,17 +1,22 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Steep ground cut where its paint changes, so each piece takes one sample's texture, as the editor draws it.
+//! Steep ground cut where its paint changes, on a smooth line, so each piece takes one texture and a bank's paint changes at one
+//! height.
 //!
 //! The ground's mesh has a vertex every 0.5 m ([`super::RENDER_STEP`]), the paint a sample every 0.625 m. Walkable ground takes the
-//! tile's baked texture, which blends the samples as the editor does. A steep face takes one library texture whole: the sample's
-//! nearest its middle (tile.rs). The editor gives each point of steep ground its nearest sample's texture (js/view.js), so its
-//! paint changes on the lines halfway between two samples, where a whole face in the game crossed them. At a river, faces in the
-//! bed's mud reached up past the water out of the bank's sand: a row of dark teeth along the waterline.
+//! tile's baked texture, which blends the four samples around each point bilinearly, as the editor does. A steep face takes one
+//! library texture whole (tile.rs). Until 0.6.1 that was the sample's nearest the face's middle; 0.6.1 cut steep faces on the lines
+//! halfway between two samples, so each point took its nearest sample's, as the editor draws steep ground. Either way the paint
+//! changed in steps of a sample along any line not parallel to the grid. On a river's bank, where the ground climbs 1.6 m in one
+//! sample, each step stood up the face as a tooth: the bed's mud reached up to the water's surface and the bank's sand down into
+//! the water, a sawtooth seen through it.
 //!
-//! [`split`] cuts each steep face over samples of different paints along those halfway lines, where the samples either side of
-//! one differ. The faces beside a cut take the new vertices on their shared edges too, the neighbouring tile's included, so the
-//! ground stays closed: a vertex in the middle of a neighbour's edge (a T-junction) lets the sky through as specks.
+//! [`split`] gives each vertex of steep ground the texture that weighs most in that blend, and cuts each edge whose ends differ where
+//! their two textures weigh the same (taken as linear along the edge). Across a bank the height and the blend both change from one
+//! sample to the next, so that line keeps to one height, under the water. The faces beside a cut take the new vertices on their
+//! shared edges too, the neighbouring tile's included, so the ground stays closed: a vertex in the middle of a neighbour's edge (a
+//! T-junction) lets the sky through as specks.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -35,22 +40,18 @@ pub(super) struct Area<'a> {
     pub(super) steep: &'a dyn Fn(usize, usize, [[f32; 3]; 3]) -> bool,
 }
 
-/// A cut: along x (0: the line x = c) or y (1), between samples `k` and `k` + 1.
-type Cut = (usize, i64);
+/// A grid vertex of the whole area, and an edge between two (the lower first).
+type Vertex = (i64, i64);
+type Edge = [Vertex; 2];
 
 impl Area<'_> {
     fn n(&self) -> i64 {
         (self.tile / self.step).round() as i64
     }
 
-    /// The line halfway between samples `k` and `k` + 1 (area metres).
-    fn line(&self, k: i64) -> f32 {
-        (k as f32 + 0.5) * self.spacing
-    }
-
     /// The grid vertex (gi, gj) of the whole area: in tile (tx, ty)'s own coordinates, as [`super::grid`] makes it (so a vertex two
     /// tiles share is the same in both), and in the area's, with its height read again (the same in every tile).
-    fn vertex(&self, (tx, ty): (usize, usize), (gi, gj): (i64, i64)) -> ([f32; 3], [f32; 3]) {
+    fn vertex(&self, (tx, ty): (usize, usize), (gi, gj): Vertex) -> ([f32; 3], [f32; 3]) {
         let (i, j) = (gi - tx as i64 * self.n(), gj - ty as i64 * self.n());
         let (ox, oy) = (tx as f32 * self.tile, ty as f32 * self.tile);
         let (lx, ly) = (i as f32 * self.step, j as f32 * self.step);
@@ -58,241 +59,168 @@ impl Area<'_> {
         ([lx - self.tile / 2.0, ly - self.tile / 2.0, h - (self.base)(tx, ty)], [ox + lx, oy + ly, h])
     }
 
-    /// The cuts face `t` (area coordinates) needs: each halfway line across it whose samples either side differ somewhere under
-    /// it. Between two cuts every sample under the face then has the same paint.
-    fn cuts(&self, t: [[f32; 3]; 3]) -> Vec<Cut> {
-        let s = |axis: usize| {
-            let r = |v: [f32; 3]| (v[axis] / self.spacing).round() as i64;
-            (t.iter().map(|&v| r(v)).min().unwrap_or(0), t.iter().map(|&v| r(v)).max().unwrap_or(0))
-        };
-        let ((i0, i1), (j0, j1)) = (s(0), s(1));
-        let m = self.material;
-        let mut cuts = Vec::new();
-        cuts.extend((i0..i1).filter(|&k| (j0..=j1).any(|j| m(k, j) != m(k + 1, j))).map(|k| (0, k)));
-        cuts.extend((j0..j1).filter(|&k| (i0..=i1).any(|i| m(i, k) != m(i, k + 1))).map(|k| (1, k)));
-        cuts
+    /// Each texture's weight at area point (x, y) in the bilinear blend of the four samples around it.
+    fn blend(&self, x: f32, y: f32) -> Vec<(u8, f32)> {
+        let (fx, fy) = ((x / self.spacing).max(0.0), (y / self.spacing).max(0.0));
+        let (i, j) = (fx.floor(), fy.floor());
+        let (sx, sy) = (fx - i, fy - j);
+        let (i, j) = (i as i64, j as i64);
+        let mut w: Vec<(u8, f32)> = Vec::with_capacity(4);
+        for ((di, dj), share) in
+            [((0, 0), (1.0 - sx) * (1.0 - sy)), ((1, 0), sx * (1.0 - sy)), ((0, 1), (1.0 - sx) * sy), ((1, 1), sx * sy)]
+        {
+            let m = (self.material)(i + di, j + dj);
+            match w.iter_mut().find(|(k, _)| *k == m) {
+                Some(e) => e.1 += share,
+                None => w.push((m, share)),
+            }
+        }
+        w
+    }
+
+    /// The texture steep ground takes at area point (x, y): the one weighing most in the blend (in a tie, the lower palette index).
+    fn paint(&self, x: f32, y: f32) -> u8 {
+        self.blend(x, y).into_iter().max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(&a.0))).map_or(0, |(m, _)| m)
+    }
+
+    /// How much more texture `a` weighs than texture `b` at area point (x, y).
+    fn lead(&self, x: f32, y: f32, a: u8, b: u8) -> f32 {
+        let w = self.blend(x, y);
+        let of = |m: u8| w.iter().find(|(k, _)| *k == m).map_or(0.0, |(_, s)| *s);
+        of(a) - of(b)
     }
 }
 
 /// The two triangles of grid cell (i, j), counter-clockwise from above, as [`super::grid`] makes them.
-fn cell(i: i64, j: i64) -> [[(i64, i64); 3]; 2] {
+fn cell(i: i64, j: i64) -> [[Vertex; 3]; 2] {
     [[(i, j), (i + 1, j), (i + 1, j + 1)], [(i, j), (i + 1, j + 1), (i, j + 1)]]
 }
 
-/// A point of a piece: its vertex in the grid and the cuts it lies on (by construction, not by measure).
-#[derive(Clone, Copy)]
-struct Point {
-    id: u32,
-    at: [f32; 3],
-    on: [Option<i64>; 2],
+fn edge(a: Vertex, b: Vertex) -> Edge {
+    if a <= b { [a, b] } else { [b, a] }
 }
 
 /// Cuts the faces of `parts[steep]` (tile (tx, ty)'s steep ground, in grid `g`, which [`super::grid`] made) where their paint
 /// changes, and puts the new vertices into every face of `parts` that shares an edge with a cut face, the next tile's included.
-/// Every face stays in its part.
-pub(super) fn split(g: &mut Grid, (tx, ty): (usize, usize), parts: &mut [Vec<[u32; 3]>], steep: usize, area: &Area<'_>) {
+/// Every face stays in its part. Gives the texture of each face of `parts[steep]`, in order.
+pub(super) fn split(g: &mut Grid, (tx, ty): (usize, usize), parts: &mut [Vec<[u32; 3]>], steep: usize, area: &Area<'_>) -> Vec<u8> {
     let n = area.n();
     let (gx, gy) = (tx as i64 * n, ty as i64 * n);
     let global = |v: u32| (gx + i64::from(v) % (n + 1), gy + i64::from(v) / (n + 1));
-    let world = |v: (i64, i64)| area.vertex((tx, ty), v).1;
-    let crosses = |a: [f32; 3], b: [f32; 3], (axis, k): Cut| (a[axis] - area.line(k)) * (b[axis] - area.line(k)) < 0.0;
-    // Each edge's cuts (grid vertices in the area, the lower first), from this tile's steep faces and the next tiles' across its
-    // border.
-    let mut on_edge: HashMap<[(i64, i64); 2], BTreeSet<Cut>> = HashMap::new();
-    let mut add = |face: [(i64, i64); 3], cuts: &[Cut], only: Option<[(i64, i64); 2]>| {
-        for e in 0..3 {
-            let mut edge = [face[e], face[(e + 1) % 3]];
-            edge.sort_unstable();
-            if only.is_some_and(|o| o != edge) {
-                continue;
-            }
-            for &c in cuts.iter().filter(|&&c| crosses(world(edge[0]), world(edge[1]), c)) {
-                on_edge.entry(edge).or_default().insert(c);
-            }
-        }
+    let world = |v: Vertex| area.vertex((tx, ty), v).1;
+    let mut paints: HashMap<Vertex, u8> = HashMap::new();
+    let mut paint = |v: Vertex| {
+        *paints.entry(v).or_insert_with(|| {
+            let p = world(v);
+            area.paint(p[0], p[1])
+        })
     };
-    let mut cut: HashMap<[u32; 3], Vec<Cut>> = HashMap::new();
+    // The edges whose ends differ, of this tile's steep faces and of the next tiles' across its border. (A BTreeSet: the new
+    // vertices come in the same order every run.)
+    let mut edges: BTreeSet<Edge> = BTreeSet::new();
     for &t in &parts[steep] {
-        let cuts = area.cuts(t.map(|v| world(global(v))));
-        if !cuts.is_empty() {
-            add(t.map(global), &cuts, None);
-            cut.insert(t, cuts);
+        let c = t.map(global);
+        for e in 0..3 {
+            let (a, b) = (c[e], c[(e + 1) % 3]);
+            if paint(a) != paint(b) {
+                edges.insert(edge(a, b));
+            }
         }
     }
-    // The faces across the border: each border edge's other face, in the tile beside, if it is steep there.
     let (w, h) = (area.tiles.0 as i64, area.tiles.1 as i64);
     for k in 0..n {
-        for (dx, dy, cell_at, which, edge) in [
+        for (dx, dy, cell_at, which, border) in [
             (-1, 0, (gx - 1, gy + k), 0, [(gx, gy + k), (gx, gy + k + 1)]),
             (1, 0, (gx + n, gy + k), 1, [(gx + n, gy + k), (gx + n, gy + k + 1)]),
             (0, -1, (gx + k, gy - 1), 1, [(gx + k, gy), (gx + k + 1, gy)]),
             (0, 1, (gx + k, gy + n), 0, [(gx + k, gy + n), (gx + k + 1, gy + n)]),
         ] {
             let (nx, ny) = (tx as i64 + dx, ty as i64 + dy);
-            if !(0..w).contains(&nx) || !(0..h).contains(&ny) {
+            if !(0..w).contains(&nx) || !(0..h).contains(&ny) || paint(border[0]) == paint(border[1]) {
                 continue;
             }
             let beside = (nx as usize, ny as usize);
             let face = cell(cell_at.0, cell_at.1)[which];
             if (area.steep)(beside.0, beside.1, face.map(|v| area.vertex(beside, v).0)) {
-                let cuts = area.cuts(face.map(|v| area.vertex(beside, v).1));
-                add(face, &cuts, Some(edge));
+                edges.insert(border);
             }
         }
     }
-    if on_edge.is_empty() {
-        return;
-    }
-    // The points on the edges, from the edge's ends in the area's coordinates, the lower first: the same in both tiles of a border.
-    // Two cuts can cross on an edge (a diagonal, every fourth sample): one point, on both.
+    // Each edge's point, from its ends in the area's coordinates: the same in both tiles of a border. Kept a hair from the ends, so
+    // no piece is flat.
     let origin = [tx as f32 * area.tile + area.tile / 2.0, ty as f32 * area.tile + area.tile / 2.0, (area.base)(tx, ty)];
-    let mut points: HashMap<([(i64, i64); 2], Cut), Point> = HashMap::new();
-    for (edge, cuts) in &on_edge {
-        let (a, b) = (world(edge[0]), world(edge[1]));
-        // Each point along the edge (its share of the way) and the cuts it is on.
-        let mut made: Vec<(f32, Point, Vec<Cut>)> = Vec::new();
-        for &(axis, k) in cuts {
-            let c = area.line(k);
-            let s = (c - a[axis]) / (b[axis] - a[axis]);
-            if let Some((_, p, on)) = made.iter_mut().find(|(t, _, _)| (t - s).abs() < 1e-5) {
-                p.on[axis] = Some(k);
-                on.push((axis, k));
-                continue;
-            }
-            let at: [f32; 3] = std::array::from_fn(|d| if d == axis { c } else { a[d] + s * (b[d] - a[d]) } - origin[d]);
-            let mut on = [None; 2];
-            on[axis] = Some(k);
-            made.push((s, Point { id: g.verts.len() as u32, at, on }, vec![(axis, k)]));
-            g.verts.push(at);
-        }
-        for (_, p, on) in made {
-            points.extend(on.into_iter().map(|c| ((*edge, c), p)));
-        }
+    let mut points: HashMap<Edge, u32> = HashMap::new();
+    for &[a, b] in &edges {
+        let (pa, pb, ma, mb) = (world(a), world(b), paint(a), paint(b));
+        let (la, lb) = (area.lead(pa[0], pa[1], ma, mb), area.lead(pb[0], pb[1], ma, mb));
+        let s = if la - lb > 1e-6 { (la / (la - lb)).clamp(0.01, 0.99) } else { 0.5 };
+        points.insert([a, b], g.verts.len() as u32);
+        g.verts.push(std::array::from_fn(|d| pa[d] + s * (pb[d] - pa[d]) - origin[d]));
     }
+    let mut out_paints = Vec::with_capacity(parts[steep].len());
     for (part, faces) in parts.iter_mut().enumerate() {
         let mut out = Vec::with_capacity(faces.len());
         for &t in faces.iter() {
-            let corners = t.map(global);
-            // The polygon: the corners, each followed by the points along its edge to the next.
-            let mut poly = Vec::new();
-            for e in 0..3 {
-                let (a, b) = (corners[e], corners[(e + 1) % 3]);
-                poly.push(Point { id: t[e], at: g.verts[t[e] as usize], on: [None; 2] });
-                let mut edge = [a, b];
-                edge.sort_unstable();
-                let Some(cuts) = on_edge.get(&edge) else { continue };
-                let from = g.verts[t[e] as usize];
-                let mut along: Vec<Point> = cuts.iter().map(|&c| points[&(edge, c)]).collect();
-                along.sort_by(|p, q| dist2(p.at, from).total_cmp(&dist2(q.at, from)));
-                along.dedup_by_key(|p| p.id);
-                poly.extend(along);
-            }
-            if poly.len() == 3 {
+            let c = t.map(global);
+            let mid: [Option<u32>; 3] = std::array::from_fn(|e| points.get(&edge(c[e], c[(e + 1) % 3])).copied());
+            if part == steep {
+                pieces(g, t, c.map(&mut paint), mid, &mut out, &mut out_paints);
+            } else if mid.iter().all(Option::is_none) {
                 out.push(t);
-                continue;
-            }
-            let own = if part == steep { cut.get(&t).cloned().unwrap_or_default() } else { Vec::new() };
-            let plane = t.map(|v| g.verts[v as usize]);
-            let mut inner: HashMap<(i64, i64), Point> = HashMap::new();
-            let mut pieces = vec![poly];
-            // Along x first, then y: a cut along y only meets an x cut's line inside the face.
-            for &(axis, k) in &own {
-                let c = area.line(k) - origin[axis];
-                let mut next = Vec::new();
-                for piece in pieces {
-                    let (a, b) = halves(&piece, axis, k, c, &mut |p, q| {
-                        let o = 1 - axis;
-                        let Some(ko) = p.on[o].filter(|&ko| q.on[o] == Some(ko)) else {
-                            // Every edge of the face's own that a cut crosses has its point already: only another cut's line is
-                            // left. (Were one missed: where the edge crosses, a piece with no hole, if not a vertex shared.)
-                            debug_assert!(false, "a cut crossed an edge with no point on it");
-                            let s = (c - p.at[axis]) / (q.at[axis] - p.at[axis]);
-                            let at = [0, 1, 2].map(|d| p.at[d] + s * (q.at[d] - p.at[d]));
-                            g.verts.push(at);
-                            let mut on = [None; 2];
-                            on[axis] = Some(k);
-                            return Point { id: g.verts.len() as u32 - 1, at, on };
-                        };
-                        let (kx, ky) = if axis == 0 { (k, ko) } else { (ko, k) };
-                        *inner.entry((kx, ky)).or_insert_with(|| {
-                            let (x, y) = (area.line(kx) - origin[0], area.line(ky) - origin[1]);
-                            let at = [x, y, on_plane(plane, x, y)];
-                            g.verts.push(at);
-                            Point { id: g.verts.len() as u32 - 1, at, on: [Some(kx), Some(ky)] }
-                        })
-                    });
-                    next.extend([a, b].into_iter().filter(|p| p.len() >= 3));
-                }
-                pieces = next;
-            }
-            for piece in pieces {
-                fan(g, &piece, &mut out);
+            } else {
+                let poly: Vec<u32> = (0..3).flat_map(|e| std::iter::once(t[e]).chain(mid[e])).collect();
+                fan(g, &poly, &mut out);
             }
         }
         *faces = out;
     }
+    out_paints
 }
 
-/// The two sides of convex polygon `poly` across cut (`axis`, `k`) at `c` (tile coordinates). A point on the cut goes to both; an
-/// edge that crosses it is a line of another cut, and `meet` gives the point where the two cuts cross.
-fn halves(poly: &[Point], axis: usize, k: i64, c: f32, meet: &mut dyn FnMut(&Point, &Point) -> Point) -> (Vec<Point>, Vec<Point>) {
-    let side = |p: &Point| {
-        // (A point a hair from the cut is on it: two cuts crossing on an edge, met from the other cut's side.)
-        if p.on[axis] == Some(k) || (p.at[axis] - c).abs() < 1e-5 {
-            0
-        } else if p.at[axis] < c {
-            -1
-        } else {
-            1
-        }
-    };
-    let (mut below, mut above) = (Vec::new(), Vec::new());
-    for (e, p) in poly.iter().enumerate() {
-        let q = &poly[(e + 1) % poly.len()];
-        match side(p) {
-            -1 => below.push(*p),
-            1 => above.push(*p),
-            _ => {
-                below.push(*p);
-                above.push(*p);
+/// Steep face `t` as pieces of one texture each, into `out` and their textures into `paints`: `p` is its corners' textures and
+/// `mid[e]` the point on its edge from corner e to the next, where those two differ.
+fn pieces(g: &mut Grid, t: [u32; 3], p: [u8; 3], mid: [Option<u32>; 3], out: &mut Vec<[u32; 3]>, paints: &mut Vec<u8>) {
+    match mid {
+        [Some(m01), Some(m12), Some(m20)] => {
+            // Three textures: each corner's piece reaches to the middle of the three points.
+            let at = [m01, m12, m20].map(|m| g.verts[m as usize]);
+            let centre = g.verts.len() as u32;
+            g.verts.push(std::array::from_fn(|d| (at[0][d] + at[1][d] + at[2][d]) / 3.0));
+            for (corner, after, before) in [(0, m01, m20), (1, m12, m01), (2, m20, m12)] {
+                out.extend([[t[corner], after, centre], [t[corner], centre, before]]);
+                paints.extend([p[corner]; 2]);
             }
         }
-        if side(p) * side(q) < 0 {
-            let m = meet(p, q);
-            below.push(m);
-            above.push(m);
+        _ => {
+            // Two textures: the corner whose both edges are cut stands alone; the rest is a four-sided piece.
+            let alone = (0..3).find_map(|a| Some((a, mid[a]?, mid[(a + 2) % 3]?)));
+            let Some((a, after, before)) = alone else {
+                // One texture. (An edge is cut only where its ends differ: no face has one cut edge.)
+                debug_assert!(mid.iter().all(Option::is_none), "a steep face with one cut edge");
+                out.push(t);
+                paints.push(p[0]);
+                return;
+            };
+            let (b, c) = ((a + 1) % 3, (a + 2) % 3);
+            out.extend([[t[a], after, before], [after, t[b], t[c]], [after, t[c], before]]);
+            paints.extend([p[a], p[b], p[b]]);
         }
     }
-    (below, above)
 }
 
-/// Convex polygon `poly` (counter-clockwise from above) as triangles: itself if it is one, else a fan around its middle, a new
-/// vertex (fanned from a corner, a point on one of the corner's edges would be left in the middle of a face's side).
-fn fan(g: &mut Grid, poly: &[Point], out: &mut Vec<[u32; 3]>) {
-    if poly.len() == 3 {
-        out.push([poly[0].id, poly[1].id, poly[2].id]);
-        return;
-    }
+/// Convex polygon `poly` (vertex ids, counter-clockwise from above) as triangles: a fan around its middle, a new vertex (fanned
+/// from a corner, a point on one of the corner's edges would make a flat piece).
+fn fan(g: &mut Grid, poly: &[u32], out: &mut Vec<[u32; 3]>) {
     let k = poly.len() as f32;
-    let mid = poly.iter().fold([0.0; 3], |m, p| [m[0] + p.at[0] / k, m[1] + p.at[1] / k, m[2] + p.at[2] / k]);
+    let mid = poly.iter().fold([0.0; 3], |m, &v| {
+        let p = g.verts[v as usize];
+        [m[0] + p[0] / k, m[1] + p[1] / k, m[2] + p[2] / k]
+    });
     let id = g.verts.len() as u32;
     g.verts.push(mid);
     for e in 0..poly.len() {
-        out.push([id, poly[e].id, poly[(e + 1) % poly.len()].id]);
+        out.push([id, poly[e], poly[(e + 1) % poly.len()]]);
     }
-}
-
-fn dist2(a: [f32; 3], b: [f32; 3]) -> f32 {
-    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)
-}
-
-/// The height at (x, y) of the plane through triangle `t`.
-fn on_plane(t: [[f32; 3]; 3], x: f32, y: f32) -> f32 {
-    let [a, b, c] = t;
-    let det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
-    let l1 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / det;
-    let l2 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / det;
-    l1 * a[2] + l2 * b[2] + (1.0 - l1 - l2) * c[2]
 }
 
 #[cfg(test)]
@@ -327,8 +255,8 @@ mod tests {
         (x + 0.5 * y + 2.0) % 7.0 < 4.5
     }
 
-    /// Tile (tx, ty) as tile.rs makes it: the grid, its faces in two parts (ground, steep), split.
-    fn tile(area: &Area<'_>, tx: usize, ty: usize) -> (Grid, [Vec<[u32; 3]>; 2]) {
+    /// Tile (tx, ty) as tile.rs makes it: the grid, its faces in two parts (ground, steep), split, and each steep face's texture.
+    fn tile(area: &Area<'_>, tx: usize, ty: usize) -> (Grid, [Vec<[u32; 3]>; 2], Vec<u8>) {
         let at = |i: i64, j: i64| (j * (N + 1) + i) as u32;
         let mut verts = Vec::new();
         for j in 0..=N {
@@ -345,8 +273,9 @@ mod tests {
             }
         }
         let mut g = Grid { verts, tris: Vec::new() };
-        split(&mut g, (tx, ty), &mut parts, 1, area);
-        (g, parts)
+        let paints = split(&mut g, (tx, ty), &mut parts, 1, area);
+        assert_eq!(paints.len(), parts[1].len());
+        (g, parts, paints)
     }
 
     fn twice_area(t: [[f32; 3]; 3]) -> f32 {
@@ -354,26 +283,78 @@ mod tests {
     }
 
     #[test]
-    fn every_piece_of_steep_ground_lies_over_one_paint() {
+    fn every_piece_of_steep_ground_takes_the_paint_that_weighs_most_there() {
         let area = area_with(&paint, &steep);
-        let (mut cut, mut whole) = (0, 0);
+        let (mut cut, mut whole, mut off) = (0, 0, 0);
         for (tx, ty) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-            let (g, parts) = tile(&area, tx, ty);
-            let near = |p: [f32; 3]| {
-                let (x, y) = (p[0] + tx as f32 * 10.0 + 5.0, p[1] + ty as f32 * 10.0 + 5.0);
-                paint((x / 0.625).round() as i64, (y / 0.625).round() as i64)
-            };
-            for t in &parts[1] {
+            let (g, parts, paints) = tile(&area, tx, ty);
+            let world = |p: [f32; 3]| (p[0] + tx as f32 * 10.0 + 5.0, p[1] + ty as f32 * 10.0 + 5.0);
+            for (t, &m) in parts[1].iter().zip(&paints) {
                 let v = t.map(|v| g.verts[v as usize]);
-                let mid = [0, 1, 2].map(|d| (v[0][d] + v[1][d] + v[2][d]) / 3.0);
-                // (Each corner pulled a hair in, off the halfway lines it may lie on.)
-                let paints: BTreeSet<u8> =
-                    v.iter().map(|c| near([0, 1, 2].map(|d| c[d] + (mid[d] - c[d]) * 0.01))).chain([near(mid)]).collect();
-                assert_eq!(paints.len(), 1, "tile ({tx}, {ty}): a steep face over {paints:?}: {v:?}");
+                // Its corners of the grid have its paint. (The rest are on cuts, where two weigh the same.)
+                for (&id, &c) in t.iter().zip(&v) {
+                    if i64::from(id) < (N + 1) * (N + 1) {
+                        let (x, y) = world(c);
+                        assert_eq!(area.paint(x, y), m, "tile ({tx}, {ty}): a corner of a steep face: {v:?}");
+                    }
+                }
+                // Its middle too, but in slivers along a cut: the cut takes the blend as linear between two vertices, which it isn't.
+                let (x, y) = world([0, 1, 2].map(|d| (v[0][d] + v[1][d] + v[2][d]) / 3.0));
+                if area.paint(x, y) != m {
+                    let size = twice_area(v) / 2.0;
+                    assert!(size < 0.04, "tile ({tx}, {ty}): a piece of {size} m² with another paint in its middle: {v:?}");
+                    off += 1;
+                }
                 if i64::from(*t.iter().max().unwrap()) >= (N + 1) * (N + 1) { cut += 1 } else { whole += 1 }
             }
         }
         assert!(cut > 50 && whole > 500, "{cut} pieces, {whole} faces whole");
+        assert!(off * 10 < cut, "{off} of {cut} pieces have another paint in their middle");
+    }
+
+    #[test]
+    fn a_bank_s_paint_changes_at_one_height() {
+        // A river's bank across the grid at 25 degrees: the bed's mud at 0 m, the bank's sand 1.6 m up, one sample on.
+        let sand = |i: i64, j: i64| (j as f32 * 0.625) > 4.0 + 0.466 * (i as f32 * 0.625);
+        let material = move |i: i64, j: i64| u8::from(sand(i, j));
+        let height = move |x: f32, y: f32| {
+            let (fx, fy) = (x / 0.625, y / 0.625);
+            let (i, j) = (fx.floor(), fy.floor());
+            let (sx, sy) = (fx - i, fy - j);
+            let h = |di: i64, dj: i64| if sand(i as i64 + di, j as i64 + dj) { 1.6 } else { 0.0 };
+            h(0, 0) * (1.0 - sx) * (1.0 - sy) + h(1, 0) * sx * (1.0 - sy) + h(0, 1) * (1.0 - sx) * sy + h(1, 1) * sx * sy
+        };
+        let steep = |_: usize, _: usize, f: [[f32; 3]; 3]| {
+            let (u, v) = (std::array::from_fn::<f32, 3, _>(|d| f[1][d] - f[0][d]), std::array::from_fn::<f32, 3, _>(|d| f[2][d] - f[0][d]));
+            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            n[2] / (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt() < 0.64
+        };
+        let area = Area {
+            step: 0.5,
+            tile: 10.0,
+            tiles: (2, 2),
+            spacing: 0.625,
+            material: &material,
+            height: &height,
+            base: &|_, _| 0.0,
+            steep: &steep,
+        };
+        let mut faces = [0; 2];
+        for (tx, ty) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            let (g, parts, paints) = tile(&area, tx, ty);
+            for (t, &m) in parts[1].iter().zip(&paints) {
+                let z = t.map(|v| g.verts[v as usize][2]);
+                // Mud under the line halfway up, sand over it: no teeth. (A cut is kept a hair from a vertex: 1% of an edge.)
+                let (low, high) = (z.iter().copied().fold(f32::MAX, f32::min), z.iter().copied().fold(f32::MIN, f32::max));
+                if m == 0 {
+                    assert!(high <= 0.8 + 0.02, "tile ({tx}, {ty}): mud up to {high} m");
+                } else {
+                    assert!(low >= 0.8 - 0.02, "tile ({tx}, {ty}): sand down to {low} m");
+                }
+                faces[usize::from(m)] += usize::from(high - low > 0.5);
+            }
+        }
+        assert!(faces[0] > 20 && faces[1] > 20, "the bank's faces: {faces:?}");
     }
 
     #[test]
@@ -381,7 +362,7 @@ mod tests {
         let area = area_with(&paint, &steep);
         let mut border: HashMap<(usize, usize), Vec<[f32; 2]>> = HashMap::new();
         for (tx, ty) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-            let (g, parts) = tile(&area, tx, ty);
+            let (g, parts, _) = tile(&area, tx, ty);
             let faces: Vec<[u32; 3]> = parts.concat();
             // The tile is covered once, counter-clockwise: 100 m².
             let sum: f32 = faces.iter().map(|t| twice_area(t.map(|v| g.verts[v as usize])) / 2.0).sum();
@@ -429,8 +410,9 @@ mod tests {
     #[test]
     fn one_paint_leaves_the_ground_as_it_was() {
         let area = area_with(&|_, _| 4, &steep);
-        let (g, parts) = tile(&area, 1, 0);
+        let (g, parts, paints) = tile(&area, 1, 0);
         assert_eq!(g.verts.len(), 21 * 21);
         assert_eq!(parts[0].len() + parts[1].len(), 800);
+        assert!(paints.iter().all(|&m| m == 4));
     }
 }

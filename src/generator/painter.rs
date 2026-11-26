@@ -192,8 +192,8 @@ impl Painter {
     fn mean(&self, x: f32, y: f32) -> [f32; 3] {
         let mut c = [0.0; 3];
         for (m, w) in self.corners(x, y) {
-            for k in 0..3 {
-                c[k] += self.textures[m as usize].mean[k] * w;
+            for (c, mean) in c.iter_mut().zip(self.textures[m as usize].mean) {
+                *c += mean * w;
             }
         }
         c

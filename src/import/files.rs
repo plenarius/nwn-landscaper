@@ -149,14 +149,14 @@ fn shrink(img: &Rgba, w: u32, h: u32) -> Rgba {
             for dy in 0..fy {
                 for dx in 0..fx {
                     let k = (((y * fy + dy) * img.width + x * fx + dx) * 4) as usize;
-                    for c in 0..4 {
-                        sum[c] += u32::from(img.data[k + c]);
+                    for (s, &v) in sum.iter_mut().zip(&img.data[k..k + 4]) {
+                        *s += u32::from(v);
                     }
                 }
             }
             let k = ((y * w + x) * 4) as usize;
-            for c in 0..4 {
-                out.data[k + c] = (sum[c] / (fx * fy)) as u8;
+            for (o, s) in out.data[k..k + 4].iter_mut().zip(sum) {
+                *o = (s / (fx * fy)) as u8;
             }
         }
     }

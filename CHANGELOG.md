@@ -7,6 +7,13 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **River banks meet the water cleanly.** 0.6.1 cut steep faces where their paint changes on the lines halfway between two
+  samples, so the paint still changed in steps of a sample. On a bank that climbs 1.6 m in one sample, each step stood up the
+  face: the bed's mud reached up to the water and the bank's sand down into it, a sawtooth seen through the water. Steep ground
+  now takes the texture that weighs most in the same blend as walkable ground, cut where two weigh the same. Along a bank that
+  line keeps to one height, under the water. In a 10 by 10 test area with a river, no vertex of the mud is above the water
+  (150 before, up to 0.23 m), and the tile models are 3% smaller. The editor still draws steep ground with the nearest sample.
+
 - **Water too shallow to see is dry ground.** The game draws water under about 15 cm almost clear, so a bank a few
   centimetres under the water looked dry until a footstep rippled it. Ground under less than 15 cm of water now exports dry:
   no water surface, the ground's own footsteps and walkmesh surface. It still carries the flood, so a shallow ford doesn't
