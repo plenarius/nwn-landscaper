@@ -22,7 +22,7 @@ version=34
 sdk=${WASI_SDK:-target/wasi-sdk/wasi-sdk-$version.0-x86_64-linux}
 if [ ! -x "$sdk/bin/clang" ]; then
     mkdir -p target/wasi-sdk
-    curl -sSfL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$version/wasi-sdk-$version.0-x86_64-linux.tar.gz" |
+    curl -sSfL --retry 5 --retry-all-errors --retry-delay 5 "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$version/wasi-sdk-$version.0-x86_64-linux.tar.gz" |
         tar -xz -C target/wasi-sdk
 fi
 sdk=$(cd "$sdk" && pwd)
