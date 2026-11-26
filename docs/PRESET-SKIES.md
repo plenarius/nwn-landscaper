@@ -14,7 +14,7 @@ from your own download. Thick mist and Swamp are painted by the script from thei
 | Dusk | `dusk` | `dusk` | Grass dusk | Grass dusk | Grass dusk | Grass night |
 | Overcast | `overcast` | `overcast` | Storm dawn, greyed | Storm day, greyed | Storm dusk, greyed | Storm night, greyed |
 | Starry night | `starry-night` | `night` | Desert night | Desert night | Desert night | Desert night |
-| Dawn haze | `dawn-haze` | `dawn` (a preset still to make) | Desert dawn | Winter dawn | Winter dusk | Winter night |
+| Dawn haze | `dawn-haze` | `dawn` | Desert dawn | Winter dawn | Winter dusk | Winter night |
 | Thick mist | `thick-mist` | `mist` | painted | painted | painted | painted |
 | Swamp | `swamp` | `swamp` | painted | painted | painted | painted |
 
@@ -72,5 +72,8 @@ day on top, by night below, each over its preset's light. Pictures from Real Ski
   row as in a new one, and never on a first visit, so it is not the pack's rows or models; whether stock skies do it too wasn't
   tried.
 
-Not checked: anything on a graphics card, and the new `dawn` preset, which doesn't exist yet (the Dawn haze area used Clear
-day's light).
+On 2026-11-26 again, with the editor's presets naming their skies (step 4): an area per preset, its light and sky from the
+editor's own presets, each exported with its sky's row. The new Dawn preset's warm light suits Dawn haze at noon, and standing in
+the area while the clock ran into dawn, its sky faded from the night picture into the dawn one in about 3 minutes.
+
+Not checked: anything on a graphics card.

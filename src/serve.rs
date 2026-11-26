@@ -19,6 +19,7 @@ mod previews;
 mod query;
 mod scripts;
 mod service;
+mod skies;
 mod team;
 mod underlay;
 
@@ -63,7 +64,7 @@ struct Gate {
 /// let through without it (still subject to the `Host`, `Origin` and `Sec-Fetch-Site` checks). Another site can at most
 /// show such a picture, never read it. Everything else under `/api/` (a preview's `scene.json` too) needs the header.
 fn picture_route(path: &str) -> bool {
-    ["/api/texture/", "/api/import/", "/api/import-file/", "/api/preview-icon/"].iter().any(|p| path.starts_with(p))
+    ["/api/texture/", "/api/import/", "/api/import-file/", "/api/preview-icon/", "/api/sky-picture/"].iter().any(|p| path.starts_with(p))
         || path.strip_prefix("/api/preview-file/").and_then(|rest| rest.split_once('/')).is_some_and(|(_, file)| file.starts_with("tex/"))
 }
 
@@ -511,9 +512,10 @@ struct Ask<'a> {
 
 /// The API's areas, asked in turn: each answers the requests that are its own and returns `None` for the rest. No two
 /// match the same request; anything left is a file of the editor (GET) or refused with 405.
-const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 10] = [
+const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 11] = [
     team::route,
     packs::route,
+    skies::route,
     areas::route,
     underlay::route,
     export::route,

@@ -160,7 +160,7 @@ A generated sky is a panorama the engine paints from the preset's fog colour at 
 it always matches. The trial's thick mist shows why that matters: ground fogged at 20 m under a sunny sky with clouds.
 
 Step 3 made the re-used and generated seven as the Preset skies pack ([PRESET-SKIES.md](PRESET-SKIES.md)), built from the
-user's own Real Skies download since Real Skies states no licence. Dawn haze names a preset, `dawn`, that step 4 adds.
+user's own Real Skies download since Real Skies states no licence. Dawn haze suits the `dawn` preset, which step 4 added.
 
 Considered and not chosen: **only the re-used skies**, leaving thick mist and swamp under a mismatched sky and dropping the two new
 presets that need art.
@@ -173,6 +173,9 @@ in the panel shows the chosen sky's day picture as a strip, with a list of the i
 to the nearest stock row, as the sample landscapes do today.
 
 The editor's 3D view can draw the sky's day or night panorama as its background, so the preview matches the game's horizon.
+
+Step 4 built it ([SKY-PACKS.md](SKY-PACKS.md#in-the-editor)). The Sky row lists the module's own rows too, and Area settings no
+longer has a sky box of its own, so the sky is chosen in one place; an area keeps a game row as `"skyRow"`.
 
 Considered and not chosen: **a separate dropdown in Area settings**, as today, with names instead of numbers. Builders would pick
 light and sky apart and get the mismatch this design is about.

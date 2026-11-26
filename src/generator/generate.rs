@@ -490,6 +490,10 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         settings::apply(&mut are.root, &mut git.root, &sett)?;
         m.set_gff(git_key, &git)?;
     }
+    // The game's own sky the area's light and fog picks (after the settings: the Sky & fog panel chooses the sky).
+    if let Some(row) = skies::area_sky_row() {
+        are.root.set("SkyBox", Value::Byte(row));
+    }
     // A Landscaper sky: its row of the skyboxes.2da in ls_skies.hak, made now (after the settings: the area's sky wins).
     let sky = match skies::area_sky() {
         Some(id) => {
