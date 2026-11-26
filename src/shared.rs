@@ -74,7 +74,7 @@ pub fn ensure(hak_dir: &Path) -> Result<bool> {
 
 /// Every texture id in the library's catalog.
 fn library_ids() -> Result<Vec<String>> {
-    let catalog: serde_json::Value = serde_json::from_slice(&std::fs::read(paint::texture_dir().join("catalog.json"))?)?;
+    let catalog: serde_json::Value = serde_json::from_slice(&crate::atomic::read(&paint::texture_dir().join("catalog.json"))?)?;
     Ok(catalog["textures"]
         .as_array()
         .context("catalog.json: textures")?
@@ -87,7 +87,7 @@ fn library_ids() -> Result<Vec<String>> {
 fn stamp() -> Result<String> {
     let dir = paint::texture_dir();
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    let catalog = std::fs::read(dir.join("catalog.json"))
+    let catalog = crate::atomic::read(&dir.join("catalog.json"))
         .with_context(|| format!("no texture library in {} (run `landscaper textures init`)", dir.display()))?;
     catalog.hash(&mut h);
     let parsed: serde_json::Value = serde_json::from_slice(&catalog)?;

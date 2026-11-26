@@ -234,7 +234,7 @@ pub fn load(json_path: &Path) -> Result<Arc<Heightmap>> {
 /// Reads the terrain `json_path`, checked, without loading it.
 fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
     static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let text = std::fs::read_to_string(json_path).with_context(|| format!("reading {}", json_path.display()))?;
+    let text = crate::atomic::read_to_string(json_path).with_context(|| format!("reading {}", json_path.display()))?;
     let j: serde_json::Value = serde_json::from_str(&text)?;
     let name = j["name"].as_str().context("name")?.to_lowercase();
     if name.is_empty() || name.len() > 9 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -255,7 +255,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         bail!("{tiles} by {tiles_y} tiles at {spacing} m need a {} x {} grid, not {width} x {height}", samples(tiles), samples(tiles_y));
     }
     let data_path = json_path.parent().unwrap_or(Path::new(".")).join(j["data"].as_str().context("data")?);
-    let bytes = std::fs::read(&data_path).with_context(|| format!("reading {}", data_path.display()))?;
+    let bytes = crate::atomic::read(&data_path).with_context(|| format!("reading {}", data_path.display()))?;
     if bytes.len() != width * height * 4 {
         bail!("{}: {} bytes, expected {}", data_path.display(), bytes.len(), width * height * 4);
     }
@@ -272,7 +272,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
     let (mut materials, mut palette) = (Vec::new(), Vec::new());
     if let Some(file) = j["materials"].as_str() {
         let path = json_path.parent().unwrap_or(Path::new(".")).join(file);
-        materials = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+        materials = crate::atomic::read(&path).with_context(|| format!("reading {}", path.display()))?;
         if materials.len() != width * height {
             bail!("{}: {} bytes, expected {}", path.display(), materials.len(), width * height);
         }

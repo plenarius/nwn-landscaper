@@ -32,7 +32,7 @@ pub(crate) fn install(json: &Path, before: &Before, report: &mut serde_json::Val
     let Some(user) = crate::workspace::nwn_user_dir() else {
         return Ok(());
     };
-    let header: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(json)?)?;
+    let header: serde_json::Value = serde_json::from_str(&crate::atomic::read_to_string(json)?)?;
     let name = header["name"].as_str().context("the area has no name")?.to_string();
     let module = header["module"].as_str().unwrap_or(&name).to_string();
     let out = json.parent().unwrap_or(Path::new(".")).join(format!("{name}_nwn"));

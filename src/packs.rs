@@ -512,9 +512,11 @@ pub fn zip_pack(manifest: &[u8], files: &[(String, Vec<u8>)]) -> Result<Vec<u8>>
 
 /// Adds `entry` (a pack of `kind`) to the index file `index`, made if missing; an entry of the same id is replaced.
 pub fn add_to_index(index: &Path, kind: Kind, mut entry: Value) -> Result<()> {
-    let mut v: Value = match std::fs::read(index) {
+    // (Only a missing index starts a new one: read as empty, one that failed to open would lose every other pack.)
+    let mut v: Value = match crate::atomic::read(index) {
         Ok(b) => serde_json::from_slice(&b).with_context(|| format!("{}: not JSON", index.display()))?,
-        Err(_) => json!({ "format": FORMAT, "packs": [] }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({ "format": FORMAT, "packs": [] }),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", index.display())),
     };
     ensure!(v.is_object(), "{}: not an index", index.display());
     if kind == Kind::Sky {

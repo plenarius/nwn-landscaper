@@ -187,7 +187,7 @@ impl Texture {
 pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
     let dir = texture_dir();
     let catalog: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("catalog.json"))
+        &crate::atomic::read_to_string(&dir.join("catalog.json"))
             .with_context(|| format!("no texture library in {} (run `landscaper textures init`)", dir.display()))?,
     )?;
     let entries = catalog["textures"].as_array().context("catalog.json: textures")?;
