@@ -27,8 +27,8 @@
 //! - `LANDSCAPER_HAKS` (or `--haks`): the haks the editor's placeables, models, blueprints and textures come from, in the
 //!   module's order, or `module` for the module checkout's own list; see [`haks`]. Default: on a team server the module's hak
 //!   list from the review service, else none (the game's own).
-//! - `LANDSCAPER_PARTICLES`: the particle pack an area's ambience is baked from. Default: `packs/particles` beside the
-//!   program; see [`crate::ambience::installed`].
+//! - `LANDSCAPER_PARTICLES`: another particle pack's folder for an area's ambience. Default: the one built into the program
+//!   (`packs/particles`); see [`crate::ambience::installed`].
 //!
 //! The command line's `--root`, `--user`, `--tlk`, `--haks` and `--jobs` win over their variables: [`set_given`].
 

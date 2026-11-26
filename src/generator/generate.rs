@@ -336,8 +336,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     }
     // The particle pack's own textures, for the kinds baked in.
     if let Some(pack) = pack {
-        for (name, file) in pack.textures_for(&ambience.kinds()) {
-            let data = std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
+        for (name, data) in pack.textures_for(&ambience.kinds()) {
             owned.push((ResRef::from_str(&name)?, ResType::TGA, data));
         }
     }

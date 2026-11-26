@@ -5,7 +5,8 @@
 //!
 //! The area lists them as `"ambience": [{ "kind": "mist", "x": 22, "y": 20, "z": 10.3, "scale": 1, "seed": 7 }]` (area metres;
 //! `bearing`, radians anticlockwise from east, turns the kinds that blow or lean along their model's +x). Each kind comes from the
-//! particle pack (`packs/particles`: its `pack.json` and one ASCII model a kind; [`Pack`]). The export copies a kind's nodes
+//! particle pack (`packs/particles`, built into the program: its `pack.json` and one ASCII model a kind; [`Pack`]; another
+//! with `LANDSCAPER_PARTICLES`). The export copies a kind's nodes
 //! into the tile under its point, in the tile's coordinates, as docs/DESIGN-ambience.md's spike 0 found the client needs them:
 //!
 //! - every baked node of a tile hangs under one dummy named the tile model's name plus `a`, a child of the root; keyed emitters
@@ -22,7 +23,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result, bail, ensure};
@@ -35,7 +36,7 @@ pub const PLACEMENT_LIVE_MAX: f32 = 60.0;
 /// past it are skipped.
 pub const AREA_LIVE_MAX: f32 = 1500.0;
 
-/// Where the particle pack is when not beside the program: `LANDSCAPER_PARTICLES`, a folder holding `pack.json`.
+/// Another particle pack than the one built in: `LANDSCAPER_PARTICLES`, a folder holding its `pack.json`.
 pub const PACK_ENV: &str = "LANDSCAPER_PARTICLES";
 
 /// One placement of a kind, as the area lists it.
@@ -126,11 +127,16 @@ impl Kind {
     }
 }
 
-/// The particle pack: its kinds, and its own textures (resref, file), which the area's hak carries for the kinds it uses.
+/// The particle pack: its kinds, and its own textures (resref, contents), which the area's hak carries for the kinds it uses.
 #[derive(Debug)]
 pub struct Pack {
     pub kinds: Vec<Kind>,
-    textures: Vec<(String, PathBuf)>,
+    textures: Vec<(String, Vec<u8>)>,
+}
+
+/// The particle pack built into the program (`packs/particles`, by build.rs): each file's path in the pack and its contents.
+mod built_in {
+    include!(concat!(env!("OUT_DIR"), "/particles.rs"));
 }
 
 /// Emitter values that are lengths, speeds or an acceleration: a placement's scale multiplies them.
@@ -150,28 +156,40 @@ const SCALED: [&str; 12] = [
 ];
 
 impl Pack {
-    /// The pack in folder `dir` (its `pack.json`, `models/` and textures), checked: each kind's model has the nodes its looks name,
-    /// a day-only kind keeps none alive at night (a night-only one none by day), a kind that loops shows always with one birth rate,
-    /// and each stays within its budget and [`PLACEMENT_LIVE_MAX`].
+    /// The pack in folder `dir` (its `pack.json`, `models/` and textures), checked as [`Pack::read`] checks it.
     pub fn load(dir: &Path) -> Result<Pack> {
-        let path = dir.join("pack.json");
-        let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-        let j: serde_json::Value = serde_json::from_str(&text).with_context(|| format!("reading {}", path.display()))?;
-        ensure!(j["format"].as_u64() == Some(1), "{}: format {} (this Landscaper reads format 1)", path.display(), j["format"]);
+        Pack::read(&|file| std::fs::read(dir.join(file)).with_context(|| format!("reading {}", dir.join(file).display())))
+    }
+
+    /// The pack built into the program (`packs/particles` when it was built).
+    pub fn built_in() -> Result<Pack> {
+        ensure!(!built_in::FILES.is_empty(), "this Landscaper was built without its particle pack (packs/particles)");
+        Pack::read(&|file| {
+            built_in::FILES.iter().find(|(f, _)| *f == file).map(|(_, data)| data.to_vec()).with_context(|| format!("no {file} in it"))
+        })
+    }
+
+    /// The pack whose files `file` gives (by their path in the pack: `pack.json`, `models/lsp_mist.mdl`), checked: each kind's
+    /// model has the nodes its looks name, a day-only kind keeps none alive at night (a night-only one none by day), a kind that
+    /// loops shows always with one birth rate, every birth rate is 0 or 1 and more, and each kind stays within its budget and
+    /// [`PLACEMENT_LIVE_MAX`].
+    fn read(file: &dyn Fn(&str) -> Result<Vec<u8>>) -> Result<Pack> {
+        let j: serde_json::Value = serde_json::from_slice(&file("pack.json")?).context("reading pack.json")?;
+        ensure!(j["format"].as_u64() == Some(1), "pack.json: format {} (this Landscaper reads format 1)", j["format"]);
         let textures = j["textures"]
             .as_array()
             .into_iter()
             .flatten()
             .map(|t| {
                 let name = t["name"].as_str().context("a texture without a name")?.to_ascii_lowercase();
-                let file = dir.join(t["file"].as_str().with_context(|| format!("texture {name}: no file"))?);
-                ensure!(file.is_file(), "texture {name}: {} isn't there", file.display());
-                Ok((name, file))
+                let data = file(t["file"].as_str().with_context(|| format!("texture {name}: no file"))?)
+                    .with_context(|| format!("texture {name}"))?;
+                Ok((name, data))
             })
             .collect::<Result<Vec<_>>>()?;
         let mut kinds: Vec<Kind> = Vec::new();
         for k in j["kinds"].as_array().context("pack.json has no kinds")? {
-            let kind = kind(dir, k)?;
+            let kind = kind(file, k)?;
             ensure!(!kinds.iter().any(|o| o.id == kind.id), "two kinds have the id {}", kind.id);
             kinds.push(kind);
         }
@@ -183,15 +201,15 @@ impl Pack {
         self.kinds.iter().position(|k| k.id.eq_ignore_ascii_case(id))
     }
 
-    /// The pack's own textures the kinds `used` draw with: (resref, file).
-    pub fn textures_for(&self, used: &BTreeSet<usize>) -> Vec<(String, PathBuf)> {
+    /// The pack's own textures the kinds `used` draw with: (resref, contents).
+    pub fn textures_for(&self, used: &BTreeSet<usize>) -> Vec<(String, Vec<u8>)> {
         let names: BTreeSet<String> = used.iter().flat_map(|&k| self.kinds[k].textures()).collect();
         self.textures.iter().filter(|(n, _)| names.contains(n)).cloned().collect()
     }
 }
 
-/// Kind `k` of the pack in `dir`, checked (see [`Pack::load`]).
-fn kind(dir: &Path, k: &serde_json::Value) -> Result<Kind> {
+/// Kind `k` of the pack whose files `file` gives, checked (see [`Pack::read`]).
+fn kind(file: &dyn Fn(&str) -> Result<Vec<u8>>, k: &serde_json::Value) -> Result<Kind> {
     let id = k["id"].as_str().filter(|s| !s.is_empty()).context("a kind without an id")?.to_ascii_lowercase();
     let what = |s: &str| format!("kind {id}: {s}");
     let shows = match k["shows"].as_str() {
@@ -203,8 +221,7 @@ fn kind(dir: &Path, k: &serde_json::Value) -> Result<Kind> {
     let loops = k["loops"].as_bool().unwrap_or(false);
     let budget = k["budget"].as_f64().with_context(|| what("no budget"))? as f32;
     let name = k["model"].as_str().with_context(|| what("no model"))?;
-    let file = dir.join("models").join(format!("{name}.mdl"));
-    let data = std::fs::read(&file).with_context(|| format!("{}: reading {}", what("its model"), file.display()))?;
+    let data = file(&format!("models/{name}.mdl")).with_context(|| what("its model"))?;
     let model = Model::read(&data).map_err(|e| anyhow::anyhow!("{}: {e}", what("its model")))?;
     ensure!(model.nodes.len() > 1, "{}", what("its model has no nodes under its root"));
     let mut looks = Vec::new();
@@ -275,26 +292,19 @@ fn kind(dir: &Path, k: &serde_json::Value) -> Result<Kind> {
     Ok(Kind { id, loops, live, model, looks })
 }
 
-/// The particle pack the export uses, read once: the folder [`PACK_ENV`] names, else `packs/particles` beside the program (and,
-/// in a debug build, in the source tree). An error says why there is none.
+/// The particle pack the export uses, read once: the folder [`PACK_ENV`] names, else the one built into the program. An error
+/// says why there is none.
 pub fn installed() -> std::result::Result<&'static Pack, &'static str> {
     static PACK: OnceLock<std::result::Result<Pack, String>> = OnceLock::new();
-    PACK.get_or_init(|| {
-        let dir = pack_dir()
-            .ok_or_else(|| format!("no particle pack: set {PACK_ENV} to its folder, or keep packs/particles beside the program"))?;
-        Pack::load(&dir).map_err(|e| format!("the particle pack in {}: {e:#}", dir.display()))
+    PACK.get_or_init(|| match std::env::var_os(PACK_ENV).filter(|d| !d.is_empty()) {
+        Some(dir) => {
+            let dir = Path::new(&dir);
+            Pack::load(dir).map_err(|e| format!("the particle pack in {} ({PACK_ENV}): {e:#}", dir.display()))
+        }
+        None => Pack::built_in().map_err(|e| format!("{e:#}")),
     })
     .as_ref()
     .map_err(String::as_str)
-}
-
-fn pack_dir() -> Option<PathBuf> {
-    if let Some(d) = std::env::var_os(PACK_ENV).filter(|d| !d.is_empty()) {
-        return Some(d.into());
-    }
-    let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.join("packs").join("particles")));
-    let source = cfg!(debug_assertions).then(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("packs").join("particles"));
-    beside.into_iter().chain(source).find(|d| d.join("pack.json").is_file())
 }
 
 /// A placement the export bakes, in its tile.
@@ -629,14 +639,29 @@ mod tests {
         assert_eq!(tex, ["lspt_firefly"]);
     }
 
-    /// The particle pack, when this checkout has it, reads and passes the checks.
+    /// The particle pack is built into the program: it passes the checks, matches packs/particles file for file, and bakes with no
+    /// pack folder to read (what the export uses when `LANDSCAPER_PARTICLES` isn't set).
     #[test]
-    fn the_particle_pack_passes_the_exports_checks() {
+    fn the_built_in_particle_pack_bakes_with_no_folder() {
+        let pack = Pack::built_in().unwrap_or_else(|e| panic!("{e:#}"));
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("packs/particles");
-        if dir.join("pack.json").is_file() {
-            let pack = Pack::load(&dir).unwrap_or_else(|e| panic!("{e:#}"));
-            assert!(pack.kinds.iter().all(|k| k.live[0].max(k.live[1]) <= PLACEMENT_LIVE_MAX));
+        for (file, data) in built_in::FILES {
+            assert_eq!(std::fs::read(dir.join(file)).unwrap(), *data, "{file}");
         }
+        assert!(built_in::FILES.iter().any(|(f, _)| *f == "pack.json") && pack.kinds.len() >= 3);
+        assert!(pack.kinds.iter().all(|k| k.live[0].max(k.live[1]) <= PLACEMENT_LIVE_MAX));
+        if std::env::var_os(PACK_ENV).is_none() {
+            assert_eq!(installed().map(|p| p.kinds.len()), Ok(pack.kinds.len()));
+        }
+        let list = [at("mist", 15.0, 15.0, 1.0), at("fireflies", 5.0, 5.0, 1.0), at("motes", 25.0, 5.0, 1.0)];
+        let plan = plan(&list, Ok(&pack), (3, 3), |_, _| 0.0);
+        assert_eq!((plan.baked(), plan.skipped.len()), (3, 0));
+        let flies = &plan.tiles[&(0, 0)];
+        let m = compiled(&tile_text("amb_0000", flies, &pack));
+        assert_eq!(m.nodes[m.node("amb_0000a0_flies").unwrap()].parent, m.node("amb_0000a"));
+        assert!(m.animation("night").is_some());
+        let tex: Vec<String> = pack.textures_for(&plan.kinds()).into_iter().map(|(n, _)| n).collect();
+        assert!(tex.contains(&"lspt_firefly".to_string()), "{tex:?}");
     }
 
     /// A pack in a scratch folder: the test pack with `pack.json` changed by `edit`.
