@@ -158,6 +158,7 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 - [docs/REVIEW-SERVICE.md](docs/REVIEW-SERVICE.md): the calls a review service answers, to write one.
 - [docs/DEBUGGING.md](docs/DEBUGGING.md): the `LS_*` debugging switches.
 - [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): texture packs: installing them, their format, the index, making one.
+- [docs/REAL-SKIES.md](docs/REAL-SKIES.md): Savant1974's Real Skies made fit for NWSync, for any module.
 - [MOONGLOW.md](MOONGLOW.md): the Moonglow version the Landscaper is pinned to, and how to move it.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each version.
 - [SECURITY.md](SECURITY.md): reporting a security problem.

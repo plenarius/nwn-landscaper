@@ -17,6 +17,7 @@ mod audit;
 mod blueprints;
 mod cli;
 mod config;
+mod dds;
 mod devpack;
 mod devtrial;
 mod dialog;
