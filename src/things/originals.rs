@@ -428,7 +428,8 @@ pub fn apply_move(list: &str, s: &mut Struct, m: &Json, ground: &dyn Fn(f32, f32
 }
 
 /// What the editor shows of an imported area's original objects: `[{ key, list, kind, tag, resref, name, x, y,
-/// bearing, outline? }]`, for the editor to draw them, take them out or move them.
+/// bearing, outline?, model? }]`, for the editor to draw them, take them out or move them. A door's or placeable's `model` is
+/// its own appearance's (null when it names none): the toolset often gives a door another look than its blueprint's.
 pub fn describe_originals(game: &GameData, git: &Struct) -> Vec<Json> {
     let mut out = Vec::new();
     for list in LISTS {
@@ -438,12 +439,16 @@ pub fn describe_originals(game: &GameData, git: &Struct) -> Vec<Json> {
             let text = |l: &str| s.string(l).map_or_default(|b| String::from_utf8_lossy(b).into_owned());
             let name = crate::blueprints::struct_name(game, s, name_label(kind));
             let outline = outline_of(list, s);
-            out.push(serde_json::json!({
+            let mut o = serde_json::json!({
                 "key": orig_key(list, i, &text("Tag")), "list": list, "kind": kind_name(kind), "tag": text("Tag"),
                 "resref": s.resref("TemplateResRef").map_or_default(|r| r.to_string()), "name": name,
                 "x": x, "y": y, "bearing": facing, "outline": outline,
                 "fields": current_fields(game, kind, s), "vars": plain_vars(s), "contents": current_contents(game, kind, s),
-            }));
+            });
+            if matches!(kind, ObjectKind::Door | ObjectKind::Placeable) {
+                o["model"] = super::struct_model(game, kind, s).into();
+            }
+            out.push(o);
         }
     }
     out
@@ -600,6 +605,38 @@ mod tests {
         assert_eq!(s.resref("ScriptSpawn"), og.resref("ScriptSpawn"));
         assert_eq!(s.resref("ScriptDeath"), og.resref("ScriptDeath"));
         assert_eq!(names(&s), vec![ORIG.to_string(), "kept".to_string(), "mine".to_string()]);
+    }
+
+    #[test]
+    fn an_original_door_is_drawn_with_its_own_look() {
+        // A generic door (Appearance 0: genericdoors.2da's GenericType_New row), a tile door (doortypes.2da's row), and one
+        // whose model the game hasn't.
+        let mut rm = mg_resman::ResMan::new();
+        let mut mem = mg_resman::MemContainer::new();
+        let table = |head: &str, rows: &str| format!("2DA V2.0\n\n {head}\n{rows}").into_bytes();
+        mem.insert(
+            mg_resman::ResKey::parse("genericdoors", ResType::TWODA).unwrap(),
+            table("Label ModelName", "0 Wood door_x\n1 Iron Door_Iron"),
+        );
+        mem.insert(
+            mg_resman::ResKey::parse("doortypes", ResType::TWODA).unwrap(),
+            table("Label Model", "0 Generic ****\n1 Gate tic01_d01\n2 Lost gone"),
+        );
+        for m in ["door_x", "door_iron", "tic01_d01"] {
+            mem.insert(mg_resman::ResKey::parse(m, ResType::MDL).unwrap(), b"model".to_vec());
+        }
+        rm.add(mg_resman::priority::KEY, "key:data", mg_resman::LayerClass::Key, mem);
+        let game = GameData::new(rm, mg_tlk::Tlk::new(mg_core::Language::ENGLISH));
+        let door = |appearance: u32, generic: u8| {
+            let mut s = placeable(1.0, 1.0, 0.0);
+            s.set("Appearance", Value::Dword(appearance));
+            s.set("GenericType_New", Value::Byte(generic));
+            s
+        };
+        let mut git = Struct::new(0);
+        git.set("Door List", Value::List(vec![door(0, 1), door(1, 0), door(2, 0)]));
+        let models: Vec<Json> = describe_originals(&game, &git).iter().map(|o| o["model"].clone()).collect();
+        assert_eq!(models, [serde_json::json!("door_iron"), serde_json::json!("tic01_d01"), Json::Null]);
     }
 
     #[test]

@@ -7,6 +7,9 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
 
 ## Unreleased
 
+- **An imported area's doors and placeables say their model.** `/api/originals` gives each door and placeable its own
+  appearance's model as `model` (null when it names none), so the editor draws it: the toolset often gives a door another look
+  than its blueprint's.
 - **The editor shows which version is running.** `/api/me` gives the engine's version as `version`, and `landscaper
   --version` and the start line say the same: Cargo.toml's, with `+dev` after it in a build from master after that release
   (when CHANGELOG.md starts with `## Unreleased`).

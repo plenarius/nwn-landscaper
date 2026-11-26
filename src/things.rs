@@ -766,9 +766,14 @@ pub fn mark_of(s: &Struct) -> Option<i64> {
 /// None when the row names none or a model nobody has (the preview then has nothing to draw).
 pub fn model_of(game: &GameData, kind: ObjectKind, resref: &str) -> Result<Option<String>> {
     let bp = blueprint(game, kind.restype(), resref)?.with_context(|| format!("no {} blueprint {resref}", kind_name(kind)))?;
-    let Some(at) = mg_rules::appearance::AppearanceRow::of(kind, &bp) else { return Ok(None) };
+    Ok(struct_model(game, kind, &bp))
+}
+
+/// The model object `s` (a blueprint, or an object in an area's GIT) is drawn with, from its appearance; None when it names none.
+pub fn struct_model(game: &GameData, kind: ObjectKind, s: &Struct) -> Option<String> {
+    let at = mg_rules::appearance::AppearanceRow::of(kind, s)?;
     let table = game.table(at.table).ok();
-    Ok(at.model(table.as_deref(), &game.resman).ok().flatten())
+    at.model(table.as_deref(), &game.resman).ok().flatten()
 }
 
 #[cfg(test)]
