@@ -48,8 +48,8 @@ the first list of placeables took 0.16 s against 0.10 s for the game alone, and 
 ## Textures
 
 The library lives in `textures/` in the data folder (`XDG_DATA_HOME`). It is built from the game's files the first time there is none;
-`landscaper textures init [--pictures <folder>] | add <list.json> | build <folder> [--category NAME] [--surface N] | list` fill it otherwise (see
-SELF-HOSTING.md, "Textures"). Texture packs add to it ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)):
+`landscaper textures init [--pictures <folder>] | add <list.json> | build <folder> [--category NAME] [--surface N] | list`
+fill it otherwise (see SELF-HOSTING.md, "Textures"). Texture packs add to it ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)):
 
 | Variable | What it is | Default |
 |----------|------------|---------|
