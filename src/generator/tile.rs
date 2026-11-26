@@ -235,7 +235,7 @@ pub(super) fn tile_model(
         let (x1, y1) = (x0 + TILE, y0 + TILE);
         let mut node = 0;
         for o in scene.objects.iter().filter(|o| o.baked && o.max[0] > x0 && o.min[0] < x1 && o.max[1] > y0 && o.min[1] < y1) {
-            for (texture, first, count, hint) in &o.groups {
+            for (k, (texture, first, count, hint)) in o.groups.iter().enumerate() {
                 let (mut verts, mut uvs) = (Vec::new(), Vec::new());
                 for t in *first..first + count {
                     let tri = [o.positions[3 * t], o.positions[3 * t + 1], o.positions[3 * t + 2]];
@@ -246,7 +246,11 @@ pub(super) fn tile_model(
                     }
                 }
                 if !verts.is_empty() {
-                    let props = if *hint != 0 { format!("  transparencyhint {hint}\n") } else { String::new() };
+                    let mut props = if *hint != 0 { format!("  transparencyhint {hint}\n") } else { String::new() };
+                    // (a glowing mesh keeps its glow: crystals, mushrooms, embers)
+                    if let Some(c) = o.glow.get(k).filter(|c| c.iter().any(|&x| x > 0.0)) {
+                        let _ = writeln!(props, "  selfillumcolor {} {} {}", num(c[0]), num(c[1]), num(c[2]));
+                    }
                     trimesh_listed(&mut s, &format!("{name}_o{node}"), name, texture, &props, &verts, &uvs);
                     node += 1;
                 }
