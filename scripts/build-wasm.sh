@@ -22,8 +22,10 @@ version=34
 sdk=${WASI_SDK:-target/wasi-sdk/wasi-sdk-$version.0-x86_64-linux}
 if [ ! -x "$sdk/bin/clang" ]; then
     mkdir -p target/wasi-sdk
-    curl -sSfL --retry 5 --retry-all-errors --retry-delay 5 "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$version/wasi-sdk-$version.0-x86_64-linux.tar.gz" |
-        tar -xz -C target/wasi-sdk
+    # (To a file, then unpacked: a retried download never reaches tar half-written.)
+    curl -sSfL --retry 5 --retry-all-errors --retry-delay 5 -o target/wasi-sdk/sdk.tar.gz \
+        "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$version/wasi-sdk-$version.0-x86_64-linux.tar.gz"
+    tar -xzf target/wasi-sdk/sdk.tar.gz -C target/wasi-sdk && rm target/wasi-sdk/sdk.tar.gz
 fi
 sdk=$(cd "$sdk" && pwd)
 rustup target add wasm32-wasip1 > /dev/null
