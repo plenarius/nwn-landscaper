@@ -27,6 +27,9 @@
 //! - `LANDSCAPER_HAKS` (or `--haks`): the haks the editor's placeables, models, blueprints and textures come from, in the
 //!   module's order, or `module` for the module checkout's own list; see [`haks`]. Default: on a team server the module's hak
 //!   list from the review service, else none (the game's own).
+//! - `LANDSCAPER_GAME`: `none` when the install the engine is given holds none of the game's files (the web demo's stand-in,
+//!   until the visitor gives it their game folder): `/api/me` says so, and the editor's panels that need the game say why they
+//!   are empty; see [`has_game`].
 //! - `LANDSCAPER_PARTICLES`: another particle pack's folder for an area's ambience. Default: the one built into the program
 //!   (`packs/particles`); see [`crate::ambience::installed`].
 //!
@@ -572,6 +575,11 @@ pub fn team_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
         );
     }
     out
+}
+
+/// Whether the engine has the game's own files: false when `LANDSCAPER_GAME` is `none` (the web demo's stand-in install).
+pub fn has_game() -> bool {
+    !std::env::var("LANDSCAPER_GAME").is_ok_and(|v| v.eq_ignore_ascii_case("none"))
 }
 
 #[cfg(test)]

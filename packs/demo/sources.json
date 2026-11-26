@@ -1,0 +1,62 @@
+{
+  "_": "The web demo's ground textures: one picture for each id of the starter set (src/starter_textures.json), so the editor's defaults and the sample landscapes paint without the game. `from` is where the picture comes from (ambientcg:<asset> or polyhaven:<asset>, both CC0), `metres` the ground its picture covers (it is repeated to fill the 4 m the Landscaper repeats a texture over), `standin` a picture made here from another of the pack's. make.py fetches, fits and writes them.",
+  "textures": [
+    { "id": "grassMedium", "from": "ambientcg:Grass004" },
+    { "id": "grassBright", "from": "ambientcg:Grass005" },
+    { "id": "grassMeadow", "from": "ambientcg:Grass001" },
+    { "id": "grassMoss", "from": "ambientcg:Ground037" },
+    { "id": "grassForest", "from": "ambientcg:Grass003" },
+    { "id": "grassSwamp", "from": "ambientcg:Grass002" },
+    { "id": "grassDry", "standin": { "of": "grassMedium", "tint": [1.25, 1.05, 0.55] } },
+
+    { "id": "dirt", "from": "ambientcg:Ground072" },
+    { "id": "dirtDark", "from": "polyhaven:mud_forest" },
+    { "id": "dirtBrown", "from": "polyhaven:brown_mud_dry" },
+    { "id": "dirtForest", "from": "polyhaven:forest_leaves_02" },
+    { "id": "mudSwamp", "from": "polyhaven:brown_mud_02" },
+    { "id": "mudCracked", "from": "polyhaven:mud_cracked_dry_03" },
+    { "id": "earthCracked", "from": "polyhaven:cracked_red_ground" },
+    { "id": "gravelPebbles", "from": "polyhaven:ganges_river_pebbles" },
+    { "id": "gravelGrey", "from": "polyhaven:rocks_ground_01" },
+    { "id": "gravelMuddy", "from": "polyhaven:brown_mud_rocks_01" },
+
+    { "id": "sandFine", "from": "polyhaven:coast_sand_01" },
+    { "id": "sandSoft", "from": "polyhaven:dense_sand" },
+    { "id": "sandDune", "from": "polyhaven:sand_01" },
+    { "id": "sandSilt", "from": "polyhaven:damp_sand" },
+
+    { "id": "rock", "from": "ambientcg:Rock030" },
+    { "id": "rockCliff", "from": "ambientcg:Rock028" },
+    { "id": "swampRock", "from": "ambientcg:Rock036" },
+    { "id": "canyonRock", "from": "ambientcg:Rock029" },
+    { "id": "winterRock", "from": "ambientcg:Rock023" },
+    { "id": "rockGrey", "from": "ambientcg:Rock020" },
+    { "id": "rockRed", "from": "ambientcg:Rock061" },
+    { "id": "rockPale", "from": "ambientcg:Rock026" },
+    { "id": "rockMossy", "from": "polyhaven:mossy_rock" },
+    { "id": "rockCave", "from": "ambientcg:Rock033" },
+    { "id": "rockSlate", "from": "ambientcg:Rock022" },
+    { "id": "rockBrown", "from": "ambientcg:Rock049" },
+    { "id": "rockFrosted", "from": "ambientcg:Rock025" },
+
+    { "id": "snowFresh", "from": "ambientcg:Snow010A" },
+    { "id": "snowPacked", "from": "polyhaven:snow_02" },
+    { "id": "snowDrift", "from": "ambientcg:Snow008A" },
+    { "id": "iceFloor", "standin": { "of": "snowPacked", "tint": [0.78, 0.9, 1.0], "smooth": 2 } },
+
+    { "id": "floorBrick", "from": "polyhaven:worn_brick_floor" },
+    { "id": "floorFlag", "from": "polyhaven:monastery_stone_floor" },
+    { "id": "floorStone", "from": "polyhaven:stone_floor" },
+    { "id": "floorCobble", "from": "polyhaven:cobblestone_floor_001" },
+    { "id": "floorSlabs", "from": "polyhaven:medieval_blocks_03" },
+    { "id": "floorPlank", "from": "polyhaven:old_wood_floor" },
+    { "id": "woodOld", "from": "polyhaven:weathered_planks" },
+
+    { "id": "wallFieldstone", "from": "polyhaven:stone_wall" },
+    { "id": "wallMossy", "from": "polyhaven:mossy_stone_wall" },
+    { "id": "wallField", "from": "polyhaven:stacked_stone_wall" },
+    { "id": "wallWeathered", "from": "polyhaven:medieval_wall_01" },
+    { "id": "wallDark", "from": "polyhaven:castle_wall_slates" },
+    { "id": "wallWood", "from": "polyhaven:dark_wooden_planks" }
+  ]
+}
