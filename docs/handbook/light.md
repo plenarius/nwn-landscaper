@@ -15,7 +15,7 @@ An area has one sun by day and one moon by night. You set their colours, how str
 
 **Show in the view** draws the area by day or by night, so you see the light the game will use.
 
-![The Sky & fog panel by night](../assets/handbook/light.webp)
+![The Sky & fog panel by night: the view shows the moon's light and the fireflies](../assets/handbook/light.webp)
 
 ## Shadows
 

@@ -16,9 +16,12 @@ in [The whole path](../BUILDER-WORKFLOW.md#checks-before-it-is-handed-over).
 
 ## Package for your module
 
-Without a review service, **Publish** builds a zip in the layout of your module's source: the area and tile files, the texture
+Without a review service, **Share > Package for your module** builds a zip in the layout of your module's source: the area and tile files, the texture
 library (and the skies' hak when the area has one), your new blueprints, conversations and scripts, `module.ifo.json` with the
-area added, and a `MANIFEST.md`. Unzip it into your module's repository and commit it.
+area added, and a `MANIFEST.md`. Unzip it into your module's repository and commit it. It needs `nwn_gff` from
+[neverwinter.nim](https://github.com/niv/neverwinter.nim) on your `PATH`.
+
+![The Share menu without a review service: Package for your module](../assets/handbook/publish.webp)
 
 ## Publish to the team
 
@@ -31,8 +34,6 @@ On a team server with a review service, **Share > Publish to the team** opens pu
 
 **Try on dev**, in the same dialog, puts what this would publish on the team's development server with no restart, to walk it in
 the game first. **Keep it longer** holds it there; **Release** puts the server's areas back.
-
-![The Publish dialog](../assets/handbook/publish.webp)
 
 ## Working as a team
 
