@@ -1,7 +1,7 @@
 # Atmosphere and skies
 
-An area's look is its light, its fog and its sky. The light and fog are set in the **Sky & fog** panel; the sky is a row of the
-game's `skyboxes.2da`, set in **Area settings**.
+An area's look is its light, its fog and its sky, all set in the **Sky & fog** panel: a look sets the light and fog and picks
+the sky that suits them.
 
 ## Pick a look
 
@@ -11,6 +11,7 @@ game's `skyboxes.2da`, set in **Area settings**.
 | --- | --- |
 | Clear day | open ground in daylight, day and night cycling |
 | Golden haze | a low sun, warm light |
+| Dawn | early light through haze |
 | Dusk | evening light |
 | Overcast | grey, even light |
 | Swamp | green fog, close in |
@@ -26,8 +27,10 @@ lets the camera see.
 
 ## Pick a sky
 
-**Area > Area settings**, **Sky box**: the sky the game draws over the area, from the module's `skyboxes.2da`. The sample
-landscapes in *New area* pick one that fits their light.
+Each look picks its sky: the [Preset skies](../PRESET-SKIES.md) one made for it when that pack is installed, else the game's
+nearest. **Sky** in the same panel shows the sky's picture and lists the installed skies and the module's own rows of
+`skyboxes.2da`, to pick another; the 3D view draws it around the camera, by day or by night. Under ground there is no sky. The
+sample landscapes in *New area* take their look's sky.
 
 ## More skies
 
