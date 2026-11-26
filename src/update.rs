@@ -75,9 +75,9 @@ pub fn add_area_of(installed: &Path, fresh: &Path, area: mg_core::ResRef, hak: &
     Ok(name)
 }
 
-/// An area's haks: its own, then the shared one.
-fn haks(hak: &str) -> [String; 2] {
-    [hak.to_string(), crate::shared::HAK.to_string()]
+/// An area's haks: its own, then the shared one, then the skies' when it has a Landscaper sky.
+fn haks(hak: &str) -> Vec<String> {
+    crate::generator::our_haks(hak, crate::skies::area_sky().is_some())
 }
 
 /// The hak list of a module the area `hak` is installed in (its `module.ifo` root `info`): the area's and the shared hak first,

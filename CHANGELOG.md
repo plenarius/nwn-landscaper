@@ -14,6 +14,11 @@ and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/
   line keeps to one height, under the water. In a 10 by 10 test area with a river, no vertex of the mud is above the water
   (150 before, up to 0.23 m), and the tile models are 3% smaller. The editor still draws steep ground with the nearest sample.
 
+- **Sky packs.** `landscaper skies get`, `list`, `remove-pack` and `pack` install skies the way texture packs install textures
+  (docs/SKY-PACKS.md). Each sky takes the first free rows of the module's `skyboxes.2da` from 32 up; an area that names one
+  (`"atmosphere": { "sky": "<id>" }`) exports with that row, and with `ls_skies.hak`: the skies' files and the module's table
+  with their rows. The export refuses a module whose hak list puts another `skyboxes.2da` above `ls_skies`. Texture and sky
+  packs now share one download, check and install.
 - **Water too shallow to see is dry ground.** The game draws water under about 15 cm almost clear, so a bank a few
   centimetres under the water looked dry until a footstep rippled it. Ground under less than 15 cm of water now exports dry:
   no water surface, the ground's own footsteps and walkmesh surface. It still carries the flood, so a shallow ford doesn't

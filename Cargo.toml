@@ -57,6 +57,8 @@ readme = "README.md"
 # `[patch."https://github.com/plenarius/nwn-bake"]` at a checkout (README, "Development").
 nwn-bake = { git = "https://github.com/plenarius/nwn-bake", tag = "v0.7.0" }
 mg-core = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+# skyboxes.2da: the module's, read and written with the sky packs' rows.
+mg-2da = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-mdl = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-erf = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-gff = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }

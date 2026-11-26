@@ -33,6 +33,7 @@ mod newscript;
 mod objects;
 mod occluders;
 mod oracle;
+mod packs;
 mod paint;
 mod pathnode;
 mod plants;
@@ -49,6 +50,7 @@ mod settings;
 mod shade;
 mod shared;
 mod sim;
+mod skies;
 mod switches;
 mod textures;
 mod things;
@@ -221,6 +223,7 @@ fn run(cli: cli::Cli) -> Result<()> {
             }
         }
         C::Textures(t) => textures::run(t)?,
+        C::Skies(s) => skies::run(s)?,
         C::DevPack { base, workspace, hak_dir, area, waypoint, out_dir, entry_area } => {
             let report = devpack::pack(&base, &workspace, &hak_dir, &area, &waypoint, entry_area.as_deref(), &out_dir)?;
             println!("{}", serde_json::to_string_pretty(&report)?);

@@ -96,6 +96,9 @@ pub enum Command {
     /// Fill the texture library
     #[command(subcommand)]
     Textures(Textures),
+    /// Install skies: sky packs, their skyboxes.2da rows and ls_skies.hak (docs/SKY-PACKS.md)
+    #[command(subcommand)]
+    Skies(Skies),
     /// Make the dev server's test module from the production module and a builder's export
     DevPack {
         /// The production module (.mod)
@@ -236,6 +239,44 @@ pub enum Textures {
     /// Make a texture pack's zip from a list of pictures (docs/TEXTURE-PACKS.md, "Making a pack")
     Pack {
         /// The JSON list of the pack's fields and pictures
+        list: PathBuf,
+        /// The folder the zip goes in
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
+        /// An index file to add the pack to (made if missing)
+        #[arg(long, value_name = "FILE")]
+        index: Option<PathBuf>,
+    },
+}
+
+/// `landscaper skies`' commands: the installed skies.
+#[derive(Subcommand, Debug)]
+pub enum Skies {
+    /// Install a sky pack: its id in the list of packs, a URL or a .zip; its skies take free skyboxes.2da rows
+    Get {
+        /// A pack's id, a URL or a .zip file
+        pack: String,
+        /// The list of packs to look the id up in [default: LANDSCAPER_PACKS_URL, else the Landscaper's own]
+        #[arg(long, value_name = "URL")]
+        index: Option<String>,
+    },
+    /// List the installed skies with their rows, the installed sky packs and those available
+    List {
+        /// The list of packs [default: LANDSCAPER_PACKS_URL, else the Landscaper's own]
+        #[arg(long, value_name = "URL")]
+        index: Option<String>,
+    },
+    /// Remove an installed sky pack (refused while an area uses one of its skies)
+    RemovePack {
+        /// The pack's id
+        id: String,
+        /// Remove it even so: those areas then don't export until it is installed again
+        #[arg(long)]
+        force: bool,
+    },
+    /// Make a sky pack's zip from a list of models and pictures (docs/SKY-PACKS.md, "Making a pack")
+    Pack {
+        /// The JSON list of the pack's fields, files and skies
         list: PathBuf,
         /// The folder the zip goes in
         #[arg(long, value_name = "DIR")]

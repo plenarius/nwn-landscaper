@@ -178,12 +178,16 @@ of 8,192 px and a `skyboxes.2da` row.
 
 **Decided: sky packs, a sibling of texture packs.** The same index, download, hash and atomic install as texture packs, with a
 `kind: "sky"` in the index. A sky pack holds models, DDS textures (at most 8,192 px wide, under NWSync's 15 MB) and one entry per
-sky (id, name, the four models, the preset it suits). Installed skies go into `ls_skies.hak`.
+sky (id, name, the four models, the preset it suits). Installed skies go into `ls_skies.hak`. Built in step 2
+([SKY-PACKS.md](SKY-PACKS.md)), with two changes: the index lists sky packs in a `skies` list of their own, since the released
+Landscapers read every entry of `packs` as a texture pack; and the area keeps its sky's id in its atmosphere
+(`"atmosphere": { "sky": "dusk" }`), the Sky & fog panel's own settings.
 
 - **Rows never clash:** the module's `skyboxes.2da` (from its haks, as placeables are read today) decides the rows. At install
   the Landscaper takes the first free run of rows from 32 up and records it. Export writes a `skyboxes.2da` into `ls_skies.hak`:
   the module's table with the pack's rows added. That hak must sit above the module's other haks with a `skyboxes.2da`; the export
-  refuses otherwise and says which hak.
+  refuses otherwise and says which hak. (The exported module lists it above them itself, so the check is of the module's own
+  hak list, the editor's haks.)
 
 Considered and not chosen: **one fixed hak with fixed rows** (say 200 to 220). Simpler, and wrong for any module whose table
 already uses those rows.

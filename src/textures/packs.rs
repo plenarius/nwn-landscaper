@@ -14,7 +14,6 @@
 //! renamed, because a saved area names its textures by id.
 
 use std::collections::{BTreeSet, HashSet};
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -23,33 +22,16 @@ use serde_json::{Value, json};
 use sha2::Digest;
 
 use super::{Library, MAX_ID, RENDER, SWATCH};
+pub use crate::packs::{Expect, FORMAT, Progress, Source, index_url, valid_pack_id};
+use crate::packs::{INDEX_SWATCHES, Kind, Moves, Staging, hex, plain_name};
 use crate::paint;
 
-/// The pack and index format this engine reads.
-pub const FORMAT: u64 = 1;
-/// Where the list of packs is when `LANDSCAPER_PACKS_URL` is not set: an asset of the `texture-packs` release.
-pub const DEFAULT_INDEX: &str = "https://github.com/plenarius/nwn-landscaper/releases/download/texture-packs/index.json";
-/// The largest pack downloaded, unless `LANDSCAPER_PACK_MAX_MB` says otherwise. A 512 px texture and its swatch are under 1 MB.
-const DEFAULT_MAX_MB: u64 = 512;
-/// The largest `pack.json` and index read.
-const MAX_MANIFEST: u64 = 4 << 20;
 /// The largest picture in a pack (a 512 x 512 RGBA PNG, uncompressed, is 1 MB).
 const MAX_FILE: u64 = 16 << 20;
 /// The most textures one pack holds.
 const MAX_TEXTURES: usize = 4096;
-/// How many swatches an index entry shows, and their size.
-const INDEX_SWATCHES: usize = 6;
+/// The size of the index's swatches.
 const INDEX_SWATCH: u32 = 64;
-
-/// Where an index lists its packs: `LANDSCAPER_PACKS_URL` (a URL or a file), else [`DEFAULT_INDEX`].
-pub fn index_url() -> String {
-    std::env::var("LANDSCAPER_PACKS_URL").ok().map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).unwrap_or(DEFAULT_INDEX.into())
-}
-
-fn max_pack_bytes() -> u64 {
-    std::env::var("LANDSCAPER_PACK_MAX_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).filter(|&n| n > 0).unwrap_or(DEFAULT_MAX_MB)
-        << 20
-}
 
 /// One picture of a pack texture: its file name in the zip and the library, and the sha256 of its bytes.
 #[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq)]
@@ -115,38 +97,18 @@ pub struct Manifest {
     pub textures: Vec<PackTexture>,
 }
 
-fn plain_text(s: &str, max: usize) -> bool {
-    !s.trim().is_empty() && s.chars().count() <= max && !s.chars().any(char::is_control)
-}
-
-/// Whether `id` can be a pack's id: 1 to 40 lower-case letters, digits and `-`, starting with a letter.
-pub fn valid_pack_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 40
-        && id.starts_with(|c: char| c.is_ascii_lowercase())
-        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-}
-
 /// Checks a manifest on its own: its fields, ids and file names (not the library it goes into).
 pub fn validate(m: &Manifest) -> Result<()> {
-    ensure!(m.format == FORMAT, "pack format {} (this Landscaper reads {FORMAT}): update the Landscaper", m.format);
-    ensure!(valid_pack_id(&m.id), "'{}' is not a pack id (1 to 40 lower-case letters, digits and -, starting with a letter)", m.id);
-    ensure!(
-        !m.version.is_empty() && m.version.len() <= 32 && m.version.chars().all(|c| c.is_ascii_alphanumeric() || ".+-".contains(c)),
-        "'{}' is not a pack version",
-        m.version
-    );
-    ensure!(plain_text(&m.name, 80), "the pack's name is empty or too long");
-    ensure!(m.description.chars().count() <= 2000, "the pack's description is over 2000 characters");
-    ensure!(plain_text(&m.licence, 200), "the pack says no licence");
-    ensure!(m.credits.iter().all(|c| plain_text(c, 200)) && m.credits.len() <= 100, "a credit is empty or too long");
-    ensure!(
-        (2..=4).contains(&m.prefix.len())
-            && m.prefix.starts_with(|c: char| c.is_ascii_lowercase())
-            && m.prefix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
-        "'{}' is not a pack prefix (2 to 4 lower-case letters and digits, starting with a letter)",
-        m.prefix
-    );
+    crate::packs::check_about(&crate::packs::About {
+        format: m.format,
+        id: &m.id,
+        version: &m.version,
+        name: &m.name,
+        description: &m.description,
+        licence: &m.licence,
+        credits: &m.credits,
+        prefix: &m.prefix,
+    })?;
     ensure!(!m.textures.is_empty(), "the pack has no textures");
     ensure!(m.textures.len() <= MAX_TEXTURES, "the pack has {} textures; at most {MAX_TEXTURES}", m.textures.len());
     let starter: HashSet<String> = super::starter_ids().into_iter().map(|i| paint::resref(&i)).collect();
@@ -167,168 +129,15 @@ pub fn validate(m: &Manifest) -> Result<()> {
         let hak = paint::resref(&t.id);
         ensure!(haks.insert(hak.clone()), "{}: two textures of the pack would both be {hak} in the hak", t.id);
         ensure!(!starter.contains(&hak), "{}: the starter set has that texture id", t.id);
-        ensure!(plain_text(&t.name, 80), "{}: its name is empty or too long", t.id);
-        ensure!(plain_text(&t.category, 40), "{}: its category is empty or too long", t.id);
+        ensure!(crate::packs::plain_text(&t.name, 80), "{}: its name is empty or too long", t.id);
+        ensure!(crate::packs::plain_text(&t.category, 40), "{}: its category is empty or too long", t.id);
         ensure!(t.surface <= 255, "{}: surface {} is not a surfacemat.2da row", t.id, t.surface);
         for (f, want) in [(&t.files.render, format!("{}.png", t.id)), (&t.files.swatch, format!("{}_128.png", t.id))] {
             ensure!(f.path == want, "{}: its picture is {}; a pack names it {want}", t.id, f.path);
-            ensure!(f.sha256.len() == 64 && f.sha256.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')), "{}: a bad sha256", f.path);
+            ensure!(crate::packs::valid_sha256(&f.sha256), "{}: a bad sha256", f.path);
         }
     }
     Ok(())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// A folder inside the library for one install's download and pictures, removed when dropped.
-struct Staging(PathBuf);
-
-impl Staging {
-    fn new(library: &Path) -> Result<Staging> {
-        static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-        let dir = library.join(".incoming").join(format!("{}-{n}-{t}", std::process::id()));
-        std::fs::create_dir_all(&dir).with_context(|| format!("making {}", dir.display()))?;
-        Ok(Staging(dir))
-    }
-}
-
-impl Drop for Staging {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-        // (`.incoming` itself too, once no other install is using it: removing a folder that isn't empty fails.)
-        if let Some(parent) = self.0.parent() {
-            let _ = std::fs::remove_dir(parent);
-        }
-    }
-}
-
-/// Where a pack comes from.
-#[derive(Debug, Clone)]
-pub enum Source {
-    /// Downloaded (http or https).
-    Url(String),
-    /// A zip on this machine.
-    File(PathBuf),
-}
-
-impl Source {
-    /// A URL (`http://`, `https://`), else a file (`file://` taken off).
-    pub fn parse(s: &str) -> Source {
-        if s.starts_with("http://") || s.starts_with("https://") {
-            Source::Url(s.to_string())
-        } else {
-            Source::File(PathBuf::from(s.strip_prefix("file://").unwrap_or(s)))
-        }
-    }
-
-    fn label(&self) -> String {
-        match self {
-            Source::Url(u) => u.clone(),
-            Source::File(p) => p.file_name().map_or_default(|n| n.to_string_lossy().into_owned()),
-        }
-    }
-}
-
-/// What the index says a pack must be: its zip's size and sha256.
-#[derive(Debug, Clone, Default)]
-pub struct Expect {
-    /// The zip's size in bytes.
-    pub size: Option<u64>,
-    /// The zip's sha256 (hex).
-    pub sha256: Option<String>,
-}
-
-/// Steps an install reports: (`downloading` | `checking` | `installing`, done, total), in bytes or files.
-pub type Progress<'a> = &'a dyn Fn(&'static str, u64, u64);
-
-fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(std::time::Duration::from_secs(20))
-        .timeout_read(std::time::Duration::from_secs(60))
-        .user_agent(concat!("landscaper/", env!("CARGO_PKG_VERSION")))
-        .build()
-}
-
-fn http_error(url: &str, e: &ureq::Error) -> anyhow::Error {
-    anyhow::anyhow!("{url}: {}", crate::remote::why(e))
-}
-
-/// Copies `from` to `to`, at most `max` bytes, reporting progress; the sha256 of what it copied. `length` is what the sender
-/// said it would send: fewer bytes is a download that stopped.
-fn copy_capped(from: &mut dyn Read, to: &Path, length: Option<u64>, max: u64, progress: Progress<'_>) -> Result<(u64, String)> {
-    if let Some(n) = length {
-        ensure!(n <= max, "the pack is {} MB; the most this server takes is {} MB (LANDSCAPER_PACK_MAX_MB)", n >> 20, max >> 20);
-    }
-    let mut out = std::io::BufWriter::new(std::fs::File::create(to).with_context(|| format!("creating {}", to.display()))?);
-    let mut h = sha2::Sha256::new();
-    let (mut done, mut buf) = (0u64, vec![0u8; 64 << 10]);
-    let total = length.unwrap_or(0);
-    loop {
-        let n = match from.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => bail!("the download stopped after {done} bytes: {e}"),
-        };
-        done += n as u64;
-        ensure!(done <= max, "the pack is over {} MB, the most this server takes (LANDSCAPER_PACK_MAX_MB)", max >> 20);
-        h.update(&buf[..n]);
-        out.write_all(&buf[..n])?;
-        progress("downloading", done, total);
-    }
-    out.flush()?;
-    if let Some(n) = length {
-        ensure!(done == n, "the download stopped after {done} of {n} bytes: try again");
-    }
-    Ok((done, hex(&h.finalize())))
-}
-
-/// The pack's zip on this machine: the file itself, or the download in `staging`. Checked against `expect`.
-fn fetch(source: &Source, staging: &Path, expect: &Expect, progress: Progress<'_>) -> Result<PathBuf> {
-    let max = max_pack_bytes();
-    let (path, size, sha) = match source {
-        Source::File(p) => {
-            let mut f = std::fs::File::open(p).with_context(|| format!("opening {}", p.display()))?;
-            let len = f.metadata()?.len();
-            ensure!(
-                len <= max,
-                "{} is {} MB; the most this server takes is {} MB (LANDSCAPER_PACK_MAX_MB)",
-                p.display(),
-                len >> 20,
-                max >> 20
-            );
-            let mut h = sha2::Sha256::new();
-            std::io::copy(&mut f, &mut h)?;
-            (p.clone(), len, hex(&h.finalize()))
-        }
-        Source::Url(url) => {
-            let resp = agent().get(url).call().map_err(|e| http_error(url, &e))?;
-            let length = resp.header("Content-Length").and_then(|v| v.trim().parse::<u64>().ok());
-            let to = staging.join("pack.zip");
-            let (size, sha) = copy_capped(&mut resp.into_reader(), &to, length.or(expect.size), max, progress)?;
-            (to, size, sha)
-        }
-    };
-    if let Some(want) = expect.size {
-        ensure!(size == want, "the pack is {size} bytes; the index says {want}: try again, or tell whoever publishes it");
-    }
-    if let Some(want) = &expect.sha256 {
-        ensure!(sha.eq_ignore_ascii_case(want), "the pack's sha256 is not the one the index gives: it was changed or cut off");
-    }
-    Ok(path)
-}
-
-/// Whether `name` (an entry of a pack's zip) is a plain file name: no folder, nothing hidden, nothing a file system reads as a
-/// path of its own.
-fn plain_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 64
-        && !name.starts_with('.')
-        && !name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
 }
 
 /// The width and height a PNG says it is, before its pixels are read (a picture that says it is huge is refused unread).
@@ -339,53 +148,21 @@ fn png_size(path: &Path) -> Result<(u32, u32)> {
     Ok((reader.info().width, reader.info().height))
 }
 
-/// Reads the pack `zip` into `staging`: its manifest, checked, and each picture it lists, its sha256 and its picture checked.
-/// Anything in the zip that the manifest doesn't list, or that isn't a plain file name, is refused.
+/// Reads the pack `zip` into `staging` ([`crate::packs::unzip`]): its manifest, checked, and each picture it lists, its sha256
+/// and its picture checked.
 fn unpack(zip: &Path, staging: &Path, progress: Progress<'_>) -> Result<Manifest> {
-    let file = std::fs::File::open(zip).with_context(|| format!("opening {}", zip.display()))?;
-    let mut archive = zip::ZipArchive::new(std::io::BufReader::new(file)).context("the pack is not a zip, or it was cut off")?;
-    let manifest: Manifest = {
-        let entry = archive.by_name("pack.json").context("the pack has no pack.json")?;
-        let mut text = Vec::new();
-        entry.take(MAX_MANIFEST + 1).read_to_end(&mut text)?;
-        ensure!(text.len() as u64 <= MAX_MANIFEST, "pack.json is over {} MB", MAX_MANIFEST >> 20);
-        serde_json::from_slice(&text).context("pack.json")?
-    };
-    validate(&manifest)?;
-    let mut want: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for t in &manifest.textures {
-        want.insert(t.files.render.path.clone(), t.files.render.sha256.clone());
-        want.insert(t.files.swatch.path.clone(), t.files.swatch.sha256.clone());
-    }
-    let total = want.len() as u64;
-    let mut seen = HashSet::new();
-    let mut extracted = 0u64;
-    for k in 0..archive.len() {
-        let mut entry = archive.by_index(k)?;
-        let name = entry.name().to_string();
-        ensure!(plain_name(&name) && entry.enclosed_name().is_some(), "the pack holds '{name}': a pack's files are plain file names");
-        ensure!(!entry.is_dir() && !entry.is_symlink(), "the pack holds '{name}', which is not a file");
-        ensure!(seen.insert(name.to_ascii_lowercase()), "the pack holds '{name}' twice");
-        if name == "pack.json" {
-            continue;
+    let manifest = crate::packs::unzip(zip, staging, MAX_FILE, progress, |text| {
+        let m: Manifest = serde_json::from_slice(text).context("pack.json")?;
+        validate(&m)?;
+        let mut want = std::collections::HashMap::new();
+        for t in &m.textures {
+            want.insert(t.files.render.path.clone(), t.files.render.sha256.clone());
+            want.insert(t.files.swatch.path.clone(), t.files.swatch.sha256.clone());
         }
-        let sha = want.get(&name).with_context(|| format!("the pack holds '{name}', which pack.json doesn't list"))?;
-        ensure!(entry.size() <= MAX_FILE, "{name} is over {} MB", MAX_FILE >> 20);
-        let to = staging.join(&name);
-        let mut out = std::fs::File::create(&to).with_context(|| format!("creating {}", to.display()))?;
-        let mut h = sha2::Sha256::new();
-        let mut data = Vec::new();
-        (&mut entry).take(MAX_FILE + 1).read_to_end(&mut data).with_context(|| format!("reading {name} from the pack"))?;
-        ensure!(data.len() as u64 <= MAX_FILE, "{name} is over {} MB", MAX_FILE >> 20);
-        h.update(&data);
-        ensure!(hex(&h.finalize()) == *sha, "{name}: its sha256 is not the one pack.json gives (the pack is damaged)");
-        out.write_all(&data)?;
-        extracted += 1;
-        progress("checking", extracted, total);
-    }
+        Ok((m, want))
+    })?;
     for t in &manifest.textures {
         for (f, max) in [(&t.files.render, RENDER), (&t.files.swatch, SWATCH)] {
-            ensure!(seen.contains(&f.path.to_ascii_lowercase()), "pack.json lists {}, which the pack doesn't hold", f.path);
             let p = staging.join(&f.path);
             let (w, h) = png_size(&p)?;
             ensure!(w > 0 && h > 0 && w <= max && h <= max, "{}: {w} x {h} px; at most {max} a side", f.path);
@@ -476,7 +253,7 @@ fn install_into(
 ) -> Result<Installed> {
     std::fs::create_dir_all(dir)?;
     let staging = Staging::new(dir)?;
-    let zip = fetch(source, &staging.0, expect, progress)?;
+    let zip = crate::packs::fetch(source, &staging.0, expect, progress)?;
     let pictures = staging.0.join("pictures");
     std::fs::create_dir_all(&pictures)?;
     let m = unpack(&zip, &pictures, progress)?;
@@ -507,24 +284,13 @@ fn install_into(
     }
 
     // Move the pictures in, the ones they replace set aside, so a failure puts everything back.
-    let aside = staging.0.join("aside");
-    std::fs::create_dir_all(&aside)?;
-    let mut moved: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
+    let mut moves = Moves::new(staging.0.join("aside"))?;
     let total = (m.textures.len() * 2) as u64;
     let result = (|| -> Result<()> {
         for t in &m.textures {
             for f in [&t.files.render, &t.files.swatch] {
-                let to = dir.join(&f.path);
-                let kept = if to.exists() {
-                    let a = aside.join(&f.path);
-                    std::fs::rename(&to, &a).with_context(|| format!("setting {} aside", f.path))?;
-                    Some(a)
-                } else {
-                    None
-                };
-                moved.push((to.clone(), kept));
-                std::fs::rename(pictures.join(&f.path), &to).with_context(|| format!("moving {} into the library", f.path))?;
-                progress("installing", moved.len() as u64, total);
+                moves.put(&pictures.join(&f.path), dir, &f.path)?;
+                progress("installing", moves.len() as u64, total);
             }
         }
         library.entries.retain(|e| e["pack"] != m.id.as_str());
@@ -541,12 +307,7 @@ fn install_into(
         library.save()
     })();
     if let Err(e) = result {
-        for (to, kept) in moved.into_iter().rev() {
-            let _ = std::fs::remove_file(&to);
-            if let Some(a) = kept {
-                let _ = std::fs::rename(a, &to);
-            }
-        }
+        moves.undo();
         return Err(e);
     }
     for id in &dropped {
@@ -629,17 +390,7 @@ pub fn installed() -> Vec<Value> {
 /// The areas that paint with any of `ids`: working copies and exports, in this machine's data folder, or on a team server in
 /// every workspace (as `user: area`).
 pub fn areas_using(ids: &[String]) -> Vec<String> {
-    let roots: Vec<(String, PathBuf)> = if crate::workspace::team() {
-        std::fs::read_dir(crate::workspace::workspaces_dir())
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| e.file_name().to_str().and_then(crate::workspace::clean_user).map(|u| (format!("{u}: "), e.path())))
-            .collect()
-    } else {
-        vec![(String::new(), paint::data_dir())]
-    };
-    areas_using_in(&roots, ids)
+    areas_using_in(&crate::packs::area_roots(), ids)
 }
 
 /// The texture ids an area's ground is painted with: the entries of its `palette` that some sample's material names. A working
@@ -675,87 +426,20 @@ fn areas_using_in(roots: &[(String, PathBuf)], ids: &[String]) -> Vec<String> {
         return Vec::new();
     }
     let ids: HashSet<&str> = ids.iter().map(String::as_str).collect();
-    let mut out = BTreeSet::new();
-    for (label, root) in roots {
-        for d in ["areas", "exports"] {
-            for e in std::fs::read_dir(root.join(d)).into_iter().flatten().flatten() {
-                let file = e.file_name().to_string_lossy().into_owned();
-                let Some(area) = file.strip_suffix(".json").filter(|n| !n.contains('.') && !n.is_empty()) else { continue };
-                let Some(uses) = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<Uses>(&b).ok()) else { continue };
-                if painted_ids(&root.join(d), &uses.palette, uses.materials.as_deref()).iter().any(|p| ids.contains(p.as_str())) {
-                    out.insert(format!("{label}{area}"));
-                }
-            }
-        }
-    }
-    out.into_iter().collect()
+    crate::packs::areas_where(roots, |dir, bytes| {
+        serde_json::from_slice::<Uses>(bytes)
+            .is_ok_and(|u| painted_ids(dir, &u.palette, u.materials.as_deref()).iter().any(|p| ids.contains(p.as_str())))
+    })
 }
 
-/// Reads an index: `{ "format": 1, "packs": [...] }` at a URL or in a file. Each pack's `url` comes back absolute (a relative
-/// one is beside the index).
+/// Reads an index's texture packs ([`crate::packs::fetch_index`]).
 pub fn fetch_index(url: &str) -> Result<Vec<Value>> {
-    let (text, beside) = match Source::parse(url) {
-        Source::Url(u) => {
-            let resp = agent().get(&u).call().map_err(|e| http_error(&u, &e))?;
-            let mut b = Vec::new();
-            resp.into_reader().take(MAX_MANIFEST + 1).read_to_end(&mut b)?;
-            (b, None)
-        }
-        Source::File(p) => (std::fs::read(&p).with_context(|| format!("reading {}", p.display()))?, p.parent().map(Path::to_path_buf)),
-    };
-    ensure!(text.len() as u64 <= MAX_MANIFEST, "the index is over {} MB", MAX_MANIFEST >> 20);
-    let mut packs = parse_index(&text, url)?;
-    // A file's packs are files beside it (the folder as the system writes it: a Windows path has no `/` to cut at).
-    if let Some(dir) = beside {
-        let raw: Value = serde_json::from_slice(&text)?;
-        for p in &mut packs {
-            let given = raw["packs"].as_array().into_iter().flatten().find(|r| r["id"] == p["id"]).and_then(|r| r["url"].as_str());
-            if let Some(at) = given.map(str::trim).filter(|a| !a.contains("://") && !Path::new(a).is_absolute()) {
-                p["url"] = dir.join(at).to_string_lossy().into_owned().into();
-            }
-        }
-    }
-    Ok(packs)
-}
-
-fn parse_index(text: &[u8], url: &str) -> Result<Vec<Value>> {
-    let v: Value = serde_json::from_slice(text).context("the index is not JSON")?;
-    ensure!(v["format"].as_u64() == Some(FORMAT), "index format {} (this Landscaper reads {FORMAT})", v["format"]);
-    let base = match url.rfind('/') {
-        Some(k) => &url[..=k],
-        None => "",
-    };
-    let mut out = Vec::new();
-    for p in v["packs"].as_array().context("the index has no \"packs\"")? {
-        let s = |k: &str| p[k].as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-        let (Some(id), Some(name), Some(version), Some(at)) = (s("id"), s("name"), s("version"), s("url")) else { continue };
-        let sha = s("sha256").filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()));
-        let Some(sha) = sha else { continue };
-        let at = if at.contains("://") || at.starts_with('/') { at } else { format!("{base}{at}") };
-        let swatches: Vec<&str> = p["swatches"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .filter(|s| s.starts_with("data:image/png;base64,") && s.len() <= 64 << 10)
-            .take(INDEX_SWATCHES)
-            .collect();
-        out.push(json!({
-            "id": id, "name": name, "version": version, "url": at, "sha256": sha.to_ascii_lowercase(),
-            "description": s("description").unwrap_or_default(), "licence": s("licence").unwrap_or_default(),
-            "credits": p["credits"].as_array().cloned().unwrap_or_default(), "size": p["size"].as_u64(),
-            "textures": p["textures"].as_u64(), "categories": p["categories"].as_array().cloned().unwrap_or_default(),
-            "swatches": swatches, "homepage": s("homepage"),
-        }));
-    }
-    Ok(out)
+    crate::packs::fetch_index(url, Kind::Texture)
 }
 
 /// The index entry for `id`.
 pub fn find_in_index(index: &[Value], id: &str) -> Result<(Source, Expect)> {
-    let p = index.iter().find(|p| p["id"] == id).with_context(|| format!("the index lists no pack '{id}'"))?;
-    let url = p["url"].as_str().context("an index entry without a url")?;
-    Ok((Source::parse(url), Expect { size: p["size"].as_u64(), sha256: p["sha256"].as_str().map(str::to_string) }))
+    crate::packs::find_in_index(index, id)
 }
 
 // --- Making a pack ----------------------------------------------------------------------------------------------------------
@@ -856,15 +540,11 @@ pub fn make(list: &Path, out: &Path, index: Option<&Path>) -> Result<Made> {
     };
     validate(&m)?;
     let zip_path = out.join(format!("{}-{}.zip", m.id, m.version));
-    let bytes = zip_pack(&m, &files)?;
+    let bytes = crate::packs::zip_pack(&serde_json::to_vec_pretty(&m)?, &files)?;
     crate::atomic::write(&zip_path, &bytes)?;
     let sha256 = hex(&sha2::Sha256::digest(&bytes));
     let made = Made { zip: zip_path.clone(), size: bytes.len() as u64, sha256: sha256.clone(), textures: m.textures.len() };
     if let Some(index) = index {
-        let mut v: Value = match std::fs::read(index) {
-            Ok(b) => serde_json::from_slice(&b).with_context(|| format!("{}: not JSON", index.display()))?,
-            Err(_) => json!({ "format": FORMAT, "packs": [] }),
-        };
         let categories: Vec<&str> = m.textures.iter().map(|t| t.category.as_str()).collect::<BTreeSet<_>>().into_iter().collect();
         let shown: Vec<String> = spread(&swatches).into_iter().map(data_uri).collect::<Result<_>>()?;
         let entry = json!({
@@ -872,11 +552,7 @@ pub fn make(list: &Path, out: &Path, index: Option<&Path>) -> Result<Made> {
             "credits": m.credits, "url": zip_path.file_name().map_or_default(|n| n.to_string_lossy().into_owned()),
             "size": made.size, "sha256": sha256, "textures": m.textures.len(), "categories": categories, "swatches": shown,
         });
-        let packs = v["packs"].as_array_mut().context("the index has no \"packs\" list")?;
-        packs.retain(|p| p["id"] != m.id.as_str());
-        packs.push(entry);
-        v["format"] = FORMAT.into();
-        crate::atomic::write(index, &serde_json::to_vec_pretty(&v)?)?;
+        crate::packs::add_to_index(index, Kind::Texture, entry)?;
     }
     Ok(made)
 }
@@ -903,22 +579,6 @@ fn spread(swatches: &[(String, super::Rgba)]) -> Vec<&super::Rgba> {
     out
 }
 
-/// A pack's zip: pack.json, then the pictures, with no times in it, so the same list makes the same bytes.
-fn zip_pack(m: &Manifest, files: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
-    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    let at = zip::DateTime::default();
-    let json = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).last_modified_time(at);
-    // (PNGs are compressed already.)
-    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).last_modified_time(at);
-    z.start_file("pack.json", json)?;
-    z.write_all(&serde_json::to_vec_pretty(m)?)?;
-    for (name, data) in files {
-        z.start_file(name, stored)?;
-        z.write_all(data)?;
-    }
-    Ok(z.finish()?.into_inner())
-}
-
 /// A swatch at the index's size, as a `data:` URI the editor shows without another download.
 fn data_uri(img: &super::Rgba) -> Result<String> {
     use base64::Engine;
@@ -939,6 +599,7 @@ fn data_uri(img: &super::Rgba) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
 
     fn scratch(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("ls-packs-test-{}-{name}", std::process::id()));
@@ -1168,10 +829,10 @@ mod tests {
         assert!(format!("{e:#}").contains("stopped"), "{e:#}");
         assert_eq!(std::fs::read(dir.join("catalog.json")).unwrap(), before);
         // Over the cap: refused from its length, before any of it is kept.
-        let e = copy_capped(&mut &data[..], &src.join("x"), Some(10 << 30), 1 << 20, &quiet).unwrap_err();
+        let e = crate::packs::copy_capped(&mut &data[..], &src.join("x"), Some(10 << 30), 1 << 20, &quiet).unwrap_err();
         assert!(e.to_string().contains("most"), "{e}");
         // And without a length, as it passes the cap.
-        let e = copy_capped(&mut &vec![0u8; 3 << 20][..], &src.join("x"), None, 1 << 20, &quiet).unwrap_err();
+        let e = crate::packs::copy_capped(&mut &vec![0u8; 3 << 20][..], &src.join("x"), None, 1 << 20, &quiet).unwrap_err();
         assert!(e.to_string().contains("over 1 MB"), "{e}");
         // A whole one installs, its progress in bytes.
         let url = serve_once(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", data.len()), data.clone());
@@ -1227,22 +888,5 @@ mod tests {
         assert_eq!(areas_using_in(&roots, &["dmSlate".into()]), ["alice: old"]);
         assert_eq!(areas_using_in(&roots, &["dmClay".into()]), ["alice: road"]);
         assert!(areas_using_in(&roots, &["dmOther".into()]).is_empty());
-    }
-
-    #[test]
-    fn an_index_is_read_with_its_urls_made_whole() {
-        let sha = "ab".repeat(32);
-        let text = serde_json::to_vec(&json!({ "format": 1, "packs": [
-            { "id": "a", "name": "A", "version": "1", "url": "a-1.zip", "sha256": sha, "swatches": ["data:image/png;base64,AA", "https://x/y.png"] },
-            { "id": "b", "name": "B", "version": "1", "url": "https://cdn.example/b.zip", "sha256": sha },
-            { "id": "c", "name": "no hash", "version": "1", "url": "c.zip" },
-        ] }))
-        .unwrap();
-        let packs = parse_index(&text, "https://example.org/releases/index.json").unwrap();
-        assert_eq!(packs.len(), 2);
-        assert_eq!(packs[0]["url"], "https://example.org/releases/a-1.zip");
-        assert_eq!(packs[0]["swatches"], json!(["data:image/png;base64,AA"]));
-        assert_eq!(packs[1]["url"], "https://cdn.example/b.zip");
-        assert!(parse_index(br#"{ "format": 2, "packs": [] }"#, "x").is_err());
     }
 }
