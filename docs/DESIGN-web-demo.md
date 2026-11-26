@@ -1,6 +1,6 @@
 # Design: try the Landscaper in a browser
 
-Status: design, not built. Written 2026-11-26 from a spike, for the maintainer's review before any code; no question decided yet.
+Status: design, stage 1 being built. Written 2026-11-26 from a spike; every question but threads decided the same day.
 
 A public "try it" page: the editor and its engine both in the visitor's browser, nothing to install and no engine on a server.
 Visitors without the game sculpt, paint, check paths and export with art that isn't the game's; visitors with the game point the
@@ -154,11 +154,17 @@ The particle pack (`packs/particles`) is the Landscaper's own and is built into 
 
 ## Questions to settle
 
-Each gives the recommendation first and the options not chosen after it.
+Each gives the decision first and the options not chosen after it.
+
+**Decided (2026-11-26):** the engine as it is behind the editor's unchanged interface (question 1), in a Worker with the Service
+Worker only passing requests (question 2), areas on OPFS with Download and Open (question 3); community art used by the
+community's norm, the game's own files never served (question 4); Export asks for the game folder (question 5); `/try/` on the
+handbook site (question 6); the wasm built in CI (question 8); Moonglow's fixes kept on a patched copy of the maintainer's fork,
+nothing sent upstream (question 9). Threads (question 7) wait for stage 4.
 
 ### 1. How the engine answers the editor
 
-**Recommended: the engine as it is, one WASI program, the editor's HTTP API kept.** The spike shows it works with the editor
+**Decided: the engine as it is, one WASI program, the editor's HTTP API kept.** The spike shows it works with the editor
 unchanged: one engine, one API, one set of tests. Stage 1 keeps one run per request (2 to 11 ms with no game). Stage 2 turns the
 engine into a long-lived instance that keeps the game open between requests: the program exports one function, "answer this
 request", instead of `main` (a WASI reactor), about 4 hours.
@@ -174,7 +180,7 @@ Considered and not chosen:
 
 ### 2. Where the engine runs
 
-**Recommended: in a Worker the page starts, with the Service Worker only passing requests to it.** The spike ran the engine in
+**Decided: in a Worker the page starts, with the Service Worker only passing requests to it.** The spike ran the engine in
 the Service Worker itself, which was quickest, but:
 
 - **A browser may stop an idle Service Worker** (Chromium after about 30 s) and the engine's files in memory with it. Under
@@ -190,7 +196,7 @@ to become a blob URL first: a change across many files of the editor.
 
 ### 3. Where saved areas live
 
-**Recommended: the engine's workspace on OPFS.** browser_wasi_shim reads and writes OPFS files directly from a Worker
+**Decided: the engine's workspace on OPFS.** browser_wasi_shim reads and writes OPFS files directly from a Worker
 (`SyncOPFSFile`), so the engine's own save, `.bak` and texture library code works unchanged and lasts across visits. The page asks
 for persistent storage (`navigator.storage.persist()`), so the browser doesn't clear it under pressure, and File offers **Download
 area** (the `.json`) and **Open area** from a file, since storage in the browser is never a backup. Exports are downloads: the hak,
@@ -204,17 +210,18 @@ Considered and not chosen:
 
 ### 4. Art for visitors without the game
 
-**Recommended: a demo texture pack of the maintainer's own and CC0 textures, the stand-ins built by a script, and the panels that
-need the game saying so.** The texture pack format (`docs/TEXTURE-PACKS.md`) already carries everything the library needs; the
-demo installs it at start under the editor's default ids (`grassMedium`, `dirt`, `rock`, `rockCliff`, `wallFieldstone` and the
-others in `EDITOR_DEFAULTS`). CC0 photo textures (ambientCG, Poly Haven) need no permission. Community art from the Vault needs
-each author's permission in writing to go in a public pack, so it waits for the model pack (stage 3).
+**Decided: a demo texture pack of the maintainer's own, CC0 and NWN community art, the stand-ins built by a script, and the panels
+that need the game saying so.** The texture pack format (`docs/TEXTURE-PACKS.md`) already carries everything the library needs;
+the demo installs it at start under the editor's default ids (`grassMedium`, `dirt`, `rock`, `rockCliff`, `wallFieldstone` and the
+others in `EDITOR_DEFAULTS`). Community art follows the NWN community's norm: what was shared for the community is used, its
+author is credited where known, and it comes down if anyone asks. The one line is the game's own stock files, which the site never
+serves.
 
 Considered and not chosen: **the procedural textures of the spike.** Good enough to prove it, not to show the Landscaper off.
 
 ### 5. Export without the game
 
-**Recommended: Export asks for the game folder once, and reads the three shaders from it.** About 100 KB from an install the
+**Decided: Export asks for the game folder once, and reads the three shaders from it.** About 100 KB from an install the
 visitor must own to play the area anyway. Chromium remembers the folder (File System Access); Firefox and Safari pick it each
 visit through a folder upload field (`webkitdirectory`), which reads nothing until asked (its prompt says "upload", though
 nothing leaves the machine). Without a folder the export still
@@ -229,7 +236,7 @@ Considered and not chosen:
 
 ### 6. Hosting
 
-**Recommended: `/try/` on the handbook site** (`plenarius.github.io/nwn-landscaper/try/`, not there yet). The docs workflow downloads the
+**Decided: `/try/` on the handbook site** (`plenarius.github.io/nwn-landscaper/try/`, not there yet). The docs workflow downloads the
 release's `landscaper-wasm.zip` and the editor at the same tag, and copies them under `site/try/` before uploading the site. One
 site, one deploy, the handbook a click away.
 
@@ -242,23 +249,25 @@ Considered and not chosen: **a Pages repository of its own** (`nwn-landscaper-tr
 
 ### 7. Threads
 
-**Recommended: not before stage 4.** One thread costs little on small areas (the 8 by 8 export: 0.98 s native on one thread,
+**Left for stage 4; recommended: not before then.** One thread costs little on small areas (the 8 by 8 export: 0.98 s native on one thread,
 0.86 s on all). Only a 32 by 32 export gains (43 s against 14 s). Threads in WebAssembly need `SharedArrayBuffer`, which needs
 the page served with cross-origin isolation headers; Pages can't send them, but the Service Worker can add them to every answer it
 serves (the coi-serviceworker technique). Then a `wasm32-wasip1-threads` build with a thread pool in the shim.
 
 ### 8. Building the wasm
 
-**Recommended: a `wasm` job in CI, as cleanmodels does,** and the release attaching `landscaper-wasm.zip` beside the other
+**Decided: a `wasm` job in CI, as cleanmodels does,** and the release attaching `landscaper-wasm.zip` beside the other
 downloads. The job installs wasi-sdk and the `wasm32-wasip1` target and builds with link-time optimisation, stripped. A size
 check fails it above 3 MB with brotli. A Rust feature `web` (on for the WASI target) leaves out the network, the team server and
 import, rather than `cfg` lines in many files.
 
 ### 9. Moonglow and nwn-bake
 
-**Recommended: the changes go to Moonglow upstream and into an nwn-bake release,** then the Landscaper takes them by the usual
-bump (`MOONGLOW.md`). Moonglow is another maintainer's repository: its changes are small and keep its native code as it is, but
-its maintainer decides. If they decline, the Landscaper points `[patch]` at a fork until they do.
+**Decided: a patched copy of Moonglow, on a branch of the maintainer's fork (`plenarius/moonglow-toolset`), and the fixes in an
+nwn-bake release.** Nothing goes to Moonglow's original repository. The branch is the pinned Moonglow commit plus the WASI fixes,
+which leave native code as it is; only the wasm build uses it, through a `[patch]` in a Cargo configuration file of its own, so
+native builds keep the pinned Moonglow and `MOONGLOW.md`'s bump stays as it is. A Moonglow bump moves the branch to the new
+commit with the fixes on top.
 
 ## Stages
 
@@ -279,7 +288,7 @@ across visits.
 
 ### Stage 3: the model pack
 
-Placeables and plants of the maintainer's own and community art (with written permission), checked by cleanmodels, with their
+Placeables and plants of the maintainer's own and community art (credited, taken down on request), checked by cleanmodels, with their
 own `placeables.2da` rows, so Place, Scatter and baked objects work without the game. A sky pack of the Landscaper's own
 generated skies with it. Reuses the texture pack's checks and install.
 
@@ -310,22 +319,22 @@ maintainer's time is review and testing.
 | # | Step | Repository | Agent | Maintainer |
 |---|---|---|---|---|
 | 0 | Spike: what builds, the engine behind the editor in a Service Worker, measured. **Done** | engine, web | 4 h (took 1, with this design) | 20 min |
-| 1 | Moonglow: lazy BIF reads and read fallbacks on WASI, `strnicmp`; a pull request upstream | Moonglow | 3 h | 20 min |
-| 2 | nwn-bake: its thread pools run in turn on WASI; a release | nwn-bake | 2 h | 15 min |
-| 3 | The engine's WASI build: the `web` feature (no network, team server or import), `wasi-request` with its answer on its own stream, threads, process id; the CI `wasm` job and its size check; `landscaper-wasm.zip` in the release | engine | 6 h | 45 min |
+| 1 | Moonglow's patched copy: lazy BIF reads and read fallbacks on WASI, `strnicmp`, on a branch of the maintainer's fork | Moonglow (fork) | 3 h | 20 min |
+| 2 | nwn-bake: its thread pools run in turn on WASI; a release (the maintainer cuts it) | nwn-bake | 2 h | 15 min |
+| 3 | The engine's WASI build: its Cargo configuration taking the patched Moonglow and nwn-bake, the `web` feature (no network, team server or import), `wasi-request` with its answer on its own stream, threads, process id; the CI `wasm` job and its size check; `landscaper-wasm.zip` in the release | engine | 6 h | 45 min |
 | 4 | The page: the engine in a Worker, the Service Worker passing requests, OPFS, Download and Open area, export as a zip, the texts that name a server or a disk path | web | 8 h | 45 min, plus 30 min in Firefox and Safari |
 | 5 | Demo assets: the texture pack (the maintainer's and CC0), the stand-ins made by a script, panels that need the game saying so | engine, web | 4 h | 30 min, choosing textures |
 | 6 | The site: `/try/` built by the docs workflow from the release, a handbook page "Try it in your browser" | engine | 3 h | 20 min |
 | 7 | Export's shaders from the visitor's game folder (picker and upload field) | web, engine | 4 h | 20 min, plus 15 min in the game: a downloaded area |
 | 8 | Your own game: the folder read on demand, the long-lived engine, Place, Scatter, Things and Scripts from it | web, engine | 8 h | 45 min |
-| 9 | The model pack: placeables and plants, checked, with rows; a sky pack of generated skies | engine (`packs/`) | 8 h | 1 h, plus permissions |
+| 9 | The model pack: placeables and plants, checked, credited, with rows; a sky pack of generated skies | engine (`packs/`) | 8 h | 1 h |
 | 10 | Import in the page (`mg-area` without its drawing) | Moonglow, engine | 4 h | 20 min |
 | 11 | Threads: cross-origin isolation from the Service Worker, the threads build | web, engine | 8 h | 30 min |
 
 Stage 1 is steps 1 to 7: about 30 hours of agent time and 4 hours of the maintainer's. All eleven: about 58 hours and 6.5 hours.
 Steps 1, 2 and 5 can start at once; 3 needs 1 and 2; 4 needs 3; 6 needs 3 and 4; 7 and 8 need 4.
 
-**Work outside the hours above:** gathering the model pack's art and its authors' permission; choosing the demo's textures.
+**Work outside the hours above:** gathering the model pack's art and its credits; choosing the demo's textures.
 
 ## What this design could not check
 
