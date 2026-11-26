@@ -594,7 +594,7 @@ mod tests {
         assert_eq!(p2.resref("OnUsed").map(|r| r.to_string()).as_deref(), Some("tool_used"), "its toolset script stays");
         assert!(find(&git, "Placeable List", "lsupdt_p3").is_some());
         let haks = Module::open(&installed).unwrap().haks().unwrap();
-        assert!(haks.contains(&"lsupdt".to_string()) && haks.contains(&crate::shared::HAK.to_string()), "{haks:?}");
+        assert!(haks.iter().any(|h| h == "lsupdt") && haks.iter().any(|h| h == crate::shared::HAK), "{haks:?}");
 
         // Again with the editor's new light, and ground whose last version is unknown: the light goes in, nothing moves.
         let fog = serde_json::json!({ "sun": { "ambient": "#000000", "diffuse": "#000000", "fog": "#ff0000", "fogAmount": 5 },

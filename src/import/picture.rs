@@ -171,9 +171,9 @@ pub(super) fn inpaint(img: &mut Rgba, hole: &[bool], s: usize) {
         let (i, j) = (k % s, k / s);
         let (x0, y0, x1, y1) = (i.saturating_sub(2), j.saturating_sub(2), (i + 3).min(s), (j + 3).min(s));
         let n = ((x1 - x0) * (y1 - y0)) as u32;
-        for c in 0..3 {
-            let sum = at[y1 * w1 + x1][c] + at[y0 * w1 + x0][c] - at[y0 * w1 + x1][c] - at[y1 * w1 + x0][c];
-            img.data[k * 4 + c] = (sum / n) as u8;
+        let [a, b, c, d] = [at[y1 * w1 + x1], at[y0 * w1 + x0], at[y0 * w1 + x1], at[y1 * w1 + x0]];
+        for (ch, out) in img.data[k * 4..k * 4 + 3].iter_mut().enumerate() {
+            *out = ((a[ch] + b[ch] - c[ch] - d[ch]) / n) as u8;
         }
     }
 }
