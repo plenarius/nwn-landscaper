@@ -31,7 +31,12 @@
 //!   (`packs/particles`); see [`crate::ambience::installed`].
 //!
 //! The command line's `--root`, `--user`, `--tlk`, `--haks` and `--jobs` win over their variables: [`set_given`].
+//!
+//! Every setting can also be in the settings file, `settings.json` in the data folder, for a program started without a shell's
+//! environment (the desktop app, a double-click from the Dock): the environment wins over it. See [`setting`].
 
+use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -61,14 +66,25 @@ fn given() -> &'static Given {
     GIVEN.get_or_init(Given::default)
 }
 
-/// The game install `--root` named; None leaves it to `NWN_ROOT` and the usual places.
+/// The game install `--root` named, else the settings file's `NWN_ROOT` when the environment has none (taken as `--root` is);
+/// None leaves it to `NWN_ROOT` and the usual places.
 pub fn game_root() -> Option<PathBuf> {
-    given().root.clone()
+    given().root.clone().or_else(|| file_folder(&["NWN_ROOT"]))
 }
 
-/// The user folder `--user` named; None leaves it to `NWN_HOME` and the game's own rule.
+/// The user folder `--user` named, else the settings file's `NWN_HOME` (or `NWN_USER_DIRECTORY`) when the environment has
+/// neither; None leaves it to `NWN_HOME` and the game's own rule.
 pub fn game_user() -> Option<PathBuf> {
-    given().user.clone()
+    given().user.clone().or_else(|| file_folder(&["NWN_HOME", "NWN_USER_DIRECTORY"]))
+}
+
+/// The settings file's value of the first of `names`, when none of them is in the environment. (The game's own detection reads
+/// the environment's.)
+fn file_folder(names: &[&str]) -> Option<PathBuf> {
+    if names.iter().any(|n| std::env::var_os(n).is_some_and(|v| !v.is_empty())) {
+        return None;
+    }
+    names.iter().find_map(|n| file_settings().get(*n)).map(PathBuf::from)
 }
 
 /// The custom talk table: `--tlk`, else `LANDSCAPER_TLK`; None finds the only one in the user folder.
@@ -114,7 +130,7 @@ pub fn haks_from(v: Option<&str>) -> Haks {
 
 /// The review service's address and key: `LANDSCAPER_REVIEW_URL` and `LANDSCAPER_REVIEW_KEY`. None unless both are set.
 pub fn review_service() -> Option<(String, String)> {
-    review_service_from(&|k| std::env::var(k).ok())
+    review_service_from(&setting)
 }
 
 /// The setting with the review service's address.
@@ -141,7 +157,89 @@ pub fn service_key() -> Option<String> {
 }
 
 fn var(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
+    setting(name).filter(|v| !v.trim().is_empty())
+}
+
+/// The settings file: `settings.json` in the data folder ([`crate::paint::data_dir`]). One JSON object of settings, named as in
+/// the environment (`NWN_ROOT`, `NWN_HOME`, `LANDSCAPER_*`), each a string:
+/// `{ "NWN_ROOT": "D:\\Games\\Neverwinter Nights", "LANDSCAPER_HAKS": "my_plc,my_tex" }`. The desktop app writes the game's
+/// folders there; anyone may add the rest. The debugging switches (`LS_*`) stay in the environment.
+pub fn settings_file() -> PathBuf {
+    crate::paint::data_dir().join("settings.json")
+}
+
+/// A setting: the environment's value when it is set and not blank, else the settings file's, else the environment's blank one
+/// (so a blank variable means what it meant before there was a file).
+pub fn setting(name: &str) -> Option<String> {
+    setting_from(name, std::env::var(name).ok(), file_settings())
+}
+
+/// [`setting`] for a value that may not be UTF-8 (a path).
+pub fn setting_os(name: &str) -> Option<OsString> {
+    let env = std::env::var_os(name);
+    if env.as_ref().is_some_and(|v| v.to_str().is_none_or(|s| !s.trim().is_empty())) {
+        return env;
+    }
+    file_settings().get(name).map(OsString::from).or(env)
+}
+
+fn setting_from(name: &str, env: Option<String>, file: &BTreeMap<String, String>) -> Option<String> {
+    if env.as_deref().is_some_and(|v| !v.trim().is_empty()) {
+        return env;
+    }
+    file.get(name).cloned().or(env)
+}
+
+/// The settings file's settings, read once. A file that isn't there is none; one that can't be read or isn't a JSON object is
+/// said once and ignored, and so is each entry that isn't a setting.
+fn file_settings() -> &'static BTreeMap<String, String> {
+    static FILE: OnceLock<BTreeMap<String, String>> = OnceLock::new();
+    FILE.get_or_init(|| {
+        let path = settings_file();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return BTreeMap::new(),
+            Err(e) => {
+                eprintln!("warning: {} can't be read ({e}), so its settings are ignored", path.display());
+                return BTreeMap::new();
+            }
+        };
+        let (settings, problems) = settings_from(&text);
+        for p in problems {
+            eprintln!("warning: {}: {p}", path.display());
+        }
+        settings
+    })
+}
+
+/// A settings file's settings, and what in it was ignored and why. Only `NWN_ROOT`, `NWN_HOME`, `NWN_USER_DIRECTORY` and
+/// `LANDSCAPER_*` are settings; a number or true/false is taken as written, null leaves the setting unset.
+fn settings_from(text: &str) -> (BTreeMap<String, String>, Vec<String>) {
+    let mut settings = BTreeMap::new();
+    let mut problems = Vec::new();
+    let object = match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(serde_json::Value::Object(o)) => o,
+        Ok(_) => return (settings, vec!["it isn't a JSON object of settings, so it is ignored".into()]),
+        Err(e) => return (settings, vec![format!("it isn't JSON ({e}), so it is ignored")]),
+    };
+    for (name, value) in object {
+        if !(matches!(name.as_str(), "NWN_ROOT" | "NWN_HOME" | "NWN_USER_DIRECTORY") || name.starts_with("LANDSCAPER_")) {
+            problems.push(format!("{name} is no setting (NWN_ROOT, NWN_HOME or LANDSCAPER_*), so it is ignored"));
+            continue;
+        }
+        let value = match value {
+            serde_json::Value::String(v) => v,
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Null => continue,
+            _ => {
+                problems.push(format!("{name} isn't a string, so it is ignored"));
+                continue;
+            }
+        };
+        settings.insert(name, value);
+    }
+    (settings, problems)
 }
 
 /// The module's source checkout.
@@ -198,7 +296,7 @@ fn jobs() -> Option<usize> {
     static JOBS: OnceLock<Option<usize>> = OnceLock::new();
     *JOBS.get_or_init(|| {
         given().jobs.or_else(|| {
-            jobs_from(std::env::var("LANDSCAPER_JOBS").ok().as_deref()).unwrap_or_else(|v| {
+            jobs_from(setting("LANDSCAPER_JOBS").as_deref()).unwrap_or_else(|v| {
                 eprintln!("LANDSCAPER_JOBS={v:?} is not a whole number of 1 or more; ignoring it");
                 None
             })
@@ -296,7 +394,7 @@ impl Layout {
 
     /// The layout the environment describes.
     pub fn from_env() -> Layout {
-        Layout::from(&|k| std::env::var(k).ok())
+        Layout::from(&setting)
     }
 
     /// The folder of a type's blueprints, relative to the module.
@@ -417,7 +515,7 @@ impl AuthConfig {
 
     /// The sign-in settings the environment describes.
     pub fn from_env() -> AuthConfig {
-        AuthConfig::from(&|k| std::env::var(k).ok())
+        AuthConfig::from(&setting)
     }
 }
 
@@ -647,5 +745,37 @@ mod tests {
         // The forge's own settings.
         assert!(team_problems(&env(&[("LANDSCAPER_AUTH", "authentik"), ("LANDSCAPER_ALLOWED_GROUPS", "Builders")])).is_empty());
         assert!(team_problems(&env(&[("LANDSCAPER_AUTH", "Headers"), ("LANDSCAPER_ALLOWED_GROUPS", "*")])).is_empty());
+    }
+
+    #[test]
+    fn the_settings_file_holds_settings_and_says_what_it_ignores() {
+        let (s, problems) = settings_from(
+            r#"{ "NWN_ROOT": "D:\\Games\\Neverwinter Nights", "LANDSCAPER_JOBS": 4, "LANDSCAPER_TEAM": true,
+                 "LANDSCAPER_TLK": null, "XDG_DATA_HOME": "/x", "LS_FLAT": "1", "LANDSCAPER_HAKS": ["a"] }"#,
+        );
+        assert_eq!(s.get("NWN_ROOT").map(String::as_str), Some(r"D:\Games\Neverwinter Nights"));
+        assert_eq!((s["LANDSCAPER_JOBS"].as_str(), s["LANDSCAPER_TEAM"].as_str()), ("4", "true"));
+        // Null leaves it unset; the data folder and the debugging switches stay in the environment; a list is no value.
+        assert!(["LANDSCAPER_TLK", "XDG_DATA_HOME", "LS_FLAT", "LANDSCAPER_HAKS"].iter().all(|k| !s.contains_key(*k)));
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        assert!(problems.iter().any(|p| p.starts_with("XDG_DATA_HOME is no setting")));
+        assert!(problems.iter().any(|p| p.starts_with("LANDSCAPER_HAKS isn't a string")));
+        for broken in ["[1, 2]", "not json", ""] {
+            let (s, problems) = settings_from(broken);
+            assert!(s.is_empty() && problems.len() == 1, "{broken}: {problems:?}");
+        }
+    }
+
+    #[test]
+    fn the_environment_wins_over_the_settings_file_and_a_blank_variable_does_not() {
+        let file: BTreeMap<String, String> = [("LANDSCAPER_HAKS".to_string(), "from_file".to_string())].into();
+        let get = |env: Option<&str>| setting_from("LANDSCAPER_HAKS", env.map(String::from), &file);
+        assert_eq!(get(Some("from_env")).as_deref(), Some("from_env"));
+        assert_eq!(get(None).as_deref(), Some("from_file"));
+        assert_eq!(get(Some("  ")).as_deref(), Some("from_file"));
+        // Without the file, everything is as before it: a blank variable is still there, for the settings that look at that.
+        let none = BTreeMap::new();
+        assert_eq!(setting_from("LANDSCAPER_TEAM", Some(String::new()), &none).as_deref(), Some(""));
+        assert_eq!(setting_from("LANDSCAPER_TEAM", None, &none), None);
     }
 }
