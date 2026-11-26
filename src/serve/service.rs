@@ -58,8 +58,17 @@ pub(super) fn route(req: &tiny_http::Request) -> Option<Reply> {
     let answer = match route {
         "exports" => Ok(list()),
         "export" => export(&name),
-        "hak" => checked(&name).and_then(|()| stream(&name, export_id::hak_path(&name), header("If-None-Match"))),
-        "library" => stream("", nwn_user_dir().map(|d| d.join("hak").join(format!("{}.hak", crate::shared::HAK))), header("If-None-Match")),
+        "hak" => checked(&name).and_then(|()| stream(&format!("{name} has no hak"), export_id::hak_path(&name), header("If-None-Match"))),
+        "library" => stream(
+            "the texture library has no hak",
+            nwn_user_dir().map(|d| d.join("hak").join(format!("{}.hak", crate::shared::HAK))),
+            header("If-None-Match"),
+        ),
+        "skies" => stream(
+            &format!("no area here has a Landscaper sky: there is no {}.hak", crate::skies::HAK),
+            nwn_user_dir().map(|d| d.join("hak").join(format!("{}.hak", crate::skies::HAK))),
+            header("If-None-Match"),
+        ),
         _ => Err(refuse(404, "no such service route").into()),
     };
     let ok = answer.as_ref().is_ok_and(|r| r.status() < 400);
@@ -90,12 +99,15 @@ fn list() -> Reply {
     let library = nwn_user_dir().map(|d| d.join("hak").join(format!("{}.hak", crate::shared::HAK)));
     let library =
         library.and_then(|p| export_id::sha256_file(&p).ok()).map(|(sha, bytes)| serde_json::json!({ "bytes": bytes, "sha256": sha }));
-    let out: Vec<serde_json::Value> = names.iter().filter_map(|n| entry(n, library.as_ref())).collect();
+    let skies = nwn_user_dir().map(|d| d.join("hak").join(format!("{}.hak", crate::skies::HAK)));
+    let skies =
+        skies.and_then(|p| export_id::sha256_file(&p).ok()).map(|(sha, bytes)| serde_json::json!({ "bytes": bytes, "sha256": sha }));
+    let out: Vec<serde_json::Value> = names.iter().filter_map(|n| entry(n, library.as_ref(), skies.as_ref())).collect();
     json_response(200, &serde_json::Value::Array(out)).into()
 }
 
 /// One export of the list, or `None` when it isn't one this builder may fetch (an area not exported to NWN, an ended assignment).
-fn entry(name: &str, library: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+fn entry(name: &str, library: Option<&serde_json::Value>, skies: Option<&serde_json::Value>) -> Option<serde_json::Value> {
     let header_bytes = std::fs::read(exports_dir().join(format!("{name}.json"))).ok()?;
     let header: serde_json::Value = serde_json::from_slice(&header_bytes).ok()?;
     header["tiles"].as_u64()?;
@@ -107,7 +119,7 @@ fn entry(name: &str, library: Option<&serde_json::Value>) -> Option<serde_json::
     Some(serde_json::json!({
         "name": name, "area": rework.clone().unwrap_or_else(|| name.to_string()), "new": rework.is_none(),
         "module": header["module"].as_str().unwrap_or(name), "exported_at": exported_at, "export": export_id::of(&header_bytes, &sha),
-        "hak": { "bytes": bytes, "sha256": sha }, "library": library,
+        "hak": { "bytes": bytes, "sha256": sha }, "library": library, "skies": skies,
     }))
 }
 
@@ -127,12 +139,11 @@ fn export(name: &str) -> Result<Reply, Reply> {
     }
 }
 
-/// The file at `path` (a hak), streamed, with its SHA-256 as the `ETag`; 304 when `if_none_match` names it. `name` is only for messages.
-fn stream(name: &str, path: Option<std::path::PathBuf>, if_none_match: Option<String>) -> Result<Reply, Reply> {
-    let what = if name.is_empty() { "the texture library" } else { name };
+/// The file at `path` (a hak), streamed, with its SHA-256 as the `ETag`; 304 when `if_none_match` names it. `missing` is the refusal when there is no such file.
+fn stream(missing: &str, path: Option<std::path::PathBuf>, if_none_match: Option<String>) -> Result<Reply, Reply> {
     let path = path.ok_or_else(|| refuse(404, "no module folder"))?;
     let Ok(mut file) = std::fs::File::open(&path) else {
-        return Err(refuse(404, &format!("{what} has no hak")).into());
+        return Err(refuse(404, missing).into());
     };
     let (sha, len) = export_id::sha256_of(&path, &mut file).map_err(|e| refuse(500, &format!("{e:#}")))?;
     let etag = format!("\"{sha}\"");

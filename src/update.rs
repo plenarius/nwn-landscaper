@@ -68,16 +68,11 @@ pub fn add_area_of(installed: &Path, fresh: &Path, area: mg_core::ResRef, hak: &
         Some(list) => list.push(entry),
         None => info.root.set("Mod_Area_list", Value::List(vec![entry])),
     }
-    info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &installed_haks(&info.root, hak)));
+    info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &installed_haks(&info.root, hak, has_sky(&generated))));
     crate::models::give_tlk(&mut info.root);
     m.set_info(&info)?;
     crate::atomic::write(installed, &m.to_archive_bytes()?)?;
     Ok(name)
-}
-
-/// An area's haks: its own, then the shared one, then the skies' when it has a Landscaper sky.
-fn haks(hak: &str) -> Vec<String> {
-    crate::generator::our_haks(hak, crate::skies::area_sky().is_some())
 }
 
 /// Whether the freshly generated module `generated` lists the skies' hak: its area has a Landscaper sky.
@@ -85,11 +80,11 @@ fn has_sky(generated: &Module) -> bool {
     generated.haks().unwrap_or_default().iter().any(|h| h.eq_ignore_ascii_case(crate::skies::HAK))
 }
 
-/// The hak list of a module the area `hak` is installed in (its `module.ifo` root `info`): the area's and the shared hak first,
-/// the module's own after them in its order, then the editor's haks it lacks: the placeables placed and baked from them (their
-/// rows, models and textures) are there in the game only with them.
-fn installed_haks(info: &Struct, hak: &str) -> Vec<String> {
-    crate::generator::module_haks(&haks(hak), mg_module::haks_of(info), crate::models::game_haks())
+/// The hak list of a module the area `hak` is installed in (its `module.ifo` root `info`): the area's and the shared hak first
+/// (and the skies' when the area has a Landscaper sky, `sky`), the module's own after them in its order, then the editor's haks
+/// it lacks: the placeables placed and baked from them (their rows, models and textures) are there in the game only with them.
+fn installed_haks(info: &Struct, hak: &str, sky: bool) -> Vec<String> {
+    crate::generator::module_haks(&crate::generator::our_haks(hak, sky), mg_module::haks_of(info), crate::models::game_haks())
 }
 
 /// The first export after an import: the installed area takes the fresh one's objects (the original's, and landscaper's), its identity
@@ -450,7 +445,7 @@ pub fn update_installed(
     // The haks, in front of any the builder added; the editor's after the module's own.
     let mut info = m.info()?;
     let listed = mg_module::haks_of(&info.root);
-    let want = installed_haks(&info.root, hak);
+    let want = installed_haks(&info.root, hak, has_sky(&generated));
     let has = |h: &String| listed.iter().any(|l| l.eq_ignore_ascii_case(h));
     let tlk_before = info.root.get("Mod_CustomTlk").cloned();
     crate::models::give_tlk(&mut info.root);
@@ -654,6 +649,27 @@ mod tests {
         assert_eq!(are.resref("ResRef").map(|r| r.to_string()).as_deref(), Some("lsupdt2"));
         assert!(find(&git, "WaypointList", "wp_in").is_some());
         assert_eq!(area_of(&installed, "lsupdt").0.list("Tile_List").unwrap()[0].integer("Tile_ID"), Some(1), "the module's own untouched");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An area with a Landscaper sky brings the skies' hak into the module it joins (a dev pack's too); one without brings none.
+    #[test]
+    fn the_skies_hak_comes_with_an_area_that_has_a_landscaper_sky() {
+        let dir = scratch("sky");
+        let lists_skies = |p: &Path| Module::open(p).unwrap().haks().unwrap().iter().any(|h| h == crate::skies::HAK);
+        for sky in [false, true] {
+            let (installed, fresh) = (dir.join(format!("world{sky}.mod")), dir.join(format!("fresh{sky}.mod")));
+            module(&installed, "lsother", 1, &[], &[]);
+            module(&fresh, "lsupdt", 2, &[("SkyBox", Value::Byte(if sky { 32 } else { 1 }))], &[]);
+            let mut m = Module::open(&fresh).unwrap();
+            let mut info = m.info().unwrap();
+            let list = crate::generator::our_haks("lsupdt", sky);
+            info.root.set("Mod_HakList", mg_module::attach::hak_list(&info.root, &list));
+            m.set_info(&info).unwrap();
+            std::fs::write(&fresh, m.to_archive_bytes().unwrap()).unwrap();
+            add_area(&installed, &fresh, "lsupdt").unwrap();
+            assert_eq!(lists_skies(&installed), sky, "sky {sky}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
