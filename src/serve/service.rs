@@ -108,7 +108,7 @@ fn list() -> Reply {
 
 /// One export of the list, or `None` when it isn't one this builder may fetch (an area not exported to NWN, an ended assignment).
 fn entry(name: &str, library: Option<&serde_json::Value>, skies: Option<&serde_json::Value>) -> Option<serde_json::Value> {
-    let header_bytes = std::fs::read(exports_dir().join(format!("{name}.json"))).ok()?;
+    let header_bytes = crate::atomic::read(&exports_dir().join(format!("{name}.json"))).ok()?;
     let header: serde_json::Value = serde_json::from_slice(&header_bytes).ok()?;
     header["tiles"].as_u64()?;
     guarded_export(name).ok()?;
@@ -142,7 +142,7 @@ fn export(name: &str) -> Result<Reply, Reply> {
 /// The file at `path` (a hak), streamed, with its SHA-256 as the `ETag`; 304 when `if_none_match` names it. `missing` is the refusal when there is no such file.
 fn stream(missing: &str, path: Option<std::path::PathBuf>, if_none_match: Option<String>) -> Result<Reply, Reply> {
     let path = path.ok_or_else(|| refuse(404, "no module folder"))?;
-    let Ok(mut file) = std::fs::File::open(&path) else {
+    let Ok(mut file) = crate::atomic::open(&path) else {
         return Err(refuse(404, missing).into());
     };
     let (sha, len) = export_id::sha256_of(&path, &mut file).map_err(|e| refuse(500, &format!("{e:#}")))?;

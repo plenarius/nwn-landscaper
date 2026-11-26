@@ -153,7 +153,7 @@ fn areas_file() -> std::path::PathBuf {
 /// next answer replaces it.
 pub fn read_kept_areas() {
     let file = areas_file();
-    match std::fs::read(&file) {
+    match crate::atomic::read(&file) {
         Ok(bytes) => match serde_json::from_slice::<Vec<Value>>(&bytes) {
             Ok(list) => AREAS.seed(list),
             Err(e) => eprintln!("{}: not read ({e}); waiting for the review service's area list", file.display()),
@@ -184,7 +184,7 @@ pub fn sources() -> Result<Vec<Value>> {
             // (A list that can't be written is still used: only a restart while the service is down would miss it.)
             let file = areas_file();
             let bytes = serde_json::to_vec(&list)?;
-            if std::fs::read(&file).ok().as_deref() != Some(bytes.as_slice())
+            if crate::atomic::read(&file).ok().as_deref() != Some(bytes.as_slice())
                 && let Err(e) = crate::atomic::write(&file, &bytes)
             {
                 eprintln!("couldn't keep the module's area list: {e:#}");

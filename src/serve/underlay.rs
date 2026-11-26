@@ -27,7 +27,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
     }
     let path = areas_dir().join(format!("{name}.underlay"));
     Some(match cx.method {
-        Method::Get => match std::fs::read(&path) {
+        Method::Get => match crate::atomic::read(&path) {
             Ok(picture) => match kind(&picture) {
                 Some(mime) => tiny_http::Response::from_data(picture)
                     .with_header(response_header("Content-Type", mime))

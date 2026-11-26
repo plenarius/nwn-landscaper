@@ -117,7 +117,7 @@ fn starter_ids() -> Vec<String> {
 
 impl Library {
     fn open(dir: &Path) -> Library {
-        let catalog = std::fs::read(dir.join("catalog.json")).ok().and_then(|d| serde_json::from_slice::<Value>(&d).ok());
+        let catalog = crate::atomic::read(&dir.join("catalog.json")).ok().and_then(|d| serde_json::from_slice::<Value>(&d).ok());
         let list = |k: &str| catalog.as_ref().and_then(|v| v[k].as_array().cloned()).unwrap_or_default();
         Library { dir: dir.to_path_buf(), entries: list("textures"), packs: list("packs") }
     }

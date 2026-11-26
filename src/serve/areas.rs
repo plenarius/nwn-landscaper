@@ -307,7 +307,7 @@ fn save_area(name: &str, body: &[u8], new: bool, replace: bool, base: Option<&st
     let _turn = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let created = |v: &serde_json::Value| v.get("created").filter(|c| !c.is_null() && c.as_str() != Some("")).cloned();
-    let old = std::fs::read(&path).ok();
+    let old = crate::atomic::read(&path).ok();
     let other = || {
         let theirs = old.as_deref().and_then(|d| serde_json::from_slice::<serde_json::Value>(d).ok()).and_then(|o| created(&o));
         matches!((created(&v), theirs), (Some(a), Some(b)) if a != b)
@@ -372,7 +372,7 @@ fn delete_area(name: &str, base: Option<&str>) -> Result<String> {
     if !area_exists(name) {
         return Err(NoArea(name.to_string()).into());
     }
-    let old = std::fs::read(&path).ok();
+    let old = crate::atomic::read(&path).ok();
     let there = version(old.as_deref());
     if base != there {
         let saved = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
@@ -436,7 +436,7 @@ fn import_users(name: &str) -> Vec<String> {
         for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
             let file = e.file_name().to_string_lossy().into_owned();
             let Some(other) = file.strip_suffix(".json").filter(|n| area_name_ok(n) && *n != name) else { continue };
-            let Some(uses) = std::fs::read(e.path()).ok().and_then(|d| serde_json::from_slice::<Uses>(&d).ok()) else { continue };
+            let Some(uses) = crate::atomic::read(&e.path()).ok().and_then(|d| serde_json::from_slice::<Uses>(&d).ok()) else { continue };
             let palette: Vec<String> = uses.palette.iter().filter_map(|p| p.as_str().map(str::to_string)).collect();
             if imports_in(&palette, &serde_json::json!({ "objects": uses.objects })).iter().any(|i| i == name) {
                 by.insert(other.to_string());
@@ -469,7 +469,7 @@ struct Header {
 impl Header {
     /// The header of the area at `path`, if it is one.
     fn read(path: &std::path::Path) -> Option<Header> {
-        serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+        serde_json::from_slice(&crate::atomic::read(path).ok()?).ok()
     }
 
     /// The area's row in the list (without when it was saved or exported).
@@ -536,17 +536,17 @@ fn load_area(name: &str) -> Result<(Vec<u8>, String)> {
     use base64::Engine;
     anyhow::ensure!(area_name_ok(name), "bad area name");
     // The editor's working copy (sent as it is, once it is known to be JSON), else the last export.
-    if let Ok(saved) = std::fs::read(areas_dir().join(format!("{name}.json"))) {
+    if let Ok(saved) = crate::atomic::read(&areas_dir().join(format!("{name}.json"))) {
         serde_json::from_slice::<serde::de::IgnoredAny>(&saved)?;
         let version = version(Some(&saved));
         return Ok((saved, version));
     }
     let dir = exports_dir();
     let mut h: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{name}.json"))).context("no such exported area")?)?;
+        serde_json::from_str(&crate::atomic::read_to_string(&dir.join(format!("{name}.json"))).context("no such exported area")?)?;
     let b64 = base64::engine::general_purpose::STANDARD;
-    h["heights"] = b64.encode(std::fs::read(dir.join(format!("{name}.f32")))?).into();
-    if let Ok(m) = std::fs::read(dir.join(format!("{name}.materials"))) {
+    h["heights"] = b64.encode(crate::atomic::read(&dir.join(format!("{name}.f32")))?).into();
+    if let Ok(m) = crate::atomic::read(&dir.join(format!("{name}.materials"))) {
         h["materials"] = b64.encode(m).into();
     }
     if h["palette"].is_null() {

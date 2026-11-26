@@ -401,7 +401,7 @@ fn painted_ids(dir: &Path, palette: &[Value], materials: Option<&str>) -> Vec<St
     let names: Vec<&str> = palette.iter().map(|p| p.as_str().unwrap_or("")).collect();
     let bytes = materials.and_then(|m| {
         if m.ends_with(".materials") && plain_name(m) {
-            std::fs::read(dir.join(m)).ok()
+            crate::atomic::read(&dir.join(m)).ok()
         } else {
             base64::engine::general_purpose::STANDARD.decode(m).ok()
         }

@@ -63,7 +63,7 @@ pub fn sha256_of(path: &Path, file: &mut std::fs::File) -> Result<(String, u64)>
 
 /// [`sha256_of`] the file at `path`.
 pub fn sha256_file(path: &Path) -> Result<(String, u64)> {
-    let mut f = std::fs::File::open(path).with_context(|| format!("no {}", path.display()))?;
+    let mut f = crate::atomic::open(path).with_context(|| format!("no {}", path.display()))?;
     sha256_of(path, &mut f)
 }
 
@@ -82,7 +82,7 @@ pub fn hak_path(name: &str) -> Option<PathBuf> {
 
 /// The id of `name`'s last export in this workspace.
 pub fn export_id(name: &str) -> Result<String> {
-    let header = std::fs::read(crate::workspace::exports_dir().join(format!("{name}.json")))
+    let header = crate::atomic::read(&crate::workspace::exports_dir().join(format!("{name}.json")))
         .with_context(|| format!("{name} hasn't been exported yet"))?;
     let hak = hak_path(name).context("no module folder")?;
     Ok(of(&header, &sha256_file(&hak)?.0))
