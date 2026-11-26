@@ -276,7 +276,7 @@ and R on hills, corners and roads seen from above. It showed in two places: whit
 bank no longer hides the water behind it), and a shallower dip where a road crosses a crest on the skyline. S, which keeps 0.5 m
 cells where a shore runs, fixes the shores for 5,700 triangles more. A 64 px texture is blurry from a high camera. Small textures
 must be the 512 px bake shrunk down (the engine's own 128 px bake speckles), and the water past the cut uses the export's
-shoreline. Proposed for step 2: G at 128 px with full detail along shores and roads. Trees as two crossed pictures from 25 m out
+shoreline. **Decided for step 2 (2026-11-25): G at 128 px with full detail along shores and roads.** Trees as two crossed pictures from 25 m out
 are on trial next (variant T).
 
 ### 4. Tile levels and path nodes
