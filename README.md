@@ -151,6 +151,10 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 
 ## Documents
 
+The documents below, with a step-by-step handbook for builders, are also a site:
+<https://plenarius.github.io/nwn-landscaper/> (`mkdocs serve` with `requirements-docs.txt` installed shows it locally).
+
+- [docs/handbook/](docs/handbook/index.md): the builder's handbook, one tool a page.
 - [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md): running it on your machine, or as a team server with Docker.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): every setting.
 - [docs/BUILDER-WORKFLOW.md](docs/BUILDER-WORKFLOW.md): building an area.

@@ -1,0 +1,13 @@
+# The showcase page's gallery (docs/showcase.md), one card per entry, in this order.
+#   title: the area's name.
+#   text:  one line: what it shows.
+#   still: a picture beside this file, under assets/showcase/ (WebP or PNG, 1280 wide at most).
+#   clip:  where the clip is: a video file's address (.mp4, .webm), played in the card, or a page that plays it.
+#          Clips never go in the repository: put them on a release or a video site.
+# An entry with no still and no clip shows "Clip to come".
+- title: A lake valley at dusk
+  text: Mist on the water, fireflies on the shore, the sky matched to the light.
+- title: A canyon in golden light
+  text: Light shafts through the gaps, sand blowing off the crests.
+- title: A cave descent
+  text: Halls stepping down, lit by torches along the walls.
