@@ -112,6 +112,8 @@ pub struct Regions {
     face_region: Vec<Option<usize>>,
     verts: Vec<[f32; 3]>,
     faces: Vec<([u32; 3], bool)>,
+    /// The layouts a tile no layout fits may take instead (see [`serve_lone_regions`]), by letter and orientation.
+    lone: Option<Vec<(char, u8)>>,
 }
 
 impl Regions {
@@ -178,7 +180,7 @@ impl Regions {
             at.insert(key(p), region);
         }
         let face_region = (0..faces.len()).map(|i| faces[i].1.then(|| find(&mut parent, i))).collect();
-        Regions { at, face_region, verts: verts.to_vec(), faces: faces.to_vec() }
+        Regions { at, face_region, verts: verts.to_vec(), faces: faces.to_vec(), lone: None }
     }
 
     /// Walkable faces in regions that touch the tile border but belong to no
@@ -211,6 +213,9 @@ impl Regions {
     /// Whether the layout fits: every node joins only points of one region, and no two nodes share a region (the engine maps each node
     /// to its own region of the walkmesh, and crashes in FindClosestRegion otherwise).
     pub fn allows(&self, l: &Layout) -> bool {
+        if let Some(lone) = &self.lone {
+            return lone.contains(&(l.letter, l.orientation));
+        }
         let mut seen = Vec::new();
         l.nodes.iter().zip(&l.positions).all(|(n, &pos)| {
             let r = self.region(n[0]);
@@ -221,6 +226,120 @@ impl Regions {
             let placed = l.nodes.len() < 2 || std::env::var_os("LS_IGNORE_POS").is_some() || self.region_at(pos) == r;
             ok && placed
         })
+    }
+}
+
+/// Gives each tile no layout fits, but whose ground meets its border in one walkable region (a strip of shore cut off by a tile
+/// corner, say), the one-node layouts whose every exit crosses onto that region at one of the points the engine tries around it
+/// ([`crossing_candidates`]); where several regions could be served, the largest. The engine puts every point of a one-node tile
+/// in its one region, so the region is reached through those crossings instead of being cut off; its other border regions are
+/// pruned as for any layout. Such a strip usually crosses into the tiles beside it near their corner too, away from their exits:
+/// those of them whose border ground is one region may take such layouts as well, beside the ones that fit. The tiles in
+/// `cut_off` ([`cut_off`]) are served the same way, beside the layouts that fit them. `width`: tiles across. Returns how many
+/// tiles were given layouts.
+pub fn serve_lone_regions(layouts: &[Layout], regions: &mut [Regions], width: usize, cut_off: &[usize]) -> usize {
+    let fit: Vec<Vec<usize>> = regions.iter().map(|r| (0..layouts.len()).filter(|&i| r.allows(&layouts[i])).collect()).collect();
+    let lone: Vec<usize> = (0..regions.len()).filter(|&t| fit[t].is_empty() || cut_off.contains(&t)).collect();
+    let mut served = 0;
+    for &t in &lone {
+        let found = if fit[t].is_empty() {
+            regions[t].face_region.iter().flatten().copied().collect()
+        } else {
+            regions[t].at.values().flatten().copied().collect()
+        };
+        served += usize::from(serve(layouts, &mut regions[t], &fit[t], found));
+    }
+    let height = regions.len() / width.max(1);
+    let mut beside: Vec<usize> = lone
+        .iter()
+        .filter(|&&t| regions[t].lone.is_some())
+        .flat_map(|&t| {
+            let (x, y) = (t % width, t / width);
+            [(x > 0).then(|| t - 1), (x + 1 < width).then(|| t + 1), (y > 0).then(|| t - width), (y + 1 < height).then(|| t + width)]
+        })
+        .flatten()
+        .filter(|&n| !fit[n].is_empty() && regions[n].lone.is_none())
+        .collect();
+    beside.sort_unstable();
+    beside.dedup();
+    for n in beside {
+        let border: std::collections::BTreeSet<usize> = regions[n].at.values().flatten().copied().collect();
+        if border.len() == 1 {
+            served += usize::from(serve(layouts, &mut regions[n], &fit[n], border));
+        }
+    }
+    served
+}
+
+/// Tiles whose chosen layout crosses into no neighbour though their ground meets the border in one region: the planning left them
+/// an island (a strip of shore whose exits face water, say). [`serve_lone_regions`] gives them, and the tiles beside them, the
+/// layouts that reach that ground through crossings.
+pub fn cut_off(layouts: &[Layout], regions: &[Regions], pick: &[Option<usize>], width: usize, height: usize) -> Vec<usize> {
+    let neighbour = |t: usize, s: usize| -> Option<usize> {
+        let (x, y) = (t % width, t / width);
+        match s {
+            0 if y > 0 => Some(t - width),
+            1 if x + 1 < width => Some(t + 1),
+            2 if y + 1 < height => Some(t + width),
+            3 if x > 0 => Some(t - 1),
+            _ => None,
+        }
+    };
+    (0..pick.len())
+        .filter(|&t| {
+            let Some(i) = pick[t] else { return false };
+            let border: std::collections::BTreeSet<usize> = regions[t].at.values().flatten().copied().collect();
+            border.len() == 1
+                && !layouts[i].nodes.iter().flatten().any(|&p| {
+                    let Some(n) = neighbour(t, side(p).expect("a layout's nodes are on the tile's edges")) else { return false };
+                    pick[n].is_some_and(|j| layouts[j].nodes.iter().flatten().any(|&q| key(q) == key(across(p))))
+                        && regions[t].region(p).is_some()
+                        && regions[n].region(across(p)).is_some()
+                })
+        })
+        .collect()
+}
+
+/// [`serve_lone_regions`] for one tile: the one-node layouts reaching the largest of `found` through crossings, with `fit` (the
+/// layouts that fit it already). Whether it changed anything.
+fn serve(layouts: &[Layout], r: &mut Regions, fit: &[usize], found: std::collections::BTreeSet<usize>) -> bool {
+    let reaches = |l: &Layout, region: usize| {
+        l.nodes[0].iter().all(|&p| crossing_candidates(l, p).into_iter().any(|c| r.region_at(inset(c, 0.3)) == Some(region)))
+    };
+    let mut best: Option<(f32, usize, Vec<usize>)> = None;
+    for region in found {
+        let fits: Vec<usize> = (0..layouts.len()).filter(|&i| layouts[i].nodes.len() == 1 && reaches(&layouts[i], region)).collect();
+        let area = r.area(region);
+        if !fits.is_empty() && best.as_ref().is_none_or(|b| area > b.0) {
+            best = Some((area, region, fits));
+        }
+    }
+    let Some((_, region, mut fits)) = best else { return false };
+    if fits.iter().all(|i| fit.contains(i)) {
+        return false;
+    }
+    for &i in &fits {
+        for &p in &layouts[i].nodes[0] {
+            r.at.insert(key(p), Some(region));
+        }
+    }
+    fits.extend(fit.iter().filter(|i| !fits.contains(i)).copied().collect::<Vec<_>>());
+    r.lone = Some(fits.iter().map(|&i| (layouts[i].letter, layouts[i].orientation)).collect());
+    true
+}
+
+impl Regions {
+    /// The walkable area of `region`, square metres.
+    fn area(&self, region: usize) -> f32 {
+        self.faces
+            .iter()
+            .zip(&self.face_region)
+            .filter(|(_, r)| **r == Some(region))
+            .map(|((f, _), _)| {
+                let [a, b, c] = f.map(|i| self.verts[i as usize]);
+                ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs() / 2.0
+            })
+            .sum()
     }
 }
 
@@ -607,4 +726,56 @@ fn remove_bad_crossings(
         }
     }
     pick
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Regions, edge_points, layouts, serve_lone_regions};
+
+    /// A tile of 1 m squares, two faces each, walkable where `walk(x, y)` holds at the square's middle.
+    fn tile(walk: impl Fn(f32, f32) -> bool) -> (Vec<[f32; 3]>, Vec<([u32; 3], bool)>) {
+        let mut verts = Vec::new();
+        for j in 0..=10 {
+            for i in 0..=10 {
+                verts.push([i as f32, j as f32, 0.0]);
+            }
+        }
+        let mut faces = Vec::new();
+        for j in 0..10u32 {
+            for i in 0..10u32 {
+                let (a, b, c, d) = (j * 11 + i, j * 11 + i + 1, (j + 1) * 11 + i, (j + 1) * 11 + i + 1);
+                let w = walk(i as f32 + 0.5, j as f32 + 0.5);
+                faces.push(([a, b, d], w));
+                faces.push(([a, d, c], w));
+            }
+        }
+        (verts, faces)
+    }
+
+    #[test]
+    fn a_strip_of_shore_in_a_tile_corner_is_reached_through_crossings() {
+        // Water but for the north-east corner: the ground meets the north and east edges only past 7 m, away from every exit
+        // a layout of one node has there.
+        let (verts, faces) = tile(|x, y| x + y > 16.0);
+        let all = layouts();
+        let mut regions = vec![Regions::strict(&verts, &faces, &edge_points(all))];
+        assert!(!all.iter().any(|l| regions[0].allows(l)), "no layout fits it as it is");
+        assert_eq!(serve_lone_regions(all, &mut regions, 1, &[]), 1);
+        let allowed: Vec<_> = all.iter().filter(|l| regions[0].allows(l)).collect();
+        // H2: one node, exits in the middle of the east and north edges, whose crossings 9 m along land on the strip.
+        assert!(allowed.iter().any(|l| l.letter == 'H' && l.orientation == 2), "{allowed:?}");
+        assert!(allowed.iter().all(|l| l.nodes.len() == 1));
+        for l in &allowed {
+            assert!(regions[0].unowned_border_faces(l).is_empty(), "the strip is the layout's own: nothing pruned");
+        }
+    }
+
+    #[test]
+    fn a_tile_with_nothing_walkable_stays_without_a_layout() {
+        let (verts, faces) = tile(|_, _| false);
+        let all = layouts();
+        let mut regions = vec![Regions::strict(&verts, &faces, &edge_points(all))];
+        assert_eq!(serve_lone_regions(all, &mut regions, 1, &[]), 0);
+        assert!(!all.iter().any(|l| regions[0].allows(l)));
+    }
 }

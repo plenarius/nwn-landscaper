@@ -40,6 +40,7 @@ pub const SWITCHES: &[(&str, &str, Effect)] = {
         ("LS_IGNORE_POS", "accept a path node layout even when a node lies off its region", X),
         ("LS_NO_SPREAD", "score the path node layouts without the penalty for crossings that break", X),
         ("LS_NO_UNBREAK", "skip the pass that removes crossings that break", X),
+        ("LS_NO_LONE", "leave a tile no path node layout fits without one, rather than reach its ground through crossings", X),
         ("LS_NO_SURFACES", "walkmesh surfaces as grass and non-walkable only, not the painted surfaces", X),
         // The tiles' files.
         ("LS_BAKE", "pixels a side of each tile's baked texture (a power of two; default 512)", X),

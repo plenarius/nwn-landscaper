@@ -37,6 +37,7 @@ A switch is on when it is set to anything (`LS_TIMING=1`); one that takes a valu
 | `LS_IGNORE_POS` | Accept a path node layout even when a node lies off its region | *differs* |
 | `LS_NO_SPREAD` | Score the path node layouts without the penalty for crossings that break | *differs* |
 | `LS_NO_UNBREAK` | Skip the pass that removes crossings that break | *differs* |
+| `LS_NO_LONE` | Leave a tile no path node layout fits without one, rather than reach its ground through crossings | *differs* |
 | `LS_NO_SURFACES` | Walkmesh surfaces as grass and non-walkable only, not the painted surfaces | *differs* |
 
 ## The tiles' files
