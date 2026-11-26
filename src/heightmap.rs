@@ -16,7 +16,8 @@
 //! `"palette": ["grassMedium", "dirt", ...]` (texture library ids).
 //!
 //! Water, optional: `"water": [{ "i": 40, "j": 12, "level": 6.5 }, ...]`, bodies of water each filled from a sample (i, j) to a level:
-//! every sample joined to it (4-connected) through samples lower than the level is under water. The editor floods them the same way.
+//! every sample joined to it (4-connected) through samples lower than the level is under water, unless it is under less than
+//! [`WET_DEPTH`]. The editor floods them the same way.
 //!
 //! Chasms, optional: `"chasm": [[first, count], ...]`, runs of samples (indices in the order above) that drop away into a bottomless
 //! chasm: each is lowered to [`CHASM_DEPTH`] under its rim (the nearest sample that is not in a chasm, see [`fit_chasm`]), nothing
@@ -287,7 +288,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
                 .context("water: each body needs i, j and level")?;
             // (water never runs into a chasm: its samples are walls to it)
             let walled: Vec<f32> = data.iter().zip(&chasm).map(|(&h, &c)| if c { f32::INFINITY } else { h }).collect();
-            flood(&walled, width, &bodies)
+            dry_shallows(flood(&walled, width, &bodies), &data)
         }
         None => Vec::new(),
     };
@@ -435,6 +436,21 @@ pub fn flood(heights: &[f32], n: usize, bodies: &[Body]) -> Vec<f32> {
             if y + 1 < rows {
                 stack.push(k + n);
             }
+        }
+    }
+    level
+}
+
+/// Water shallower than this (m) is dry ground: the game's water shader draws it almost clear, so it reads as dry until a footstep
+/// ripples it. The editor has the same (area.js).
+pub const WET_DEPTH: f32 = 0.15;
+
+/// `level` (from [`flood`]) with the samples under less than [`WET_DEPTH`] of water dry. They still joined the water when it flooded,
+/// so a shallow ford doesn't split a river in two.
+pub fn dry_shallows(mut level: Vec<f32>, heights: &[f32]) -> Vec<f32> {
+    for (l, h) in level.iter_mut().zip(heights) {
+        if *l - h < WET_DEPTH {
+            *l = f32::NAN;
         }
     }
     level
@@ -875,6 +891,19 @@ mod tests {
         // Bounded to the first column: only it, however high.
         let b = Body { bounds: Some([0, 0, 0, 2]), ..Body::new(0, 0, 6.0) };
         assert_eq!(flood(&h, 3, &[b]).iter().filter(|l| !l.is_nan()).count(), 3);
+    }
+
+    #[test]
+    fn water_shallower_than_wet_depth_is_dry_but_still_carries_the_flood() {
+        // A ford (1.95) between two pools (0) with water to 2: it joins them, and is dry itself.
+        let h = [0.0, 1.95, 0.0];
+        let w = dry_shallows(flood(&h, 3, &[Body::new(0, 0, 2.0)]), &h);
+        assert!(w[0] == 2.0 && w[1].is_nan() && w[2] == 2.0);
+        // A loaded area: a lake to 1.5 m over ground at 1 m, half of it a shelf under a few centimetres of water.
+        let n = 3 * 16 + 1;
+        let heights = (0..n * n).map(|k| if k % n < 24 { 1.0 } else { 1.5 - WET_DEPTH / 2.0 }).collect();
+        let hm = read(&area("shallows", serde_json::json!({ "water": [{ "i": 2, "j": 2, "level": 1.5 }] }), Some(heights))).unwrap();
+        assert!(hm.water_at(5.0, 10.0).is_some() && hm.water_at(25.0, 10.0).is_none());
     }
 
     /// An entrance as the editor sends one, with `id` if given.
