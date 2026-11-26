@@ -792,6 +792,30 @@ fn overlapping_saves_of_one_area_never_lose_it() {
 }
 
 #[test]
+fn a_saved_area_or_last_export_that_cant_be_read_is_never_written_over() {
+    let s = Server::start("unreadable", &[], false);
+    let (areas, exports) = (s.data().join("areas"), s.data().join("exports"));
+    let save = |body: &[u8]| s.editor("PUT", "/api/save?name=delta", &[], body);
+    assert_eq!(save(&area_json("delta", 10, Some("one"))).0, 200);
+    // A saved copy that can't be read (a folder where the file is): the save is refused, and nothing replaces it.
+    std::fs::remove_file(areas.join("delta.json")).unwrap();
+    std::fs::create_dir(areas.join("delta.json")).unwrap();
+    let (st, b) = save(&area_json("delta", 11, Some("one")));
+    assert_ne!(st, 200, "{b}");
+    assert!(b.contains("delta's saved copy (delta.json) can't be read") && b.contains("nothing was saved"), "{b}");
+    assert!(areas.join("delta.json").is_dir() && !areas.join("delta.json.bak").exists());
+    // A last export that doesn't parse: the export is refused before it writes anything, the header left as it was.
+    std::fs::create_dir_all(&exports).unwrap();
+    std::fs::write(exports.join("delta.json"), "{\"name\": \"delta\", \"ent").unwrap();
+    let body = export_body(&vec![0u8; 49 * 49 * 4], &serde_json::json!({ "palette": [], "objects": [] }));
+    let (st, b) = s.editor("POST", "/api/export?name=delta&tiles=3", &[], &body);
+    assert_ne!(st, 200, "{b}");
+    assert!(b.contains("delta's last export (delta.json in its exports) doesn't parse") && b.contains("nothing was exported"), "{b}");
+    assert_eq!(std::fs::read(exports.join("delta.json")).unwrap(), b"{\"name\": \"delta\", \"ent");
+    assert!(!exports.join("delta.f32").exists());
+}
+
+#[test]
 fn a_new_area_never_replaces_one_of_the_same_name_unless_asked() {
     let s = Server::start("new-area", &[], false);
     let areas = s.data().join("areas");

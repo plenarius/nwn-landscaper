@@ -510,6 +510,30 @@ pub fn zip_pack(manifest: &[u8], files: &[(String, Vec<u8>)]) -> Result<Vec<u8>>
     Ok(z.finish()?.into_inner())
 }
 
+/// The lists `keys` of a library's `catalog.json` in `dir` (`what` names the library in errors): each empty when the catalog
+/// lacks it, all empty when there is no catalog yet. An error, nothing changed, when the catalog is there but can't be read,
+/// doesn't parse or a list isn't one: read as empty, the library's next change would write over everything it lists.
+pub fn read_catalog<const N: usize>(dir: &Path, what: &str, keys: [&str; N]) -> Result<[Vec<Value>; N]> {
+    let name = format!("the {what} library's catalog.json");
+    let bytes = match crate::atomic::read(&dir.join("catalog.json")) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(std::array::from_fn(|_| Vec::new())),
+        Err(e) => bail!("{name} can't be read ({e}): nothing was changed; fix or restore it"),
+    };
+    let v: Value =
+        serde_json::from_slice(&bytes).with_context(|| format!("{name} doesn't parse: nothing was changed; fix or restore it"))?;
+    ensure!(v.is_object(), "{name} isn't a catalog: nothing was changed; fix or restore it");
+    let mut out: [Vec<Value>; N] = std::array::from_fn(|_| Vec::new());
+    for (list, key) in out.iter_mut().zip(keys) {
+        match &v[key] {
+            Value::Null => {}
+            Value::Array(a) => list.clone_from(a),
+            _ => bail!("{name}: \"{key}\" isn't a list: nothing was changed; fix or restore it"),
+        }
+    }
+    Ok(out)
+}
+
 /// Adds `entry` (a pack of `kind`) to the index file `index`, made if missing; an entry of the same id is replaced.
 pub fn add_to_index(index: &Path, kind: Kind, mut entry: Value) -> Result<()> {
     // (Only a missing index starts a new one: read as empty, one that failed to open would lose every other pack.)
@@ -535,6 +559,31 @@ pub fn add_to_index(index: &Path, kind: Kind, mut entry: Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_catalog_reads_as_empty_only_when_it_is_missing() {
+        let dir = std::env::temp_dir().join(format!("landscaper-read-catalog-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let read = || read_catalog(&dir, "sky", ["skies", "packs"]).map_err(|e| format!("{e:#}"));
+        assert_eq!(read(), Ok([vec![], vec![]]), "missing: empty");
+        let catalog = dir.join("catalog.json");
+        std::fs::write(&catalog, r#"{"skies": [{"id": "a"}]}"#).unwrap();
+        assert_eq!(read(), Ok([vec![json!({ "id": "a" })], vec![]]), "a list it lacks is empty");
+        for (text, says) in [
+            ("{\"skies\": [", "the sky library's catalog.json doesn't parse"),
+            ("[]", "the sky library's catalog.json isn't a catalog"),
+            (r#"{"skies": {}}"#, r#"the sky library's catalog.json: "skies" isn't a list"#),
+        ] {
+            std::fs::write(&catalog, text).unwrap();
+            let e = read().unwrap_err();
+            assert!(e.contains(says) && e.contains("nothing was changed"), "{text}: {e}");
+        }
+        std::fs::remove_file(&catalog).unwrap();
+        std::fs::create_dir(&catalog).unwrap();
+        assert!(read().unwrap_err().contains("the sky library's catalog.json can't be read"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn an_index_is_read_with_its_urls_made_whole() {

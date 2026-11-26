@@ -228,9 +228,15 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     // The last export's header, a check's too: the scratch copy is only the last check's, by which an entrance undone and
     // redone between checks looked like a taken-out entrance's id given again.
     // (Freshly imported, not exported since: the installed module has never had this light, whatever the header says.)
-    let old_header = crate::atomic::read_to_string(&exports_dir().join(format!("{name}.json")))
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+    // (One that can't be read stops the export: taken as none, the area's entrance ids would start again, and a door's tag
+    // could be given twice.)
+    let old_header = match crate::atomic::read(&exports_dir().join(format!("{name}.json"))) {
+        Ok(d) => Some(serde_json::from_slice::<serde_json::Value>(&d).with_context(|| {
+            format!("{name}'s last export ({name}.json in its exports) doesn't parse: nothing was exported; restore it, or remove it to export afresh")
+        })?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => anyhow::bail!("{name}'s last export ({name}.json in its exports) can't be read ({e}): nothing was exported; fix or restore it"),
+    };
     let just_imported = old_header.as_ref().is_some_and(|h| h["imported"].as_bool() == Some(true));
     // The entrances (each with its id) and the area's next entrance id, which never goes down: an id is never given twice.
     let entrances = extra.get("entrances").cloned().unwrap_or_default();

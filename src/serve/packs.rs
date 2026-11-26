@@ -77,7 +77,10 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
     }
     Some(match (&cx.method, cx.path) {
         (Method::Get, "/api/textures/packs") => {
-            let installed = packs::installed();
+            let installed = match packs::installed() {
+                Ok(i) => i,
+                Err(e) => return Some(refuse(500, &format!("{e:#}"))),
+            };
             let (available, index_error) = match index(cx.query.text("fresh") == "1") {
                 Ok(list) => (list, None),
                 Err(e) => (Vec::new(), Some(e)),
