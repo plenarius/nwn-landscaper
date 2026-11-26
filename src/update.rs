@@ -500,6 +500,7 @@ mod tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            normals: Default::default(),
         }
     }
 
@@ -733,6 +734,7 @@ mod entrance_door_tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            normals: Default::default(),
         };
         let u = update_installed(&installed, &fresh, "lsdoor", "lsdoor", None, &ground, &Changes::default()).unwrap();
         assert_eq!(u.doors_removed, ["lsdoor_ent2"]);
