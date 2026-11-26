@@ -1466,3 +1466,24 @@ fn on_a_team_server_only_admins_install_or_remove_texture_packs() {
     assert!(!catalog().contains("tpMoss") && !s.data().join("textures/tpMoss.png").exists());
     let _ = std::fs::remove_dir_all(&src);
 }
+
+/// The Ambience palette (`/api/particles`) is the pack the export bakes from: the one built into the program, with no pack folder
+/// beside it and none named, unless `LANDSCAPER_PARTICLES` names another.
+#[test]
+fn the_particle_route_serves_the_built_in_pack_unless_another_is_named() {
+    let exe = Path::new(env!("CARGO_BIN_EXE_landscaper"));
+    assert!(!exe.parent().unwrap().join("packs").exists(), "a packs folder beside the program");
+    let s = Server::start("particles", &[], false);
+    let (status, body) = s.editor("GET", "/api/particles", &[], b"");
+    assert_eq!(status, 200, "{body}");
+    let pack: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(pack["kinds"].as_array().map(Vec::len), Some(11), "{body}");
+    drop(s);
+    let other = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ambience-pack");
+    let s = Server::start("particles-named", &[("LANDSCAPER_PARTICLES", other.to_str().unwrap())], false);
+    let (status, body) = s.editor("GET", "/api/particles", &[], b"");
+    assert_eq!(status, 200, "{body}");
+    let pack: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let ids: Vec<&str> = pack["kinds"].as_array().unwrap().iter().filter_map(|k| k["id"].as_str()).collect();
+    assert_eq!(ids, ["mist", "fireflies", "motes"]);
+}
