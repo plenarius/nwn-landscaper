@@ -79,7 +79,6 @@ mg-resman = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17a
 mg-rules = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-module = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-tiles = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
-mg-area = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-script = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 fastrand = "2"
 anyhow = "1"
@@ -107,6 +106,10 @@ sha2 = "0.10"
 
 # Raises the server's limit on open files at its start (`src/serve/open_files.rs`): safe calls to `getrlimit`/`setrlimit`, capped
 # by macOS's own per-process limit.
+# Spike (wasm-demo): mg-area draws with wgpu, which doesn't build for WASI; only importing an area needs it.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+mg-area = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+
 [target.'cfg(unix)'.dependencies]
 rlimit = "0.11"
 
@@ -121,3 +124,22 @@ workspace = true
 # builds too (the Landscaper is not), as in nwn-bake's own workspace.
 [profile.dev.package.nwn-bake]
 opt-level = 3
+
+# Spike (wasm-demo): Moonglow with its WASI fixes, from a local checkout.
+[patch."https://github.com/jadzziaa/moonglow-toolset"]
+mg-core = { path = "../moonglow/crates/mg-core" }
+mg-2da = { path = "../moonglow/crates/mg-2da" }
+mg-mdl = { path = "../moonglow/crates/mg-mdl" }
+mg-erf = { path = "../moonglow/crates/mg-erf" }
+mg-gff = { path = "../moonglow/crates/mg-gff" }
+mg-set = { path = "../moonglow/crates/mg-set" }
+mg-resman = { path = "../moonglow/crates/mg-resman" }
+mg-rules = { path = "../moonglow/crates/mg-rules" }
+mg-module = { path = "../moonglow/crates/mg-module" }
+mg-tiles = { path = "../moonglow/crates/mg-tiles" }
+mg-area = { path = "../moonglow/crates/mg-area" }
+mg-script = { path = "../moonglow/crates/mg-script" }
+mg-image = { path = "../moonglow/crates/mg-image" }
+mg-tlk = { path = "../moonglow/crates/mg-tlk" }
+[patch."https://github.com/plenarius/nwn-bake"]
+nwn-bake = { path = "../nwn-bake/nwn-bake" }

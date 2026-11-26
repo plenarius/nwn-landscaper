@@ -284,6 +284,38 @@ fn job() -> std::sync::MutexGuard<'static, ()> {
     JOB.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// The browser build (spike): answers one request, read whole from stdin as HTTP/1.x (request line, headers, blank line, body),
+/// and writes the answer to stdout. A page's Service Worker runs the engine once per request on its in-memory files.
+pub fn wasi_request(web: &Path) -> Result<()> {
+    use std::io::{Read, Write};
+    let mut raw = Vec::new();
+    std::io::stdin().read_to_end(&mut raw)?;
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or_else(|| anyhow::anyhow!("no blank line after the head"))?;
+    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
+    let body: &'static [u8] = Box::leak(raw[split + 4..].to_vec().into_boxed_slice());
+    let mut lines = head.split("\r\n");
+    let mut first = lines.next().unwrap_or("").split(' ');
+    let method: Method = first.next().unwrap_or("GET").parse().map_err(|_| anyhow::anyhow!("bad method"))?;
+    let path = first.next().unwrap_or("/").to_string();
+    let mut req = tiny_http::TestRequest::new().with_method(method).with_path(&path).with_body_bytes(body);
+    for line in lines {
+        if let Some((k, v)) = line.split_once(':') {
+            req = req.with_header(Header::from_bytes(k.trim(), v.trim()).map_err(|()| anyhow::anyhow!("bad header {k}"))?);
+        }
+    }
+    let mut req: tiny_http::Request = req.into();
+    let gate = Gate::new(80, false, None);
+    crate::workspace::begin_request();
+    let mut out = std::io::stdout().lock();
+    let v10 = tiny_http::HTTPVersion(1, 0);
+    match answer(&mut req, web, &gate) {
+        Reply::Data(a) => a.raw_print(&mut out, v10, &[], false, None)?,
+        Reply::Stream(s) => s.raw_print(&mut out, v10, &[], false, None)?,
+    }
+    out.flush()?;
+    Ok(())
+}
+
 /// What every route answers with.
 type Answer = Response<std::io::Cursor<Vec<u8>>>;
 

@@ -1,0 +1,46 @@
+diff --git a/nwn-bake/src/area/scene.rs b/nwn-bake/src/area/scene.rs
+index 0b3f535..cf9bb00 100644
+--- a/nwn-bake/src/area/scene.rs
++++ b/nwn-bake/src/area/scene.rs
+@@ -666,6 +666,10 @@ fn decode(game: &Game, names: &[String], threads: usize) -> Vec<Result<Arc<Mippe
+     let threads = if threads == 0 { std::thread::available_parallelism().map_or(1, std::num::NonZero::get).clamp(1, 8) } else { threads };
+     let threads = threads.min(names.len().max(1));
+     let next = std::sync::atomic::AtomicUsize::new(0);
++    // The browser build (WASI) has no threads: in turn.
++    if cfg!(target_family = "wasm") {
++        return names.iter().map(|n| game.mipped(n)).collect();
++    }
+     let slots: Vec<std::sync::Mutex<Option<Result<Arc<Mipped>>>>> = names.iter().map(|_| Default::default()).collect();
+     std::thread::scope(|scope| {
+         for _ in 0..threads {
+diff --git a/nwn-bake/src/area3d.rs b/nwn-bake/src/area3d.rs
+index 8dc8fe7..02d1dc4 100644
+--- a/nwn-bake/src/area3d.rs
++++ b/nwn-bake/src/area3d.rs
+@@ -824,6 +824,10 @@ pub fn write(
+ fn encode_all(scene: &Scene, used: &[u32], o: &Options, tex: &TextureFiles) -> Vec<Option<Result<TexFile>>> {
+     let images: Vec<Option<Arc<Mipped>>> = used.iter().map(|&id| scene.textures[id as usize].image.clone()).collect();
+     let next = std::sync::atomic::AtomicUsize::new(0);
++    // The browser build (WASI) has no threads: in turn.
++    if cfg!(target_family = "wasm") {
++        return images.iter().map(|m| m.as_ref().map(|m| tex.file(m, o.max_tex, o.quality))).collect();
++    }
+     let slots: Vec<Mutex<Option<Result<TexFile>>>> = images.iter().map(|_| Mutex::new(None)).collect();
+     std::thread::scope(|s| {
+         for _ in 0..o.threads.clamp(1, 16).min(images.len().max(1)) {
+diff --git a/nwn-bake/src/iso.rs b/nwn-bake/src/iso.rs
+index 2abb95f..1151375 100644
+--- a/nwn-bake/src/iso.rs
++++ b/nwn-bake/src/iso.rs
+@@ -427,6 +427,11 @@ pub struct Rendered {
+ /// Draws `scene` as `o` says: one picture per view, each view on a thread of its own.
+ pub fn render(scene: &Scene, o: &IsoOptions) -> Result<Rendered> {
+     let prepared = prepare(scene, o)?;
++    // The browser build (WASI) has no threads: in turn.
++    if cfg!(target_family = "wasm") {
++        let drawn = o.views.iter().map(|&v| prepared.draw(v)).collect();
++        return Ok(prepared.assemble(drawn));
++    }
+     let drawn: Vec<Drawn> = std::thread::scope(|scope| {
+         let prepared = &prepared;
+         let handles: Vec<_> = o.views.iter().map(|&v| scope.spawn(move || prepared.draw(v))).collect();

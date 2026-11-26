@@ -126,6 +126,10 @@ fn stamp() -> Result<String> {
 /// says so: without them the area would draw wrong, not only without shadows.
 pub fn shaders() -> Result<[(&'static str, String); 4]> {
     let game = crate::models::game()?;
+    // Spike (browser build, no game): placeholders, so the rest of an export can be tried. Not playable as they are.
+    if cfg!(target_family = "wasm") && game.resman.get_named("fslit", ResType::SHD).is_err() {
+        return Ok([LIGHTING, "ls_lm_vs", "ls_tp_fs", "ls_lm_fs"].map(|n| (n, STUB_SHADER.to_string())));
+    }
     let stock = |name: &str| -> Result<String> {
         let data = game.resman.get_named(name, ResType::SHD).map_err(|e| {
             anyhow::anyhow!(
@@ -143,6 +147,9 @@ pub fn shaders() -> Result<[(&'static str, String); 4]> {
         ("ls_lm_fs", fs),
     ])
 }
+
+/// Spike: what stands in for the tile shaders when the browser build has no game to read them from.
+const STUB_SHADER: &str = "// placeholder: made from the game's own shaders when the page can read them\n";
 
 /// The tiles' lighting, `inc_lighting` changed (see [`shaders`]).
 const LIGHTING: &str = "ls_lighting";

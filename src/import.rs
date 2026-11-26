@@ -210,6 +210,14 @@ struct TileMade {
 
 /// Imports the area whose ARE root is `are`.
 pub fn import(game: &GameData, are: &mg_gff::Struct) -> Result<Imported> {
+    #[cfg(target_family = "wasm")]
+    anyhow::bail!("importing an area isn't in the browser build (mg-area draws with wgpu)");
+    #[cfg(not(target_family = "wasm"))]
+    import_native(game, are)
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn import_native(game: &GameData, are: &mg_gff::Struct) -> Result<Imported> {
     let tileset_ref = are.resref("Tileset").context("the area has no tileset")?;
     let read = span("  tileset", || nwn_bake::area::tileset(game, tileset_ref)).with_context(|| {
         format!(

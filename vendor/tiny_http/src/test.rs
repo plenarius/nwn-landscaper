@@ -40,7 +40,7 @@ use std::str::FromStr;
 /// assert_eq!(response.status_code(), StatusCode(200));
 /// ```
 pub struct TestRequest {
-    body: &'static str,
+    body: &'static [u8],
     remote_addr: SocketAddr,
     // true if HTTPS, false if HTTP
     secure: bool,
@@ -71,7 +71,7 @@ impl From<TestRequest> for Request {
             mock.http_version,
             mock.headers,
             Some(mock.remote_addr),
-            mock.body.as_bytes(),
+            mock.body,
             std::io::sink(),
             None,
         )
@@ -82,7 +82,7 @@ impl From<TestRequest> for Request {
 impl Default for TestRequest {
     fn default() -> Self {
         TestRequest {
-            body: "",
+            body: b"",
             remote_addr: "127.0.0.1:23456".parse().unwrap(),
             secure: false,
             method: Method::Get,
@@ -97,8 +97,13 @@ impl TestRequest {
     pub fn new() -> Self {
         TestRequest::default()
     }
-    pub fn with_body(mut self, body: &'static str) -> Self {
+    /// A body of any bytes (the Landscaper's browser build answers requests a page hands it).
+    pub fn with_body_bytes(mut self, body: &'static [u8]) -> Self {
         self.body = body;
+        self
+    }
+    pub fn with_body(mut self, body: &'static str) -> Self {
+        self.body = body.as_bytes();
         self
     }
     pub fn with_remote_addr(mut self, remote_addr: SocketAddr) -> Self {

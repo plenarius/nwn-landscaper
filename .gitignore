@@ -3,3 +3,6 @@ landscaper-web/
 nwn-landscaper-web/
 site/
 __pycache__/
+# Spike (wasm-demo): size and speed builds.
+/target-small
+/target-lto

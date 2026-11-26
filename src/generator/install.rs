@@ -114,7 +114,7 @@ pub(crate) fn replace_module(dest: &Path, change: impl FnOnce(&Path) -> Result<(
     let dir = dest.parent().context("the module has no folder")?;
     let file = dest.file_name().context("the module has no file name")?.to_string_lossy().into_owned();
     // (Hidden and not a .mod, so the game never lists it; a name of its own, so two exports never share one.)
-    let work = dir.join(format!(".{file}.{}-{}.work", std::process::id(), WORK.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let work = dir.join(format!(".{file}.{}-{}.work", crate::pid(), WORK.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let changed = (|| -> Result<()> {
         if dest.exists() {
             std::fs::copy(dest, &work).with_context(|| format!("copying {}", dest.display()))?;

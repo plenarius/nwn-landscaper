@@ -1,0 +1,165 @@
+diff --git a/crates/mg-key/src/lib.rs b/crates/mg-key/src/lib.rs
+index 089611cb..7076f683 100644
+--- a/crates/mg-key/src/lib.rs
++++ b/crates/mg-key/src/lib.rs
+@@ -11,7 +11,11 @@ use std::collections::HashMap;
+ use std::fs::File;
+ use std::path::{Path, PathBuf};
+ 
+-use memmap2::Mmap;
++#[cfg(not(target_family = "wasm"))]
++pub use memmap2::Mmap;
++/// WASI (the browser build) has no memory maps: a file is read whole.
++#[cfg(target_family = "wasm")]
++pub type Mmap = Vec<u8>;
+ use mg_core::bin::{BinError, Reader, slice};
+ use mg_core::{ResRef, ResType};
+ use thiserror::Error;
+@@ -159,7 +163,11 @@ impl Bif {
+ }
+ 
+ struct OpenBif {
++    #[cfg(not(target_family = "wasm"))]
+     map: Mmap,
++    /// WASI: BIFs are read a resource at a time (the base game's are 5 GB, more than a 32-bit memory holds).
++    #[cfg(target_family = "wasm")]
++    file: File,
+     table: Bif,
+ }
+ 
+@@ -181,7 +189,30 @@ impl std::fmt::Debug for KeySet {
+     }
+ }
+ 
++/// WASI: reads a game archive whole.
++#[cfg(target_family = "wasm")]
++pub fn map_file(path: &Path) -> std::io::Result<Mmap> {
++    std::fs::read(path)
++}
++
++/// WASI: a BIF's header and resource table only.
++#[cfg(target_family = "wasm")]
++fn open_bif(path: &Path) -> Result<OpenBif, KeyError> {
++    use std::io::Read;
++    let io = |source| KeyError::Io { path: path.into(), source };
++    let mut file = File::open(path).map_err(io)?;
++    let mut head = vec![0u8; 20];
++    file.read_exact(&mut head).map_err(io)?;
++    let count = u32::from_le_bytes(head[8..12].try_into().unwrap()) as usize;
++    let table = u32::from_le_bytes(head[16..20].try_into().unwrap()) as usize;
++    head.resize(table + count * 16, 0);
++    file.read_exact(&mut head[20..]).map_err(io)?;
++    let table = Bif::read(&head).map_err(|e| KeyError::Bif { path: path.into(), source: Box::new(e) })?;
++    Ok(OpenBif { file, table })
++}
++
+ /// Maps a game archive (a KEY, BIF, ERF or HAK) into memory, read-only.
++#[cfg(not(target_family = "wasm"))]
+ #[allow(unsafe_code)]
+ pub fn map_file(path: &Path) -> std::io::Result<Mmap> {
+     let file = File::open(path)?;
+@@ -206,10 +237,15 @@ impl KeySet {
+             .iter()
+             .map(|b| {
+                 let path = install_root.join(&b.filename);
+-                let map = map(&path)?;
+-                let table = Bif::read(&map)
+-                    .map_err(|e| KeyError::Bif { path: path.clone(), source: Box::new(e) })?;
+-                Ok(OpenBif { map, table })
++                #[cfg(target_family = "wasm")]
++                return open_bif(&path);
++                #[cfg(not(target_family = "wasm"))]
++                {
++                    let map = map(&path)?;
++                    let table = Bif::read(&map)
++                        .map_err(|e| KeyError::Bif { path: path.clone(), source: Box::new(e) })?;
++                    Ok(OpenBif { map, table })
++                }
+             })
+             .collect::<Result<Vec<_>, KeyError>>()?;
+         // Later entries win, as in the engine's key table lookup.
+@@ -224,7 +260,7 @@ impl KeySet {
+     }
+ 
+     /// The bytes of a listed resource.
+-    pub fn data(&self, entry: &KeyEntry) -> Result<&[u8], KeyError> {
++    pub fn data(&self, entry: &KeyEntry) -> Result<std::borrow::Cow<'_, [u8]>, KeyError> {
+         let dangling = || KeyError::Dangling {
+             resref: entry.resref,
+             restype: entry.restype,
+@@ -233,11 +269,23 @@ impl KeySet {
+         };
+         let bif = self.bifs.get(entry.bif).ok_or_else(dangling)?;
+         let res = bif.table.resource(entry.slot).ok_or_else(dangling)?;
+-        Ok(slice(&bif.map, res.offset as usize, res.size as usize)?)
++        #[cfg(not(target_family = "wasm"))]
++        return Ok(std::borrow::Cow::Borrowed(slice(&bif.map, res.offset as usize, res.size as usize)?));
++        #[cfg(target_family = "wasm")]
++        {
++            use std::io::{Read, Seek, SeekFrom};
++            let io = |source| KeyError::Io { path: self.path.clone(), source };
++            // (WASI has no dup: `&File` reads and seeks, and the build is single-threaded.)
++            let mut f = &bif.file;
++            f.seek(SeekFrom::Start(u64::from(res.offset))).map_err(io)?;
++            let mut out = vec![0u8; res.size as usize];
++            f.read_exact(&mut out).map_err(io)?;
++            Ok(std::borrow::Cow::Owned(out))
++        }
+     }
+ 
+     /// Looks up and returns a resource's bytes.
+-    pub fn get(&self, resref: &ResRef, restype: ResType) -> Option<Result<&[u8], KeyError>> {
++    pub fn get(&self, resref: &ResRef, restype: ResType) -> Option<Result<std::borrow::Cow<'_, [u8]>, KeyError>> {
+         self.find(resref, restype).map(|e| self.data(e))
+     }
+ }
+diff --git a/crates/mg-resman/src/container.rs b/crates/mg-resman/src/container.rs
+index a8881768..c2357d24 100644
+--- a/crates/mg-resman/src/container.rs
++++ b/crates/mg-resman/src/container.rs
+@@ -6,7 +6,7 @@ use std::fmt;
+ use std::path::{Path, PathBuf};
+ use std::sync::Arc;
+ 
+-use memmap2::Mmap;
++use mg_key::Mmap;
+ use mg_core::{ResRef, ResType};
+ use mg_erf::{Entry, Erf};
+ use mg_key::KeySet;
+@@ -132,7 +132,6 @@ impl Container for KeyContainer {
+         let e = self.0.find(&key.resref, key.restype).ok_or(ResError::NotFound(*key))?;
+         self.0
+             .data(e)
+-            .map(Cow::Borrowed)
+             .map_err(|e| ResError::Container { path: self.0.path.clone(), message: e.to_string() })
+     }
+ 
+@@ -180,6 +179,15 @@ fn read_exact_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> std::io::
+         }
+         Ok(())
+     }
++    // WASI (the browser build): no positional read, so the handle seeks.
++    #[cfg(not(any(unix, windows)))]
++    {
++        use std::io::{Read, Seek, SeekFrom};
++        // (WASI has no dup: `&File` reads and seeks, and the build is single-threaded.)
++        let mut f = file;
++        f.seek(SeekFrom::Start(offset))?;
++        f.read_exact(buf)
++    }
+ }
+ 
+ impl fmt::Debug for ErfContainer {
+diff --git a/crates/mg-script/nwscript/native/exotypes.h b/crates/mg-script/nwscript/native/exotypes.h
+index c6751303..de531162 100644
+--- a/crates/mg-script/nwscript/native/exotypes.h
++++ b/crates/mg-script/nwscript/native/exotypes.h
+@@ -87,7 +87,7 @@ namespace std
+ };
+ #endif
+ 
+-#if ((defined __linux__) || (defined __APPLE__))
++#if ((defined __linux__) || (defined __APPLE__) || (defined __wasi__))
+ #define stricmp strcasecmp
+ #define strnicmp strncasecmp
+ #endif // LINUX

@@ -26,7 +26,7 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     let dir = path.parent().with_context(|| format!("{}: no folder", path.display()))?;
     std::fs::create_dir_all(dir).with_context(|| format!("making {}", dir.display()))?;
     let name = path.file_name().with_context(|| format!("{}: no file name", path.display()))?.to_string_lossy();
-    let tmp = dir.join(format!(".{name}.{}-{}.tmp", std::process::id(), SERIAL.fetch_add(1, Ordering::Relaxed)));
+    let tmp = dir.join(format!(".{name}.{}-{}.tmp", crate::pid(), SERIAL.fetch_add(1, Ordering::Relaxed)));
     let written = (|| -> Result<()> {
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(bytes)?;
