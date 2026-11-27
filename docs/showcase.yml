@@ -34,3 +34,18 @@
   still: assets/showcase/cave-ramp-brazier.webp
   clip: assets/showcase/clips/cave-down-the-halls.mp4
   area: assets/showcase/areas/lsdescent.json
+- title: A forest stream
+  text: Along a dirt path beside a stream through old misty woods, past rapids and a small fall, out over a glade.
+  still: assets/showcase/forest-stream.webp
+  clip: assets/showcase/clips/forest-up-the-stream.mp4
+  area: assets/showcase/areas/lsforest.json
+- title: A gloomy swamp
+  text: Low over dark water between drowned trees and reed beds, rising once to the hut on its island.
+  still: assets/showcase/swamp-channel.webp
+  clip: assets/showcase/clips/swamp-channel.mp4
+  area: assets/showcase/areas/lsswamp.json
+- title: Rolling grassland
+  text: Up a stony track through the game's own grass, over the crest to a pond and a stone circle.
+  still: assets/showcase/plains-crest.webp
+  clip: assets/showcase/clips/plains-over-the-crest.mp4
+  area: assets/showcase/areas/lsplains.json
