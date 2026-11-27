@@ -44,5 +44,6 @@ on the model: the arrows move it, the ring turns it, the corner box sizes it.
 
 ## In the toolset
 
-Baked models taller than 2 m fade, as the stock forest tiles' trees do. In the game they fade out when they stand between the camera
-and the player. In the toolset, turn on Fade Geometry to hide them and work on the ground underneath.
+Baked trees fade their crowns, as the stock forest tiles' trees do: on a model taller than 4 m, what stands more than 4 m above its
+base fades and the trunk stays. In the game the crowns fade out about the player. In the toolset, turn on Fade Geometry to hide them
+and work on the ground underneath, between the trunks. Bushes, boulders and rocks stay solid.

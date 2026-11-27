@@ -19,14 +19,15 @@ use crate::{ambience, heightmap, objects, paint, shared};
 /// How high a tile's two main lights hang over its highest ground (m), as the stock tiles' do over theirs.
 const LIGHT_HEIGHT: f32 = 5.0;
 
-/// A baked model taller than this (m) fades (`tilefade 1`), as the stock rural tiles' trees do: the game fades it out between the
-/// camera and the player, and the toolsets' Fade Geometry hides it so the ground under a canopy can be worked on. Smaller ones (a
-/// bush, a rock) rarely block the view and stay solid.
-const FADE_HEIGHT: f32 = 2.0;
+/// A baked model taller than this (m) fades as the stock rural tiles' trees do: its triangles higher than this over its base go into
+/// a `tilefade 1` node (the crown), the rest into a solid one (the trunk). The game fades the crown out about the player, and the
+/// toolsets' Fade Geometry hides it so the ground under a canopy can be worked on. Smaller models (a bush, a boulder) stay solid.
+const FADE_HEIGHT: f32 = 4.0;
 
-/// Whether a baked model whose bounding box spans heights `min_z` to `max_z` fades.
-fn fades(min_z: f32, max_z: f32) -> bool {
-    max_z - min_z > FADE_HEIGHT
+/// Whether triangle `tri` of a baked model whose bounding box spans heights `min_z` to `max_z` fades: the model is taller than
+/// [`FADE_HEIGHT`] and the triangle's centre is higher than that over the model's base.
+fn fades(tri: &[[f32; 3]; 3], min_z: f32, max_z: f32) -> bool {
+    max_z - min_z > FADE_HEIGHT && (tri[0][2] + tri[1][2] + tri[2][2]) / 3.0 - min_z > FADE_HEIGHT
 }
 
 /// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
@@ -304,25 +305,30 @@ pub(super) fn tile_model(
         let mut node = 0;
         for o in scene.objects.iter().filter(|o| o.baked && !o.halo && o.max[0] > x0 && o.min[0] < x1 && o.max[1] > y0 && o.min[1] < y1) {
             for (k, (texture, first, count, hint)) in o.groups.iter().enumerate() {
-                let (mut verts, mut uvs) = (Vec::new(), Vec::new());
+                // Each texture's triangles in two nodes: the solid ones, then those that fade (by their centre's height).
+                let mut parts: [(Vec<[f32; 3]>, Vec<[f32; 2]>); 2] = Default::default();
                 for t in *first..first + count {
                     let tri = [o.positions[3 * t], o.positions[3 * t + 1], o.positions[3 * t + 2]];
                     let uv = [o.uvs[3 * t], o.uvs[3 * t + 1], o.uvs[3 * t + 2]];
+                    let (verts, uvs) = &mut parts[usize::from(fades(&tri, o.min[2], o.max[2]))];
                     for (p, u) in objects::clip(tri, uv, x0, x1, y0, y1) {
                         verts.extend(p.map(|v| [v[0] - ox, v[1] - oy, v[2] - base]));
                         uvs.extend(u);
                     }
                 }
-                if !verts.is_empty() {
+                for (fading, (verts, uvs)) in parts.iter().enumerate() {
+                    if verts.is_empty() {
+                        continue;
+                    }
                     let mut props = if *hint != 0 { format!("  transparencyhint {hint}\n") } else { String::new() };
-                    if fades(o.min[2], o.max[2]) {
+                    if fading == 1 {
                         props.push_str("  tilefade 1\n");
                     }
                     // (a glowing mesh keeps its glow: crystals, mushrooms, embers)
                     if let Some(c) = o.glow.get(k).filter(|c| c.iter().any(|&x| x > 0.0)) {
                         let _ = writeln!(props, "  selfillumcolor {} {} {}", num(c[0]), num(c[1]), num(c[2]));
                     }
-                    trimesh_listed(&mut s, &format!("{name}_o{node}"), name, texture, &props, &verts, &uvs);
+                    trimesh_listed(&mut s, &format!("{name}_o{node}"), name, texture, &props, verts, uvs);
                     node += 1;
                 }
             }
@@ -581,10 +587,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tall_baked_models_fade_and_small_ones_stay_solid() {
-        assert!(fades(10.0, 18.5), "a tree");
-        assert!(!fades(10.0, 11.2), "a bush");
-        assert!(!fades(-0.3, 0.6), "a rock");
+    fn a_tall_models_crown_fades_and_its_trunk_and_small_models_stay_solid() {
+        let tri = |z: [f32; 3]| [[0.0, 0.0, z[0]], [1.0, 0.0, z[1]], [0.0, 1.0, z[2]]];
+        assert!(fades(&tri([16.0, 17.0, 18.0]), 10.0, 18.5), "a tree's crown");
+        assert!(!fades(&tri([10.0, 11.0, 12.0]), 10.0, 18.5), "its trunk");
+        assert!(!fades(&tri([13.0, 13.5, 15.0]), 10.0, 18.5), "a triangle crossing 4 m, its centre below");
+        assert!(fades(&tri([13.0, 14.5, 15.5]), 10.0, 18.5), "one crossing 4 m, its centre above");
+        assert!(!fades(&tri([12.5, 13.0, 13.4]), 10.0, 13.5), "a 3.5 m bush, its top");
+        assert!(!fades(&tri([0.0, 0.5, 0.6]), -0.3, 0.6), "a rock");
     }
 
     #[test]

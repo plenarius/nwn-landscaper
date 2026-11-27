@@ -1,3 +1,4 @@
 <!-- markdownlint-disable-file MD041 -->
-- **Baked trees and other models taller than 2 m now fade** like the stock rural tiles' trees. In the game they fade out between the
-  camera and the player, and the toolset's Fade Geometry hides them so you can work on the ground under a canopy.
+- **Baked trees now fade their crowns** like the stock rural tiles' trees: on a model taller than 4 m, what stands more than 4 m above
+  its base fades and the trunk stays. In the game the crowns fade out about the player, and the toolset's Fade Geometry hides them so
+  you can work on the ground under a canopy. Bushes, boulders and rocks stay solid.
