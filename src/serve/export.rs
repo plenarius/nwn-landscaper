@@ -203,7 +203,7 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
         None => 0,
     };
     anyhow::ensure!(
-        halo % 16 == 0 && halo <= crate::heightmap::MAX_HALO_TILES * 16,
+        halo.is_multiple_of(16) && halo <= crate::heightmap::MAX_HALO_TILES * 16,
         "halo {halo}: whole tiles of samples (16 a tile), at most {} tiles",
         crate::heightmap::MAX_HALO_TILES
     );
@@ -463,7 +463,8 @@ fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightma
     if bytes.len() != fw * (ny + 2 * halo) * 4 {
         return None;
     }
-    let bytes: Vec<u8> = (0..ny).flat_map(|j| bytes[((j + halo) * fw + halo) * 4..((j + halo) * fw + halo + nx) * 4].iter().copied()).collect();
+    let bytes: Vec<u8> =
+        (0..ny).flat_map(|j| bytes[((j + halo) * fw + halo) * 4..((j + halo) * fw + halo + nx) * 4].iter().copied()).collect();
     Some(crate::heightmap::Heightmap {
         name: name.to_string(),
         tiles,
@@ -701,10 +702,7 @@ mod tests {
         let runs = serde_json::json!([[2, 4], [11, 1]]);
         let fw = 4 + 2 * 16;
         let at = |i: usize, j: usize| (j + 16) * fw + i + 16;
-        assert_eq!(
-            into_halo_chasm(&runs, 4, 3, 16).unwrap(),
-            serde_json::json!([[at(2, 0), 2], [at(0, 1), 2], [at(3, 2), 1]])
-        );
+        assert_eq!(into_halo_chasm(&runs, 4, 3, 16).unwrap(), serde_json::json!([[at(2, 0), 2], [at(0, 1), 2], [at(3, 2), 1]]));
     }
 
     #[test]
