@@ -19,15 +19,16 @@ use crate::{ambience, heightmap, objects, paint, shared};
 /// How high a tile's two main lights hang over its highest ground (m), as the stock tiles' do over theirs.
 const LIGHT_HEIGHT: f32 = 5.0;
 
-/// A baked model taller than this (m) fades as the stock rural tiles' trees do: its triangles higher than this over its base go into
-/// a `tilefade 1` node (the crown), the rest into a solid one (the trunk). The game fades the crown out about the player, and the
-/// toolsets' Fade Geometry hides it so the ground under a canopy can be worked on. Smaller models (a bush, a boulder) stay solid.
+/// A baked model taller than this (m) fades as the stock rural tiles' trees do: what stands higher than this over its base (the
+/// crown) goes into a `tilefade 1` node, cut flat at that height, and the rest (the trunk) into a solid one. The game fades the
+/// crown out about the player, and the toolsets' Fade Geometry hides it so the ground under a canopy can be worked on. Smaller
+/// models (a bush, a boulder) stay solid.
 const FADE_HEIGHT: f32 = 4.0;
 
-/// Whether triangle `tri` of a baked model whose bounding box spans heights `min_z` to `max_z` fades: the model is taller than
-/// [`FADE_HEIGHT`] and the triangle's centre is higher than that over the model's base.
-fn fades(tri: &[[f32; 3]; 3], min_z: f32, max_z: f32) -> bool {
-    max_z - min_z > FADE_HEIGHT && (tri[0][2] + tri[1][2] + tri[2][2]) / 3.0 - min_z > FADE_HEIGHT
+/// The height at which a baked model whose bounding box spans heights `min_z` to `max_z` is cut into its solid part and its fading
+/// part; `None`: it stays solid.
+fn fade_cut(min_z: f32, max_z: f32) -> Option<f32> {
+    (max_z - min_z > FADE_HEIGHT).then_some(min_z + FADE_HEIGHT)
 }
 
 /// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
@@ -305,15 +306,21 @@ pub(super) fn tile_model(
         let mut node = 0;
         for o in scene.objects.iter().filter(|o| o.baked && !o.halo && o.max[0] > x0 && o.min[0] < x1 && o.max[1] > y0 && o.min[1] < y1) {
             for (k, (texture, first, count, hint)) in o.groups.iter().enumerate() {
-                // Each texture's triangles in two nodes: the solid ones, then those that fade (by their centre's height).
+                // Each texture's triangles in two nodes: the solid part, then the part that fades, cut flat between them.
                 let mut parts: [(Vec<[f32; 3]>, Vec<[f32; 2]>); 2] = Default::default();
+                let cut = fade_cut(o.min[2], o.max[2]);
                 for t in *first..first + count {
                     let tri = [o.positions[3 * t], o.positions[3 * t + 1], o.positions[3 * t + 2]];
                     let uv = [o.uvs[3 * t], o.uvs[3 * t + 1], o.uvs[3 * t + 2]];
-                    let (verts, uvs) = &mut parts[usize::from(fades(&tri, o.min[2], o.max[2]))];
-                    for (p, u) in objects::clip(tri, uv, x0, x1, y0, y1) {
-                        verts.extend(p.map(|v| [v[0] - ox, v[1] - oy, v[2] - base]));
-                        uvs.extend(u);
+                    let (below, above) = cut.map_or_else(|| (vec![(tri, uv)], Vec::new()), |z| objects::split_at_height(tri, uv, z));
+                    for (side, pieces) in [below, above].into_iter().enumerate() {
+                        let (verts, uvs) = &mut parts[side];
+                        for (tri, uv) in pieces {
+                            for (p, u) in objects::clip(tri, uv, x0, x1, y0, y1) {
+                                verts.extend(p.map(|v| [v[0] - ox, v[1] - oy, v[2] - base]));
+                                uvs.extend(u);
+                            }
+                        }
                     }
                 }
                 for (fading, (verts, uvs)) in parts.iter().enumerate() {
@@ -587,14 +594,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_tall_models_crown_fades_and_its_trunk_and_small_models_stay_solid() {
-        let tri = |z: [f32; 3]| [[0.0, 0.0, z[0]], [1.0, 0.0, z[1]], [0.0, 1.0, z[2]]];
-        assert!(fades(&tri([16.0, 17.0, 18.0]), 10.0, 18.5), "a tree's crown");
-        assert!(!fades(&tri([10.0, 11.0, 12.0]), 10.0, 18.5), "its trunk");
-        assert!(!fades(&tri([13.0, 13.5, 15.0]), 10.0, 18.5), "a triangle crossing 4 m, its centre below");
-        assert!(fades(&tri([13.0, 14.5, 15.5]), 10.0, 18.5), "one crossing 4 m, its centre above");
-        assert!(!fades(&tri([12.5, 13.0, 13.4]), 10.0, 13.5), "a 3.5 m bush, its top");
-        assert!(!fades(&tri([0.0, 0.5, 0.6]), -0.3, 0.6), "a rock");
+    fn a_tall_models_crown_fades_cut_flat_and_its_trunk_and_small_models_stay_solid() {
+        assert_eq!(fade_cut(10.0, 18.5), Some(14.0), "a tree: cut 4 m over its base");
+        assert_eq!(fade_cut(10.0, 13.5), None, "a 3.5 m bush");
+        assert_eq!(fade_cut(-0.3, 0.6), None, "a rock");
+        let area = |t: &[[f32; 3]; 3]| {
+            let (u, v) =
+                ([t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]], [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]]);
+            let c = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            0.5 * (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt()
+        };
+        let uv = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        // Whole on one side: a trunk's triangle below the cut, a crown's above.
+        let (below, above) = objects::split_at_height([[0.0, 0.0, 10.0], [1.0, 0.0, 11.0], [0.0, 1.0, 14.0]], uv, 14.0);
+        assert_eq!((below.len(), above.len()), (1, 0));
+        let (below, above) = objects::split_at_height([[0.0, 0.0, 16.0], [1.0, 0.0, 17.0], [0.0, 1.0, 14.0]], uv, 14.0);
+        assert_eq!((below.len(), above.len()), (0, 1));
+        // One across it: cut at the plane, the halves' areas adding up and their corners on the plane the same points.
+        let tri = [[0.0, 0.0, 12.0], [1.3, 0.2, 15.7], [0.1, 0.9, 13.1]];
+        let (below, above) = objects::split_at_height(tri, uv, 14.0);
+        assert!(!below.is_empty() && !above.is_empty());
+        let total: f32 = below.iter().chain(&above).map(|(t, _)| area(t)).sum();
+        assert!((total - area(&tri)).abs() < 1e-5, "{total} against {}", area(&tri));
+        assert!(below.iter().flat_map(|(t, _)| t).all(|p| p[2] <= 14.0) && above.iter().flat_map(|(t, _)| t).all(|p| p[2] >= 14.0));
+        let on = |pieces: &[objects::Piece]| {
+            let mut v: Vec<[u32; 3]> = pieces.iter().flat_map(|(t, _)| *t).filter(|p| p[2] == 14.0).map(|p| p.map(f32::to_bits)).collect();
+            v.sort_unstable();
+            v.dedup();
+            v
+        };
+        assert_eq!(on(&below).len(), 2);
+        assert_eq!(on(&below), on(&above), "the cut edge's ends, bit for bit");
+        // Texture coordinates follow: where the cut meets edge 0-1 (u from 0 to 1), u is the share of the way up it.
+        let t = (14.0 - 12.0) / (15.7 - 12.0);
+        assert!(below.iter().any(|(p, u)| p.iter().zip(u).any(|(p, u)| p[2] == 14.0 && (u[0] - t).abs() < 1e-5)));
     }
 
     #[test]
