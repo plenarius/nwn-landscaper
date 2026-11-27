@@ -10,6 +10,7 @@
 #
 # Usage: scripts/try-page.sh OUT     (OUT: the folder to make, such as site/try after `mkdocs build`)
 # Environment: TRY_EDITOR_REF, an editor branch or tag to use instead (to try a change to the page before its release).
+#              NWN_ROOT, a game install to make the stock placeables from when no release has them (below).
 set -euo pipefail
 if (($# != 1)); then
     sed -n '/^# Usage/,/^set /p' "$0" | sed '$d' >&2
@@ -53,14 +54,34 @@ if [[ ! -x "$work/editor/scripts/try-site.sh" ]]; then
 fi
 "$work/editor/scripts/try-site.sh" "$out" "$(realpath "$wasm")" "$PWD/packs/demo"
 
+# The game's stock placeables (src/demostock.rs): the "demo-stock" release's demo-stock.zip, made once with the game on a
+# machine that has it (`landscaper demo-stock DIR`, then DIR zipped), since Actions has no game; else made here when
+# NWN_ROOT names an install; else none, and the page draws placeables it lacks as boxes. The page fetches a model's files only
+# when an area or a panel needs them.
+stock=$work/stock
+if gh release download demo-stock --repo "$repo" --pattern demo-stock.zip --dir "$work" 2> /dev/null; then
+    echo "the stock placeables: the demo-stock release's"
+    unzip -q "$work/demo-stock.zip" -d "$stock"
+elif [[ -n "${NWN_ROOT:-}" ]]; then
+    echo "the stock placeables: made from $NWN_ROOT"
+    cargo run -q --release -- demo-stock "$stock"
+else
+    echo "the stock placeables: none (no demo-stock release, no NWN_ROOT): the page draws them as boxes"
+fi
+if [[ -f "$stock/index.json" ]]; then
+    cp -r "$stock" "$out/try/stock"
+fi
+
 # The engine's licence and what else is built into it (the zip's README), beside it: the page hands the engine out.
 cp "$work/landscaper-wasm/LICENSE" "$out/try/LICENSE-engine.txt"
 cp "$work/landscaper-wasm/README.md" "$out/try/NOTICE-engine.md"
 
-# GitHub Pages takes a site of up to 1 GB; this page is about 14 MB. Much more means something that shouldn't be there.
+# GitHub Pages takes a site of up to 1 GB; this page is about 14 MB, and 210 MB with the stock placeables. Much more means
+# something that shouldn't be there.
 size=$(du -sm "$out" | cut -f1)
-if ((size > 40)); then
-    echo "$out is $size MB, over the 40 MB this page should ever need" >&2
+limit=$([[ -d "$out/try/stock" ]] && echo 300 || echo 40)
+if ((size > limit)); then
+    echo "$out is $size MB, over the $limit MB this page should ever need" >&2
     exit 1
 fi
 echo "$out: $size MB, engine $(du -h "$wasm" | cut -f1), editor $editor_ref"

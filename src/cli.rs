@@ -129,6 +129,9 @@ pub enum Command {
     Decompile { model: String },
     #[command(hide = true)]
     Shaders { out: PathBuf },
+    /// The game's stock placeables for the web demo's page (scripts/try-page.sh): models, walkmeshes, textures and their lists.
+    #[command(hide = true)]
+    DemoStock { out: PathBuf },
     #[command(hide = true)]
     CheckTiles { limit: Option<i64> },
     #[command(hide = true)]

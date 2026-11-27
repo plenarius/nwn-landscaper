@@ -1,8 +1,8 @@
 # Try it in your browser
 
 **[Open the Landscaper in your browser](https://plenarius.github.io/nwn-landscaper/try/)**: the editor and its engine both
-run in the page, with nothing to install and nothing sent to a server. It has none of the game's files, so it paints with
-textures of its own; for the rest, it uses your copy of the game when you point it there.
+run in the page, with nothing to install and nothing sent to a server. It paints with textures of its own, and carries the
+game's stock placeables and the shaders an export needs.
 
 ![The Landscaper in the browser: a hill sculpted, a dirt road painted with the demo's textures, and the path check](../assets/handbook/try.webp)
 
@@ -11,25 +11,23 @@ textures of its own; for the rest, it uses your copy of the game when you point 
 - **Sculpt, paint, water, chasms, caves, light, ambience** and the rest of the editor, as in [the handbook](index.md). The
   textures are the demo's own: CC0 photographs under the names of the game's starter set, credited in
   [packs/demo/CREDITS.md](../../packs/demo/CREDITS.md).
+- **Place and Scatter** with the game's stock placeables: trees, rocks, plants and the rest of `placeables.2da`. The page
+  fetches a model the first time an area or a panel needs it.
 - **Check paths**, after each edit or on demand, as on the desktop.
 - **Export** downloads a zip of the module and its haks: put the files of `hak/` in your Neverwinter Nights user folder's
-  `hak` folder and the module in its `modules` folder (the zip's README says where those are).
+  `hak` folder and the module in its `modules` folder (the zip's README says where those are). It asks for nothing: the
+  tiles' shaders come with the page.
 
-Place, Scatter, Things, Scripts and Import read the game's own models, blueprints and tilesets, which the page doesn't have:
-they say so. Use the Landscaper on your computer for them ([Getting started](getting-started.md)).
+Things, Scripts and Import read the game's blueprints, compiler and tilesets, which the page doesn't have: they say so. Use the
+Landscaper on your computer for them ([Getting started](getting-started.md)).
 
-## Your game folder, at Export
+## Areas from your computer
 
-An area's tiles are drawn by shaders the Landscaper makes from three of the game's own files. At Export the page asks for the
-folder the game is installed in (the one with `data` and `lang` in it) and reads only those three files from it, about 20 KB.
-They stay in the page until you close it; nothing is uploaded anywhere.
-
-- **Chrome and Edge** open a folder picker, and remember the folder for your next visit.
-- **Firefox and Safari** open an upload field, and ask again each visit. They say the folder is uploaded: it isn't, the page
-  only reads it.
-
-Without the folder the export still downloads, but the area doesn't draw right in the game, and the report says so. Export
-again and choose the folder.
+**File, Open area from a file** opens an area saved by the Landscaper on your computer, or downloaded from a team server. Its
+stock placeables draw, block paths and export as they do there. A placeable whose model the page doesn't have (one from a
+module's haks) shows as a translucent box where it stands, and one line over the view names those models, once for the area.
+The boxes don't block paths in the check, and an export leaves the baked ones out of the tiles; a placeable put down as an
+object (not baked) is still in the module, for the game to draw from its haks.
 
 ## Where your areas are
 
@@ -50,6 +48,11 @@ too big for this browser; the Landscaper on your computer has no such limit.
 A current Chrome, Edge, Firefox or Safari, with WebGL. The first visit takes a few seconds more than the next ones: it
 prepares the textures once and keeps them.
 
+## Credits
+
+The stock placeables, their textures and the tile shaders are Neverwinter Nights: Enhanced Edition's, by Beamdog and
+BioWare. The demo's ground textures are credited in [packs/demo/CREDITS.md](../../packs/demo/CREDITS.md).
+
 ## Licences
 
 The engine in the page is the Landscaper's, GPL-3.0-or-later, built for WebAssembly: its source is
@@ -65,7 +68,14 @@ tag, and `packs/demo`, put together by the editor's `scripts/try-site.sh` from l
 the workflow builds the engine itself, with the editor's main branch. A release's own run of the workflow puts the new engine
 on the site.
 
+The stock placeables come from the `demo-stock` release's `demo-stock.zip`, which `landscaper demo-stock` makes on a computer
+with the game (the workflow has none): each model, its walkmesh and its textures as the game has them, `placeables.2da`,
+`surfacemat.2da`, the three shaders, and the Place panel's lists. Without that release (or `NWN_ROOT`, when the script runs
+on a computer with the game) the page is built without them, draws every placeable as a box, and asks for the game folder at
+Export for the shaders.
+
 The page needs no header that GitHub Pages can't send. It runs the engine on one thread, so it needs no cross-origin isolation
 (that comes with threads, [DESIGN-web-demo.md](../DESIGN-web-demo.md) question 7). The Service Worker and the engine's Worker
-are the site's own files, and Pages serves the engine as `application/wasm`. The whole page is about 14 MB, far under Pages'
-limits. [DESIGN-web-demo.md](../DESIGN-web-demo.md) has the rest: how the page runs the engine, and what was measured.
+are the site's own files, and Pages serves the engine as `application/wasm`. The page is about 14 MB, and about 210 MB with
+the stock placeables (1,268 models and 579 textures in 2,841 files, the largest 3 MB), under Pages' 1 GB; a visit fetches only
+the models it uses. [DESIGN-web-demo.md](../DESIGN-web-demo.md) has the rest: how the page runs the engine, and what was measured.

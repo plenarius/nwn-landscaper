@@ -1,11 +1,13 @@
 # Design: try the Landscaper in a browser
 
 Status: stage 1 built: steps 3 to 7 done. Written 2026-11-26 from a spike; every question but threads decided the same
-day. The page as built (step 4): "The page" below.
+day. The page as built (step 4): "The page" below. Changed 2026-11-27: the page carries the game's stock placeables and
+shaders ("The stock placeables" below).
 
 A public "try it" page: the editor and its engine both in the visitor's browser, nothing to install and no engine on a server.
 Visitors without the game sculpt, paint, check paths and export with art that isn't the game's; visitors with the game point the
-page at their own install and get everything the desktop Landscaper offers. The page must never serve the game's own files.
+page at their own install and get everything the desktop Landscaper offers. Since 2026-11-27 the page serves the game's stock
+placeables, their textures and the three shaders an export needs: everyone who uses the Landscaper owns the game.
 
 Words used here:
 
@@ -32,9 +34,9 @@ Words used here:
 - **Stages:** (1) the editor with the engine, art of our own, saving in the browser, Check paths and Export as a download; (2) the
   visitor's own game folder, read on demand (an export reads 34 MB of the 5.6 GB install); (3) a model pack of the maintainer's
   and community art, so Place and Scatter work without the game; (4) import, and threads.
-- **The one thing the game must give:** an export's tile shaders are made at export time from three of the game's shaders, so none
-  of Beamdog's is ever shipped. A no-game export is not playable as it is, but whoever plays it has the game: the page asks for
-  the game folder at export and reads those three files from it.
+- **The one thing the game must give:** an export's tile shaders are made at export time from three of the game's shaders. The
+  page asked for the game folder at export and read those three files from it; since 2026-11-27 it carries them, with the stock
+  placeables, and asks for nothing.
 - **Where:** a `/try/` section of the handbook site on GitHub Pages, built by its workflow from a release's wasm. About 5 MB, far
   under Pages' limits.
 
@@ -191,6 +193,28 @@ Measured in headless Chromium 131 on the 48-core server, the page served from th
   in memory: the shared hak's tile shaders are then made from them, its stamp noticing the change. Chromium remembers the
   folder's handle in IndexedDB (no file of the game); Firefox and Safari choose it each visit in an upload field.
 
+### The stock placeables (2026-11-27)
+
+The page carries the game's stock placeables, so an area made on the desktop (trees such as `tnp_tree_t11`, rocks) draws,
+blocks paths and exports in the page as there, and Place and Scatter work without the game. Before, the path check failed on
+the first model it couldn't read ("Live: error") and the view drew nothing for them.
+
+- **What:** `landscaper demo-stock DIR` (`src/demostock.rs`) writes, from an install with no haks, every placeable model of
+  `placeables.2da` that the game has (1,268), its walkmesh and its textures as the game has them (579), `placeables.2da`,
+  `surfacemat.2da` (which faces of a walkmesh block), the three shaders, and the answers of `/api/placeables` and
+  `/api/placeable-groups`: 2,841 files, 195 MB, the largest 3 MB.
+- **Where from:** Actions has no game, so the folder is made once on a computer with it, zipped, and attached to the
+  `demo-stock` release; `scripts/try-page.sh` downloads it into the page's `try/stock/` (or makes it, given `NWN_ROOT`). Made
+  again when the game's placeables change.
+- **In the page:** the Worker puts the tables and shaders in the engine's `override` at the start (3 MB), and before each
+  request the files it needs: a model's for `/api/model`, a texture for `/api/texture`, every placed model's for a check or an
+  export. Each file is fetched once a visit. The two lists are answered from their files. `/api/me` says `stock`, so Place and
+  Scatter drop their "needs the game" notice.
+- **Models it still lacks** (a hak's, in an area from a team): the engine no longer fails on a model it can't read. The object
+  blocks nothing and is left out of the tiles, and the check's report names those models (`missing_models`). The editor draws
+  each as a translucent box, says so in one line over the view per area, and Live stays green or amber. A placeable in object
+  mode is still written to the module, from a blueprint the engine makes when the game has none.
+
 ### To try in Firefox and Safari
 
 Headless Chromium is the only browser this page ran in. In a current Firefox and Safari (macOS, and an iPhone or iPad if one
@@ -216,10 +240,10 @@ wrote it; none of it is the game's.
 |---|---|---|
 | `data/nwn_base.key` and `lang/en/data/dialog.tlk` | the engine refuses an install without them | an empty key and an empty talk table, made here |
 | The starter textures (51 of `starter_textures.json`) | the texture library, the editor's default ids | the demo's own ground textures under the default ids (the spike's are procedural noise) |
-| `fslit`, `vslit`, `inc_lighting` (`.shd`) | the export's tile shaders (`src/shared.rs`, made from the install by design) | none: placeholders, so the export is not playable. From the visitor's game folder at export (question 5) |
+| `fslit`, `vslit`, `inc_lighting` (`.shd`) | the export's tile shaders (`src/shared.rs`, made from the install by design) | the game's own, with the page's stock placeables; without them, from the visitor's game folder at export (question 5) |
 | Nine palettes (`creaturepal.itp` and the rest) | the module's custom palettes | empty palettes, made here |
 | `environment.2da` | the module's lighting scheme | one row of light colours, made here |
-| `placeables.2da` and the placeables' models | Place, Scatter, baked objects | none: the panels fail ("placeables.2da not found"). The model pack (stage 3) |
+| `placeables.2da` and the placeables' models | Place, Scatter, baked objects | the game's stock placeables, fetched a model at a time ("The stock placeables"); a model not among them draws as a box and blocks nothing |
 | Blueprints, `genericdoors.2da`, music, ambient sound, load screens, `skyboxes.2da` | Things, doors, Area settings' lists | empty lists; hidden or explained |
 | `nwscript.nss` | the script editor's compiler | none; the Scripts panel stays off |
 | Sky models | the Sky & fog panel's lists (a sky pack needs the maintainer's own skies) | none; the preset's colours still show |
@@ -233,7 +257,8 @@ Each gives the decision first and the options not chosen after it.
 
 **Decided (2026-11-26):** the engine as it is behind the editor's unchanged interface (question 1), in a Worker with the Service
 Worker only passing requests (question 2), areas on OPFS with Download and Open (question 3); community art used by the
-community's norm, the game's own files never served (question 4); Export asks for the game folder (question 5); `/try/` on the
+community's norm, the game's own files never served (question 4; changed 2026-11-27: the stock placeables and shaders
+are); Export asks for the game folder (question 5); `/try/` on the
 handbook site (question 6); the wasm built in CI (question 8); Moonglow's fixes kept on a patched copy of the maintainer's fork,
 nothing sent upstream (question 9). Threads (question 7) wait for stage 4.
 
@@ -289,8 +314,8 @@ Considered and not chosen:
 that need the game saying so.** The texture pack format (`docs/TEXTURE-PACKS.md`) already carries everything the library needs;
 the demo installs it at start under the editor's default ids (`grassMedium`, `dirt`, `rock`, `rockCliff`, `wallFieldstone` and the
 others in `EDITOR_DEFAULTS`). Community art follows the NWN community's norm: what was shared for the community is used, its
-author is credited where known, and it comes down if anyone asks. The one line is the game's own stock files, which the site never
-serves.
+author is credited where known, and it comes down if anyone asks. Since 2026-11-27 the page also carries the game's stock
+placeables and shaders ("The stock placeables").
 
 Considered and not chosen: **the procedural textures of the spike.** Good enough to prove it, not to show the Landscaper off.
 
@@ -374,10 +399,8 @@ generated skies with it. Reuses the texture pack's checks and install.
 
 ## Risks
 
-- **The game's files reaching the site.** The site build allows only listed files (the editor, the wasm, the demo pack's
-  pictures that its `pack.json` names) and fails on anything else; the stand-ins are made in the page's code, not copied. The
-  shaders an export reads from the visitor's game folder go to the engine's memory for the visit, never into the site's
-  storage.
+- **The game's files on the site:** since 2026-11-27 the page carries the stock placeables and shaders on purpose. The site
+  build still takes only listed files (the editor, the wasm, the demo pack's pictures, and the `demo-stock` folder).
 - **Memory on small devices:** 1.2 GB for a 32 by 32 export. In the browser an area over 16 by 16 asks first, with the memory
   its export needs; an export that runs out is reported as "too big for this browser" (not provoked in a test: Chromium on
   this server had the memory).

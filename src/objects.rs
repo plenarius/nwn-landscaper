@@ -77,6 +77,8 @@ pub struct Scene {
     occluders: Option<crate::occluders::Occluders>,
     /// The area's lowest ground (m): how far below an object its shadow can fall.
     pub lowest: f32,
+    /// The models that couldn't be read (sorted, each once): their objects stand with no triangles and block nothing.
+    pub missing: Vec<String>,
     serial: u64,
 }
 
@@ -92,20 +94,17 @@ pub fn scene() -> Option<Arc<Scene>> {
     if let Some(s) = SCENE.read().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().filter(|s| s.serial == hm.serial) {
         return Some(s.clone());
     }
-    let mut built = build(&hm.objects, hm.serial, area_of(&hm), hm.halo.is_some()).ok()?;
+    let mut built = build(&hm.objects, hm.serial, area_of(&hm), hm.halo.is_some());
     built.lowest = hm.data.iter().copied().fold(f32::MAX, f32::min);
     let built = Arc::new(built);
     *SCENE.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(built.clone());
     Some(built)
 }
 
-/// Whether the loaded objects' models can all be read (else the reason).
-pub fn check() -> Result<()> {
-    let Some(hm) = crate::heightmap::current() else { return Ok(()) };
-    if hm.objects.is_empty() {
-        return Ok(());
-    }
-    build(&hm.objects, hm.serial, area_of(&hm), hm.halo.is_some()).map(|_| ())
+/// The loaded objects' models that can't be read (sorted, each once): an area from another install or the web demo may use
+/// models this one lacks, which then block nothing and are left out of the tiles.
+pub fn missing() -> Vec<String> {
+    scene().map_or_else(Vec::new, |s| s.missing.clone())
 }
 
 /// The area's size in metres, east and north.
@@ -120,12 +119,27 @@ fn cells_between(lo: f32, hi: f32, cell: f32, size: f32) -> std::ops::RangeInclu
 }
 
 /// `halo`: the area has one, so an object standing beyond its edge is the halo's ([`Placed::halo`]).
-fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2], halo: bool) -> Result<Scene> {
-    let game = models::game()?;
+/// An object whose model can't be read stays in the list as one with no triangles (the generator matches objects to the area's by
+/// index), and its model is named in [`Scene::missing`].
+fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2], halo: bool) -> Scene {
+    let game = models::game();
     let mut objects = Vec::new();
+    let mut missing = std::collections::BTreeSet::new();
     let mut cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>> = Default::default();
     for o in list {
-        let mut p = place(o, &*models::flat(game, &o.model)?);
+        let flat = match game.as_ref().map_err(|e| anyhow::anyhow!("{e:#}")).and_then(|g| models::flat(g, &o.model)) {
+            Ok(f) => f,
+            Err(e) => {
+                if missing.insert(o.model.clone()) {
+                    eprintln!("{}: model not readable, so it blocks nothing and isn't baked ({e:#})", o.model);
+                }
+                Arc::new(Flat::default())
+            }
+        };
+        let mut p = place(o, &flat);
+        if p.positions.is_empty() {
+            (p.min, p.max) = ([o.x, o.y, o.z], [o.x, o.y, o.z]);
+        }
         p.halo = halo && !((0.0..=aw).contains(&o.x) && (0.0..=ah).contains(&o.y));
         // Decoration (not solid) doesn't block walking, nor does the halo's.
         for t in p.footprint.iter().filter(|_| o.solid && !p.halo) {
@@ -140,7 +154,7 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2], halo: bool) -> Result
         objects.push(p);
     }
     let occluders = crate::occluders::Occluders::build(&objects);
-    Ok(Scene { objects, cells, occluders, lowest: 0.0, serial })
+    Scene { objects, cells, occluders, lowest: 0.0, missing: missing.into_iter().collect(), serial }
 }
 
 fn inside(t: &[[f32; 2]; 3], x: f32, y: f32) -> bool {
@@ -238,6 +252,30 @@ pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_object_whose_model_can_t_be_read_stands_with_no_triangles_and_blocks_nothing() {
+        let o = |model: &str, x: f32| Object {
+            model: model.into(),
+            x,
+            y: 5.0,
+            z: 0.0,
+            bearing: 0.0,
+            scale: 1.0,
+            solid: true,
+            baked: true,
+            appearance: None,
+            id: None,
+        };
+        let list = [o("ls_no_such_mdl", 5.0), o("ls_no_such_mdl", 15.0), o("ls_nor_this_one", 25.0)];
+        let scene = build(&list, 0, [30.0, 10.0], false);
+        // (Kept in the list: the generator matches objects to the area's by index.)
+        assert_eq!(scene.objects.len(), 3);
+        assert!(scene.objects.iter().all(|p| p.positions.is_empty() && p.footprint.is_empty()));
+        assert_eq!(scene.objects[1].min, [15.0, 5.0, 0.0]);
+        assert_eq!(scene.missing, ["ls_no_such_mdl", "ls_nor_this_one"]);
+        assert!(!scene.blocks(5.0, 5.0));
+    }
 
     #[test]
     fn a_triangle_across_a_tile_edge_is_split_between_the_tiles() {

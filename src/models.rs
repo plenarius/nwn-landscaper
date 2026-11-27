@@ -374,10 +374,11 @@ pub fn blueprint(game: &GameData, row: u32) -> Result<(String, mg_gff::Struct)> 
     });
     let (name, exact) = match index.0.get(&row) {
         Some(n) => (n.clone(), true),
-        None => (index.1.as_ref().map(|(_, n)| n.clone()).context("the game has no placeable blueprints")?, false),
+        None => (index.1.as_ref().map_or_else(String::new, |(_, n)| n.clone()), false),
     };
-    let data = game.resman.get_named(&name, ResType::UTP)?;
-    let mut s = mg_gff::Gff::read(&data)?.root;
+    // (A game with no placeable blueprints at all, as the web demo's: an empty one, which the module's placing fills in.)
+    let mut s =
+        if name.is_empty() { mg_gff::Struct::new(u32::MAX) } else { mg_gff::Gff::read(&game.resman.get_named(&name, ResType::UTP)?)?.root };
     if !exact {
         let v = match s.get("Appearance") {
             Some(mg_gff::Value::Dword(_)) | None => mg_gff::Value::Dword(row),
