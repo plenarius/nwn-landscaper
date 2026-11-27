@@ -173,4 +173,10 @@ The editor's calls (with the `X-Landscaper: 1` header, like every API call):
 - **`POST /api/textures/packs/remove?id=<id>`** (admins): `{ removed, name, textures }`, or 409 with `{ error, areas }` while
   areas paint with its textures (`user: area` on a team server).
 
-On a team server, installs and removals go into the activity log (`texture_pack`).
+- **`GET /api/textures/starter`**: `{ textures, add }`, the starter set (`[{ id, name, category, resref }]`) and whether this user
+  may add from it (an admin, with the game's files). The editor uses it for an area painted with textures the library lacks.
+- **`POST /api/textures/starter?ids=<id>,<id>`** (admins): makes those starter textures from the game's files, as `textures add`
+  would with their lines of `src/starter_textures.json`, and answers `{ added, kept, problems }`. A library texture of that id
+  is kept as it is.
+
+On a team server, installs and removals go into the activity log (`texture_pack`), and starter textures added (`texture_starter`).
