@@ -29,6 +29,9 @@ module's haks) shows as a translucent box where it stands, and one line over the
 The boxes don't block paths in the check, and an export leaves the baked ones out of the tiles; a placeable put down as an
 object (not baked) is still in the module, for the game to draw from its haks.
 
+**Open in Landscaper** on a [showcase](../showcase.md) card opens that area here the same way. If this browser already has an
+area of that name, you choose: open yours, or the showcase's under a free name (`lsvale2`). Yours is never replaced.
+
 ## Where your areas are
 
 In your browser's storage for this site: they are there when you come back, in the same browser. That storage is no backup:

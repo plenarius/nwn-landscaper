@@ -10,6 +10,7 @@
 import html
 import os
 import re
+import urllib.parse
 
 import yaml
 
@@ -61,5 +62,22 @@ def gallery(entries, up):
                 media = f'<a class="no-lightbox" href="{html.escape(clip)}">{media}</a>'
         else:
             media = '<div class="showcase-empty">Clip to come</div>'
-        cards.append(f'<figure class="showcase-card">{media}<figcaption><strong>{title}</strong><br>{text}</figcaption></figure>')
+        caption = f"<figcaption><strong>{title}</strong><br>{text}{actions(e, up)}</figcaption>"
+        cards.append(f'<figure class="showcase-card">{media}{caption}</figure>')
     return '\n<div class="showcase">\n' + "\n".join(cards) + "\n</div>\n"
+
+
+def actions(e, up):
+    """A card's links for its `area`: open it in /try/ (hidden until /try/ says it opens a linked area: docs/javascripts/
+    showcase.js) and download it. /try/ reads `area` from its own address, so the path starts one folder up from it."""
+    area = e.get("area")
+    if not area:
+        return ""
+    name = html.escape(os.path.basename(area))
+    open_url = html.escape(f"{up}try/?area={urllib.parse.quote('../' + area)}")
+    return (
+        '<span class="showcase-actions">'
+        f'<a class="showcase-open" href="{open_url}" hidden>Open in Landscaper</a>'
+        f'<a href="{html.escape(up + area)}" download="{name}">Download</a>'
+        "</span>"
+    )

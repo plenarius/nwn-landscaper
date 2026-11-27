@@ -32,3 +32,13 @@
     text-align: left;
     max-width: none;
 }
+.showcase-actions {
+    display: flex;
+    font-style: normal;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-top: 0.5rem;
+}
+.showcase-actions a[hidden] {
+    display: none;
+}

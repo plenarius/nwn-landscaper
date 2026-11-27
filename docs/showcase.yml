@@ -6,24 +6,31 @@
 #          under assets/showcase/clips/ is a file on the "showcase" release, which the docs workflow copies into the
 #          site when it builds it (GitHub serves release files as downloads, which a page can't play).
 #          Clips never go in the repository.
+#   area:  the area the clip was filmed in, as the Landscaper saved it: a JSON file under assets/showcase/areas/. The card
+#          then has "Open in Landscaper" (the area in /try/) and "Download" (the file).
 # An entry with no still and no clip shows "Clip to come".
 - title: A lake valley at nightfall
   text: Over the south ridge and down to a lakeside camp as night falls and the fireflies come out.
   still: assets/showcase/lake-valley-camp-night.webp
   clip: assets/showcase/clips/lake-valley-dusk-to-night.mp4
+  area: assets/showcase/areas/lsvale.json
 - title: A canyon in golden light
   text: Up the canyon floor between its walls in golden haze, rising toward the rim.
   still: assets/showcase/canyon-glide.webp
   clip: assets/showcase/clips/canyon-floor-to-rim-golden.mp4
+  area: assets/showcase/areas/lscanyon.json
 - title: A dune desert at sunset
   text: A low pass over the crests with sand drifting off them, rising at the end.
   still: assets/showcase/dunes-sunset.webp
   clip: assets/showcase/clips/dunes-low-pass.mp4
+  area: assets/showcase/areas/lsdunes.json
 - title: A snowy mountain pass at dawn
   text: Up the saddle between the cliffs along a gravel trail, snow falling through the pines.
   still: assets/showcase/snowy-pass-cliffs.webp
   clip: assets/showcase/clips/snowy-pass-up-the-saddle.mp4
+  area: assets/showcase/areas/lspass.json
 - title: A cave descent
   text: Down the ramp past a brazier into the cold blue bottom hall, then along the torchlit hall.
   still: assets/showcase/cave-ramp-brazier.webp
   clip: assets/showcase/clips/cave-down-the-halls.mp4
+  area: assets/showcase/areas/lsdescent.json
