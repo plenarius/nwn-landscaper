@@ -3,6 +3,9 @@
 Scenery from the game's models: trees, rocks, bushes, ruins. What you put down is baked into the tiles, so it casts baked shadows
 and costs the game no objects.
 
+To see the ground under a forest while you sculpt or paint, untick **Show > Scenery (Place and Scatter)**: the view hides it,
+but Place, Scatter and Things still show it, and the area and its export keep it.
+
 ## Scatter
 
 **Scatter** (`9`) paints models over the ground.

@@ -12,8 +12,8 @@ Pick a tool, set **Brush size** (`[` `]`) and **Strength**, and left-drag over t
 - **Smooth** (`3`) softens bumps and edges.
 - **Flatten** (`4`) levels the ground to the height where you first click: drag from a spot at the height you want.
 
-Keep **Walkable** (`W`) on while you work. Red ground is too steep for creatures; the export uses the same rule, so what is red
-in the editor is closed to them in the game.
+Keep **Walkable** (`W`, in the top bar) on while you work. Red ground is too steep for creatures; the export uses the same rule,
+so what is red in the editor is closed to them in the game.
 
 ## The band round the area
 
