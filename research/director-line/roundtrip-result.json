@@ -1,0 +1,52 @@
+{
+ "vale": {
+  "planSame": true,
+  "bytesInAreaFile": 315,
+  "keyViewKeyMaxError": {
+   "at": 0,
+   "height": 1.7763568394002505e-15,
+   "pitch": 2.842170943040401e-14,
+   "heading": 0
+  }
+ },
+ "canyon": {
+  "planSame": true,
+  "bytesInAreaFile": 460,
+  "keyViewKeyMaxError": {
+   "at": 0,
+   "height": 3.552713678800501e-15,
+   "pitch": 1.4210854715202004e-14,
+   "heading": 0
+  }
+ },
+ "dunes": {
+  "planSame": true,
+  "bytesInAreaFile": 294,
+  "keyViewKeyMaxError": {
+   "at": 0,
+   "height": 3.552713678800501e-15,
+   "pitch": 1.4210854715202004e-14,
+   "heading": 0
+  }
+ },
+ "pass": {
+  "planSame": true,
+  "bytesInAreaFile": 277,
+  "keyViewKeyMaxError": {
+   "at": 0,
+   "height": 3.552713678800501e-15,
+   "pitch": 7.105427357601002e-15,
+   "heading": 0
+  }
+ },
+ "cave": {
+  "planSame": true,
+  "bytesInAreaFile": 362,
+  "keyViewKeyMaxError": {
+   "at": 0,
+   "height": 1.3322676295501878e-15,
+   "pitch": 1.4210854715202004e-14,
+   "heading": 0
+  }
+ }
+}

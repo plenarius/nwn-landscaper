@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Line preview spike</title>
+<script type="importmap">{ "imports": { "three": "./three/three.module.js", "three/addons/": "./three/addons/" } }</script>
+<style>html, body { margin: 0; background: #111; }</style>
+</head>
+<body>
+<script type="module">
+// Spike (not for merge): the director's line over a Landscaper area, drawn the way the editor would: on the map (from above)
+// and from the camera the director will fly (the same planner, flight.js), in the area's light and fog.
+import * as THREE from 'three';
+import { planFlight, poser, ground, checkFlight, flightPosition } from './flight.js';
+
+const COLOURS = { mudSwamp: '#5c5236', sandSilt: '#b8a67a', grassMeadow: '#71913c', grassMedium: '#5f7f33', grassForest: '#4a672b',
+    rockMossy: '#6c705d', rock: '#77777a', gravelPebbles: '#8a8070', sand: '#c9b27f', snow: '#e8ecf0' };
+const colourOf = n => COLOURS[n] ?? (/snow/i.test(n) ? '#e8ecf0' : /rock|cliff|stone/i.test(n) ? '#777' : /sand|dune/i.test(n) ? '#c8ae78'
+    : /grass/i.test(n) ? '#5f7f33' : /gravel|dirt|mud/i.test(n) ? '#7a6a52' : '#888');
+const get = async p => (await fetch(p)).json();
+const rad = d => d * Math.PI / 180;
+
+let S = null;
+window.setup = async (areaName, planName, w, h) => {
+    const area = await get(`${areaName}.json`);
+    const plan = await get(`${planName}.json`);
+    const dims = await get('model_dims.json');
+    const hh = ground(area);
+    const shot = planFlight(plan);
+    const check = checkFlight(area, shot, dims, area.kind === 'underground');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(w, h);
+    document.body.innerHTML = '';
+    document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    // NWN x east, y north, z up -> three x, z up -> y, and -y -> z
+    const V = (x, y, z) => new THREE.Vector3(x, z, -y);
+    const NX = area.tiles * 16 + 1, NY = area.tilesY * 16 + 1;
+    const mats = Uint8Array.from(atob(area.materials), c => c.charCodeAt(0));
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(NX * NY * 3), col = new Float32Array(NX * NY * 3);
+    const pal = area.palette.map(n => new THREE.Color(colourOf(n)));
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+        const k = j * NX + i, x = i * 0.625, y = j * 0.625;
+        pos.set([x, hh(Math.min(x, hh.size[0] - 1e-3), Math.min(y, hh.size[1] - 1e-3)), -y], k * 3);
+        const c = pal[mats[k]] ?? new THREE.Color('#888');
+        col.set([c.r, c.g, c.b], k * 3);
+    }
+    const idx = [];
+    for (let j = 0; j < NY - 1; j++) for (let i = 0; i < NX - 1; i++) {
+        const a = j * NX + i, b = a + 1, c = a + NX, d = c + 1;
+        idx.push(a, b, c, b, d, c);
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
+    for (const w of area.water ?? []) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(hh.size[0], hh.size[1]), new THREE.MeshLambertMaterial({ color: '#2f5f78', transparent: true, opacity: 0.8 }));
+        m.rotation.x = -Math.PI / 2; m.position.set(hh.size[0] / 2, w.level, -hh.size[1] / 2); scene.add(m);
+    }
+    const crown = new THREE.MeshLambertMaterial({ color: '#2f4a22' }), bark = new THREE.MeshLambertMaterial({ color: '#4a3a2a' }),
+        stone = new THREE.MeshLambertMaterial({ color: '#7d7a70' });
+    for (const o of area.objects) {
+        const [tall, r] = dims[o.model.toLowerCase()] ?? [13, 3.2];
+        const s = o.scale ?? 1, z = o.z ?? hh(o.x, o.y);
+        if (/tree/.test(o.model)) {
+            const c = new THREE.Mesh(new THREE.ConeGeometry(r * 0.8 * s, tall * 0.75 * s, 8), crown);
+            c.position.copy(V(o.x, o.y, z + tall * s * 0.25 + tall * 0.75 * s / 2)); scene.add(c);
+            const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25 * s, 0.35 * s, tall * 0.3 * s, 6), bark);
+            t.position.copy(V(o.x, o.y, z + tall * 0.15 * s)); scene.add(t);
+        } else {
+            const b = new THREE.Mesh(new THREE.DodecahedronGeometry(Math.max(r, 0.3) * s), stone);
+            b.scale.y = Math.max(tall, 0.3) / Math.max(r, 0.3) * 0.6; b.position.copy(V(o.x, o.y, z)); scene.add(b);
+        }
+    }
+    const sun = area.atmosphere?.sun ?? { ambient: '#606060', diffuse: '#d0d0d0', fog: '#a0a0a0', fogAmount: 7 };
+    scene.add(new THREE.AmbientLight(sun.ambient, 2.2));
+    const dl = new THREE.DirectionalLight(sun.diffuse, 2.0); dl.position.set(-60, 120, 40); scene.add(dl);
+    const fogEnd = area.atmosphere?.fogClip ?? 150;
+    S = { area, plan, shot, check, hh, renderer, scene, V, sun, fogEnd, w, h, pose: poser(shot, hh) };
+    return { seconds: shot.seconds, issues: check.issues.length, minClear: check.minClear };
+};
+
+// From the camera the director flies: its pose at t, the area's fog (the game's linear fog, from the camera)
+window.frame = t => {
+    const { scene, renderer, V, sun, fogEnd, w, h } = S;
+    const p = S.pose(t);
+    const cam = new THREE.PerspectiveCamera(50, w / h, 0.3, 4000);
+    cam.position.copy(V(...p.camera));
+    cam.lookAt(V(...p.pivot));
+    scene.fog = new THREE.Fog(sun.fog, Math.min(30 - sun.fogAmount, fogEnd - 1), fogEnd);
+    scene.background = new THREE.Color(sun.fog);
+    renderer.render(scene, cam);
+    return renderer.domElement.toDataURL('image/png');
+};
+
+// From above: the carrier's path through the keys, the camera's path, a look line every few seconds, and what the check flagged
+window.map = (margin = 6) => {
+    const { scene, renderer, V, shot, plan, check, hh, w, h } = S;
+    scene.fog = null; scene.background = new THREE.Color('#202020');
+    const extra = new THREE.Group();
+    const line = (pts, color, width = 1) => {
+        const g = new THREE.BufferGeometry().setFromPoints(pts);
+        extra.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color, linewidth: width, depthTest: false })));
+    };
+    const disc = (p, r, color) => {
+        const m = new THREE.Mesh(new THREE.CircleGeometry(r, 20), new THREE.MeshBasicMaterial({ color, depthTest: false }));
+        m.rotation.x = -Math.PI / 2; m.position.copy(p); m.renderOrder = 9; extra.add(m);
+    };
+    const up = 60;   // drawn over everything, from straight above
+    const path = [];
+    for (let t = 0; t <= shot.seconds; t += 0.25) { const q = flightPosition(plan.keys, t); path.push(V(q[0], q[1], up)); }
+    for (const p of path) disc(p, 0.28, '#ffffff');
+    const camPath = check.samples.map(s => V(s.camera[0], s.camera[1], up));
+    for (const s of check.samples) if (s.t % 4 === 0) line([V(s.camera[0], s.camera[1], up), V(s.pivot[0], s.pivot[1], up)], '#ffe680');
+    for (const s of check.samples) disc(V(s.camera[0], s.camera[1], up + 0.5), s.notes.length ? 0.75 : 0.4, s.notes.length ? '#ff2a2a' : '#ffc61a');
+    for (const k of plan.keys) { disc(V(k.at[0], k.at[1], up + 1.5), 1.5, '#ffffff'); disc(V(k.at[0], k.at[1], up + 2), 1.15, '#1e88e5'); }
+    const amb = new THREE.AmbientLight('#ffffff', 1.6); extra.add(amb);
+    scene.add(extra);
+    const xs = [...path, ...camPath].map(v => v.x), zs = [...path, ...camPath].map(v => v.z);
+    let x0 = Math.min(...xs) - margin, x1 = Math.max(...xs) + margin, z0 = Math.min(...zs) - margin, z1 = Math.max(...zs) + margin;
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    let hw = (x1 - x0) / 2, hz = (z1 - z0) / 2;
+    if (hw / hz > w / h) hz = hw * h / w; else hw = hz * w / h;
+    const cam = new THREE.OrthographicCamera(cx - hw, cx + hw, -cz + hz, -cz - hz, 0.1, 1000);
+    cam.position.set(0, 200, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0);
+    // the orthographic box is in x and -z; with up = -z, screen up is north
+    cam.left = cx - hw; cam.right = cx + hw; cam.top = -(cz - hz); cam.bottom = -(cz + hz);
+    cam.top = hz - cz; cam.bottom = -hz - cz;
+    cam.updateProjectionMatrix();
+    renderer.render(scene, cam);
+    scene.remove(extra);
+    return renderer.domElement.toDataURL('image/png');
+};
+</script>
+</body>
+</html>

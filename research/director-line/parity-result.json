@@ -1,0 +1,52 @@
+{
+ "vale": {
+  "legsAndCamsIdentical": true,
+  "samples": 161,
+  "maxPosDiff_m": 1.4210854715202004e-14,
+  "maxAngleDiff_deg": 5.684341886080802e-14,
+  "issues": 0,
+  "refIssues": 0,
+  "minClear": 2.51,
+  "refMinClear": 2.51
+ },
+ "canyon": {
+  "legsAndCamsIdentical": true,
+  "samples": 157,
+  "maxPosDiff_m": 2.842170943040401e-14,
+  "maxAngleDiff_deg": 0,
+  "issues": 0,
+  "refIssues": 0,
+  "minClear": 17.64,
+  "refMinClear": 17.64
+ },
+ "dunes": {
+  "legsAndCamsIdentical": true,
+  "samples": 157,
+  "maxPosDiff_m": 2.842170943040401e-14,
+  "maxAngleDiff_deg": 2.842170943040401e-14,
+  "issues": 0,
+  "refIssues": 0,
+  "minClear": 5.06,
+  "refMinClear": 5.06
+ },
+ "pass": {
+  "legsAndCamsIdentical": true,
+  "samples": 145,
+  "maxPosDiff_m": 2.842170943040401e-14,
+  "maxAngleDiff_deg": 5.684341886080802e-14,
+  "issues": 0,
+  "refIssues": 0,
+  "minClear": 13.18,
+  "refMinClear": 13.18
+ },
+ "cave": {
+  "legsAndCamsIdentical": true,
+  "samples": 141,
+  "maxPosDiff_m": 3.552713678800501e-15,
+  "maxAngleDiff_deg": 0,
+  "issues": 0,
+  "refIssues": 0,
+  "minClear": 1.97,
+  "refMinClear": 1.97
+ }
+}

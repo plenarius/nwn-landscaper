@@ -1,0 +1,5 @@
+vale    miss at keys: dir 0.00 deg, pitch 0.00 deg, dist 0.00 m | camera still 9.2 s of 80 , longest 6.0 s | speeds 0,2,1,2,2,3,1,2,2,3
+canyon  miss at keys: dir 0.00 deg, pitch 0.00 deg, dist 0.00 m | camera still 37.6 s of 78 , longest 24.1 s | speeds 0,1,1,1,1,1,2,3,4
+dunes   miss at keys: dir 3.10 deg, pitch 0.00 deg, dist 0.00 m | camera still 0.0 s of 78 , longest 0.0 s | speeds 0,1,2,1,2,3,4
+pass    miss at keys: dir 0.00 deg, pitch 1.00 deg, dist 0.00 m | camera still 22.7 s of 72 , longest 16.0 s | speeds 0,1,1,2
+cave    miss at keys: dir 6.34 deg, pitch 0.00 deg, dist 0.00 m | camera still 0.0 s of 70 , longest 0.0 s | speeds 0,2,2,4,5,7,2,3,4,6,1
