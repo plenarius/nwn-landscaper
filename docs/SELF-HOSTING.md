@@ -57,7 +57,8 @@ under the click joins the library as a "Tileset" texture. It needs the tileset's
 
 ## On your own machine
 
-The simplest way is a release download (README, "Install"): unpack it and start the program. To build it from source:
+The simplest way is the app from a release ([Getting started](handbook/getting-started.md)), or the program alone from the same
+release ([The program alone](handbook/program-alone.md)): unpack it and start the program. To build it from source:
 
 ```sh
 git clone https://github.com/plenarius/nwn-landscaper

@@ -5,8 +5,10 @@ stands on its own.
 
 The order follows the work on an area:
 
-1. **[Getting started](getting-started.md):** start the program, make a new area or import one, move the view.
-2. **[Terrain](terrain.md):** raise, lower, smooth and flatten the ground; water, chasms and cave mouths.
+1. **[Getting started](getting-started.md):** install the app ([Windows](install-windows.md), [macOS](install-macos.md),
+   [Linux](install-linux.md)), [the first start](first-start.md), make a new area or import one, move the view.
+2. **[Terrain](terrain.md):** raise, lower, smooth and flatten the ground, and the band round the area that the game shows past
+   its edge; water, chasms and cave mouths.
 3. **[Paint and the mix brush](paint.md):** paint the ground with one texture, or with a mix of several in patches.
 4. **[Caves and interiors](caves.md):** dig passages, cut rooms, lay ramps and whole descents.
 5. **[Scatter and Place](scatter.md):** trees, rocks and bushes, painted on or set one by one.
@@ -19,4 +21,5 @@ The order follows the work on an area:
 12. **[Publish and teams](publish.md):** hand the area over, alone or on a team server.
 
 [The whole path](../BUILDER-WORKFLOW.md) is the same work on one page, with every rule and limit. To try the editor without
-installing anything, [try it in your browser](try.md).
+installing anything, [try it in your browser](try.md); for the command line or a server, use
+[the program alone](program-alone.md).

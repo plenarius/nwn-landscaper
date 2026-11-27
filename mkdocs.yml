@@ -84,8 +84,14 @@ nav:
   - Home: index.md
   - Handbook:
       - handbook/index.md
-      - Getting started: handbook/getting-started.md
-      - Try it in your browser: handbook/try.md
+      - Getting started:
+          - Install and start: handbook/getting-started.md
+          - Windows: handbook/install-windows.md
+          - macOS: handbook/install-macos.md
+          - Linux: handbook/install-linux.md
+          - The first start and Help: handbook/first-start.md
+          - The program alone: handbook/program-alone.md
+          - Try it in your browser: handbook/try.md
       - Terrain: handbook/terrain.md
       - Paint and the mix brush: handbook/paint.md
       - Caves and interiors: handbook/caves.md

@@ -17,22 +17,32 @@ Made for [Layonara](https://layonara.com)'s builders. The code is configurable f
 
 ## Install
 
-Download the archive for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases): Windows
-(x86-64), macOS (Apple silicon and Intel) or Linux (x86-64). Unpack it anywhere and start the program in it: `landscaper.exe`
-on Windows, `landscaper` on macOS and Linux. A window shows the game and user folder it found, and your browser opens the editor
-at <http://127.0.0.1:8765/> (or the next free port, if another program has 8765). Close the window to stop it. `QUICKSTART.txt`
-in the archive says the same, and what to set when it can't find the game.
+Install the app for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases). It opens the editor in
+a window of its own, with the engine inside it: no browser, no terminal window.
 
-The archive holds the engine and the editor of the same release, so you need nothing else but the game. Check a download against
-`SHA256SUMS` on the release page.
+- **Windows 10 and 11:** `nwn-landscaper-X.Y.Z-windows-x86_64-setup.exe`, which installs for you alone (no administrator). The
+  installer and the program are signed, so SmartScreen sees a verified publisher.
+- **macOS 11 and newer** (Apple silicon and Intel): `nwn-landscaper-X.Y.Z-macos-universal.dmg`; drag NWN Landscaper to
+  Applications. It is signed with a Developer ID and notarized by Apple, so the first start only asks whether to open an app
+  downloaded from the internet.
+- **Linux:** `nwn-landscaper-X.Y.Z-linux-x86_64.AppImage`, or `nwn-landscaper_X.Y.Z_amd64.deb` for Debian 12, Ubuntu 22.04 and
+  newer.
 
-The first start:
+The first start looks for the game, asks for its folder when it can't find it, and builds the texture library from it. The
+editor's **Help** menu opens the data folder and the log. The handbook has a page for each system:
+[Windows](docs/handbook/install-windows.md), [macOS](docs/handbook/install-macos.md), [Linux](docs/handbook/install-linux.md),
+and [the first start](docs/handbook/first-start.md). The installers came with 0.7.0; earlier releases have only the archives.
 
-- **macOS:** the program is signed with a Developer ID and notarized by Apple, so the first start only asks whether to open a
-  program downloaded from the internet. (Releases up to 0.4.0 aren't signed: open System Settings, Privacy & Security, and click
-  **Open Anyway**.)
-- **Windows:** the program is signed, so SmartScreen sees a verified publisher. (Releases up to 0.6.0 aren't signed: if
-  SmartScreen says it protected your PC, click **More info**, then **Run anyway**.)
+**The program alone** is still in each release, for the command line, a server, or your own browser: a zip (Windows) or tar
+archive (macOS, Linux) with the engine and the editor in `web/` beside it. Unpack it anywhere and start `landscaper.exe` or
+`landscaper`; a terminal window shows the game and user folder it found, and your browser opens the editor at
+<http://127.0.0.1:8765/> (or the next free port). `QUICKSTART.txt` in the archive says what to set when it can't find the game
+([The program alone](docs/handbook/program-alone.md)).
+
+**Without installing anything,** [try it in your browser](https://plenarius.github.io/nwn-landscaper/try/).
+
+Each download holds the engine and the editor of the same release, so you need nothing else but the game. Check a download
+against `SHA256SUMS` on the release page. Releases up to 0.4.0 aren't signed for macOS, and up to 0.6.0 not for Windows.
 
 To build it from source instead, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) and "Development" below.
 
@@ -188,6 +198,10 @@ A change that users would notice gets a changelog entry as a file of its own, `c
 pull request's own file means two of them never conflict there. The release folds the files into its section
 (`scripts/changelog.sh`); `scripts/changelog.sh preview` shows them as that section, and `scripts/changelog.sh check` (run by
 CI) checks them.
+
+A change a builder sees also updates the handbook page that covers it (`docs/handbook/`), in the same pull request, with a new
+screenshot when the old one no longer shows it. In a pull request's CI, `scripts/changelog.sh check` warns (and doesn't fail)
+when the pull request adds a `changelog.d/` file but changes nothing under `docs/`.
 
 The tests that need the game's files are ignored by default, as CI has no game: the export, re-export and import cycle
 (`tests/game_cycle.rs`), an import into a folder of its own (`tests/import_dir.rs`), entrance doors (`tests/entrance_doors.rs`),

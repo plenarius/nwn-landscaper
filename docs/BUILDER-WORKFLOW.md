@@ -26,12 +26,26 @@ The toolset's outdoor tilesets block the way only with what rises: trees, mounta
 rim nobody climbs down, a gap between two ledges, a plateau or an island standing over nothing.
 
 - **Chasm** opens one under the brush; Shift-drag fills it in, the ground as it was. *Along the whole edge* opens one the brush
-  size wide all round the area, and the scenery the game draws beyond the edge carries it on.
+  size wide all round the area. Chasms don't reach into the band round the area yet (*The band round the area*, below): lower
+  the band past the edge to keep the drop going there.
 - The ground there drops 20 m under the rim (the nearest ground that isn't chasm), its walls fade to black from the rim down and
   its floor is black, so no camera angle shows a bottom; the game's fog takes the rest. Nothing walks in it or on its edge, and
   the path check sends no route into it. Water stops at it.
 - **To cross one**, leave a strip of ground across it at least 6 m wide, over the middle of a tile's edge, as for a cave passage.
 - For outdoor areas only.
+
+## The band round the area
+
+Every outdoor area has a band of ground 50 m wide round it, which the game shows past the area's edge. Nobody walks on it and it
+is never built into tiles.
+
+- Raise, Lower, Smooth, Flatten and Paint shape and paint it where the brush reaches past the edge, with undo. The area's water
+  runs on into it where its ground is lower.
+- A new area's band, and an old area's when it is first opened, carries the area's edge straight out until you shape it.
+- The texture mix, chasms, Dig and objects don't reach into it yet.
+- The export draws it past the edge in the game out to 50 m, fading into the fog colour from 25 m, with trees farther than 25 m
+  out as crossed pictures.
+- Caves and interiors have none.
 
 ## Caves, interiors and descents
 
