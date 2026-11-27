@@ -33,7 +33,8 @@ your install the first time it starts. When it can't find the game, `QUICKSTART.
 
 **File > Open** (`O`) opens another of your areas, or imports one: from your module's source, or from a `.mod` or `.erf` you
 upload. An imported area keeps its tileset's own textures, and its placeables, creatures, doors and scripts come with it on
-export.
+export. A file in your areas folder that can't be opened (a name longer than 9 characters, a `name` that isn't its file's name,
+or broken JSON) is listed greyed below your areas, with the reason.
 
 The engine saves each change a moment after you make it. There is no Save button; **File > Save version** keeps a named copy in
 a team's history.
