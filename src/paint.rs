@@ -56,8 +56,45 @@ pub struct Texture {
     pub mean: [f32; 3],
     /// surfacemat.2da row of walkable ground painted with it (footsteps).
     pub surface: u32,
+    /// How its edge meets another texture's in a baked tile (the catalog's `edge`).
+    pub edge: Edge,
     /// An imported area's ground (`@import:<name>`): a picture per tile, drawn over its square instead of repeating.
     pub tiles: Option<std::sync::Arc<TilePictures>>,
+}
+
+/// How a texture's edge meets another's in a baked tile ([`crate::generator`]'s soft paint): where two meet, broken wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edge {
+    /// A sharp line: laid surfaces (cobbles, flagstones, floors, planks).
+    Crisp,
+    /// A sharp line ragged by noise and by the textures' own light and dark (gravel poking into snow): natural ground.
+    Broken,
+}
+
+impl Edge {
+    /// The catalog's `edge` ("crisp" or "broken"); else what the category's name suggests ([`edge_for`]).
+    pub fn from_entry(entry: &serde_json::Value) -> Edge {
+        match entry["edge"].as_str() {
+            Some("crisp") => Edge::Crisp,
+            Some("broken") => Edge::Broken,
+            _ => edge_for(entry["category"].as_str().unwrap_or("")),
+        }
+    }
+
+    /// Its name in the catalog.
+    pub fn name(self) -> &'static str {
+        match self {
+            Edge::Crisp => "crisp",
+            Edge::Broken => "broken",
+        }
+    }
+}
+
+/// The edge a category's name suggests: crisp for laid and built surfaces, broken for the rest.
+pub fn edge_for(category: &str) -> Edge {
+    let c = category.to_ascii_lowercase();
+    let built = ["floor", "wall", "cobble", "flag", "paving", "plank", "wood", "brick", "tile", "slab", "carpet", "rug", "metal"];
+    if built.iter().any(|w| c.contains(w)) { Edge::Crisp } else { Edge::Broken }
 }
 
 /// An import's tile pictures (rows from the south), `width` tiles a row.
@@ -213,7 +250,7 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
         let mean = [(sum[0] / count) as f32, (sum[1] / count) as f32, (sum[2] / count) as f32];
         let surface = entry["surface"].as_u64().unwrap_or(3) as u32;
         let smaller = std::sync::Arc::new(halvings(&image));
-        out.insert(id.clone(), Texture { image, smaller, mean, surface, tiles: None });
+        out.insert(id.clone(), Texture { image, smaller, mean, surface, edge: Edge::from_entry(entry), tiles: None });
     }
     Ok(out)
 }
@@ -280,6 +317,7 @@ fn load_import(name: &str) -> Result<Texture> {
         smaller: std::sync::Arc::default(),
         mean,
         surface: 3,
+        edge: Edge::Crisp,
         tiles: Some(std::sync::Arc::new(TilePictures { width, pictures, cliffs })),
     })
 }
@@ -378,10 +416,25 @@ mod tests {
     }
 
     #[test]
+    fn the_catalog_s_edge_wins_over_the_category_s() {
+        use serde_json::json;
+        assert_eq!(Edge::from_entry(&json!({"category": "Floors"})), Edge::Crisp);
+        assert_eq!(Edge::from_entry(&json!({"category": "Earth"})), Edge::Broken);
+        assert_eq!(Edge::from_entry(&json!({"category": "Earth", "edge": "crisp"})), Edge::Crisp);
+        assert_eq!(Edge::from_entry(&json!({"category": "Walls", "edge": "broken"})), Edge::Broken);
+        // (A value it doesn't know: the category's.)
+        assert_eq!(Edge::from_entry(&json!({"category": "Cobbles", "edge": "soft"})), Edge::Crisp);
+        for (c, e) in [("Grass", Edge::Broken), ("Snow", Edge::Broken), ("Rock", Edge::Broken), ("Wooden planks", Edge::Crisp)] {
+            assert_eq!(edge_for(c), e, "{c}");
+        }
+    }
+
+    #[test]
     fn points_far_apart_read_a_texture_halved_so_fine_detail_blends() {
         // Black and white stripes a pixel wide: any point of the picture itself is near black or near white.
         let image = picture(512, 512, |x, _| if x % 2 == 0 { [0.0; 3] } else { [1.0; 3] });
-        let t = Texture { smaller: std::sync::Arc::new(halvings(&image)), image, mean: [0.5; 3], surface: 3, tiles: None };
+        let t =
+            Texture { smaller: std::sync::Arc::new(halvings(&image)), image, mean: [0.5; 3], surface: 3, edge: Edge::Broken, tiles: None };
         assert_eq!(t.smaller.len(), 9);
         let up = [0.0, 0.0, 1.0];
         // (A quarter of a pixel in: bilinear between two stripes, still mostly one of them.)

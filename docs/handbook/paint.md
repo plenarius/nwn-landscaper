@@ -40,6 +40,16 @@ The mix brush paints a blend of textures in patches: grass with dry patches and 
 
 ![The Paint tool painting a mix](../assets/handbook/mix.webp)
 
+## Edges in the game
+
+Where two textures meet, the export doesn't draw the paint's grid (a point every 0.625 m): it smooths each texture's paint over
+about 1.5 m and draws the edge along that. Natural ground gets a ragged edge, gravel poking into snow; laid surfaces such as
+cobbles, flagstones, floors and planks get a sharp one. Where a laid surface meets natural ground, the ragged edge wins.
+
+- A line of paint one point wide, or a patch of up to about two points by two (the mix brush's soft edge makes them), is
+  smoothed away. Paint lines at least two points wide.
+- The editor draws the same edges, so what you paint is what the game shows.
+
 ## How large a texture is drawn
 
 Every texture repeats every 4 m of ground. The starter set's close-ups of small things repeat their picture inside those 4 m, so

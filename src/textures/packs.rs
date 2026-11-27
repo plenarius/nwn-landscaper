@@ -62,6 +62,9 @@ pub struct PackTexture {
     pub category: String,
     /// The `surfacemat.2da` row ground painted with it walks as.
     pub surface: u32,
+    /// How its edge meets another texture's, `crisp` or `broken` (unset: what the category suggests, [`paint::edge_for`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<String>,
     /// Its pictures.
     pub files: PackFiles,
 }
@@ -132,6 +135,7 @@ pub fn validate(m: &Manifest) -> Result<()> {
         ensure!(crate::packs::plain_text(&t.name, 80), "{}: its name is empty or too long", t.id);
         ensure!(crate::packs::plain_text(&t.category, 40), "{}: its category is empty or too long", t.id);
         ensure!(t.surface <= 255, "{}: surface {} is not a surfacemat.2da row", t.id, t.surface);
+        ensure!(t.edge.as_deref().is_none_or(|e| e == "crisp" || e == "broken"), "{}: edge is \"crisp\" or \"broken\"", t.id);
         for (f, want) in [(&t.files.render, format!("{}.png", t.id)), (&t.files.swatch, format!("{}_128.png", t.id))] {
             ensure!(f.path == want, "{}: its picture is {}; a pack names it {want}", t.id, f.path);
             ensure!(crate::packs::valid_sha256(&f.sha256), "{}: a bad sha256", f.path);
@@ -298,7 +302,8 @@ fn install_into(
             let (w, h) = png_size(&dir.join(&t.files.render.path))?;
             library.entries.push(json!({
                 "id": t.id, "name": t.name, "category": t.category, "source": m.name, "file": t.files.render.path,
-                "render": t.files.render.path, "swatch": t.files.swatch.path, "surface": t.surface, "size": [w, h],
+                "render": t.files.render.path, "swatch": t.files.swatch.path, "surface": t.surface,
+                "edge": t.edge.clone().unwrap_or_else(|| paint::edge_for(&t.category).name().into()), "size": [w, h],
                 "original": format!("pack:{}", m.id), "pack": m.id,
             }));
         }
@@ -472,6 +477,8 @@ struct ListedTexture {
     category: String,
     #[serde(default)]
     surface: Option<u32>,
+    #[serde(default)]
+    edge: Option<String>,
     picture: PathBuf,
 }
 
@@ -522,6 +529,7 @@ pub fn make(list: &Path, out: &Path, index: Option<&Path>) -> Result<Made> {
             name: t.name.clone().unwrap_or_else(|| t.id.clone()),
             category: t.category.clone(),
             surface: t.surface.unwrap_or_else(|| super::surface_for(&t.category)),
+            edge: t.edge.clone(),
             files,
         });
     }

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use super::{TILE, WALKABLE_NZ, entrance, height, in_void, tile_name, tiles_x, tiles_y};
+use super::{TILE, WALKABLE_NZ, entrance, height, in_void, soft, tile_name, tiles_x, tiles_y};
 use crate::{heightmap, models, objects, paint, shade};
 
 /// The texture an entrance's hood takes: the editor paints its walls with
@@ -28,6 +28,10 @@ pub(super) struct Painter {
     decals: HashMap<(usize, usize), Vec<std::sync::Arc<Decal>>>,
     /// Each library texture's digest (by palette index; worked out when first needed), for the bake cache.
     digests: Vec<std::sync::OnceLock<[u8; 20]>>,
+    /// The paint smoothed: where textures meet, and how (soft.rs).
+    soft: soft::Soft,
+    /// By palette index: what soft.rs needs of each texture.
+    looks: Vec<soft::Look>,
 }
 
 /// A ground patch laid where its object stands: its picture over `rect` (metres about the object's origin), turned and scaled with it.
@@ -65,7 +69,7 @@ impl Painter {
     pub(super) fn load() -> Result<Option<Painter>> {
         let Some(hm) = heightmap::current().filter(|h| h.painted()) else { return Ok(None) };
         let lib = paint::load_library(&hm.palette)?;
-        let textures = hm.palette.iter().map(|id| lib[id].clone()).collect();
+        let textures: Vec<paint::Texture> = hm.palette.iter().map(|id| lib[id].clone()).collect();
         // Imported things' ground patches, bucketed by the tiles they cover.
         let mut decals: HashMap<(usize, usize), Vec<std::sync::Arc<Decal>>> = HashMap::new();
         let mut images: HashMap<PathBuf, (std::sync::Arc<mg_image::Rgba>, [u8; 20])> = HashMap::new();
@@ -108,7 +112,9 @@ impl Painter {
             }
         }
         let digests = hm.palette.iter().map(|_| std::sync::OnceLock::new()).collect();
-        Ok(Some(Painter { hm, textures, decals, digests }))
+        let looks = hm.palette.iter().zip(&textures).map(|(id, t)| look(id, t)).collect();
+        let soft = soft::Soft::new(&hm);
+        Ok(Some(Painter { hm, textures, decals, digests, soft, looks }))
     }
 
     fn samples_per_tile(&self) -> i64 {
@@ -126,13 +132,19 @@ impl Painter {
         used.len() > 1 || used.iter().any(|&m| self.imported(m)) || self.decals.contains_key(&(tx, ty))
     }
 
-    /// Palette indices painted in tile (tx, ty), sorted.
+    /// Palette indices that show in tile (tx, ty), sorted: the smoothed paint's ([`soft::Soft`]) over the samples its points
+    /// read, a second texture only where it weighs enough to show.
     pub(super) fn tile_materials(&self, tx: usize, ty: usize) -> Vec<u8> {
         let k = self.samples_per_tile();
+        let shows = (soft::MIN_WEIGHT * 255.0).floor() as u8;
         let mut used: Vec<u8> = Vec::new();
         for j in ty as i64 * k..=(ty as i64 + 1) * k {
             for i in tx as i64 * k..=(tx as i64 + 1) * k {
-                used.push(self.hm.material(i, j));
+                let [a, b, q] = self.soft.sample(i, j);
+                used.push(a);
+                if q > shows {
+                    used.push(b);
+                }
             }
         }
         used.sort_unstable();
@@ -140,48 +152,16 @@ impl Painter {
         used
     }
 
-    /// The four samples around (x, y) and their bilinear weights.
-    fn corners(&self, x: f32, y: f32) -> [(u8, f32); 4] {
-        let sp = self.hm.spacing;
-        // (Beyond the area: the halo's paint, as far as it reaches.)
-        let r = self.hm.reach() / sp;
-        let (last_x, last_y) = ((self.hm.width - 2) as f32 + r, (self.hm.height - 2) as f32 + r);
-        let (fx, fy) = ((x / sp).clamp(-r, last_x + 1.0), (y / sp).clamp(-r, last_y + 1.0));
-        let (i, j) = (fx.floor().min(last_x), fy.floor().min(last_y));
-        let (tx, ty) = (fx - i, fy - j);
-        let (i, j) = (i as i64, j as i64);
-        [
-            (self.hm.material(i, j), (1.0 - tx) * (1.0 - ty)),
-            (self.hm.material(i + 1, j), tx * (1.0 - ty)),
-            (self.hm.material(i, j + 1), (1.0 - tx) * ty),
-            (self.hm.material(i + 1, j + 1), tx * ty),
-        ]
-    }
-
-    /// The ground's colour at (x, y): the four samples' textures blended, each drawn from three sides by the ground's slope there
-    /// ([`paint::Texture::at`]), as the editor shows it and the game's shader draws a tile in one texture. `decals`: the ones on its
-    /// tile.
+    /// The ground's colour at (x, y): where textures meet, the smoothed paint's edge ([`soft`]), each texture drawn from three
+    /// sides by the ground's slope there ([`paint::Texture::at`]) as the game's shader draws a tile in one texture. `decals`: the
+    /// ones on its tile.
     /// `spacing`: how far apart the points drawn are (m; 0 for the textures' full detail), see [`paint::Texture::at`].
     fn ground(&self, x: f32, y: f32, spacing: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
         // (Blended by the ground's own slope, not the light's smoothed normal: see triplanar::blend_normal. The bake draws
         // walkable ground; the steep faces draw their own.)
         let n = crate::triplanar::blend_normal(|x, y| self.hm.at(x, y), x, y, self.hm.spacing, false);
         let p = [x, y, self.hm.at(x, y)];
-        let mut c = [0.0; 3];
-        // (Corners of the same texture share its colour here: sampled once.)
-        let mut last: Option<(u8, [f32; 3])> = None;
-        for (m, w) in self.corners(x, y) {
-            if w > 0.0 {
-                let t = match last {
-                    Some((lm, t)) if lm == m => t,
-                    _ => self.textures[m as usize].at(p, n, spacing),
-                };
-                last = Some((m, t));
-                for k in 0..3 {
-                    c[k] += t[k] * w;
-                }
-            }
-        }
+        let mut c = soft::colour(&self.soft.mix(x, y), x, y, &self.looks, |m| self.textures[m as usize].at(p, n, spacing));
         // Imported things' patches of ground over it, where they stand.
         for d in decals {
             if let Some((dc, a)) = d.at(x, y) {
@@ -193,15 +173,16 @@ impl Painter {
         c
     }
 
-    /// The blended average colours at (x, y), for minimaps.
+    /// The textures' average colours at (x, y), for minimaps: blended by the smoothed paint's weights.
     fn mean(&self, x: f32, y: f32) -> [f32; 3] {
-        let mut c = [0.0; 3];
-        for (m, w) in self.corners(x, y) {
+        let (mix, mut c, mut total) = (self.soft.mix(x, y), [0.0; 3], 0.0);
+        for &(m, w) in &mix.0[..mix.1] {
+            total += w;
             for (c, mean) in c.iter_mut().zip(self.textures[m as usize].mean) {
                 *c += mean * w;
             }
         }
-        c
+        c.map(|v| v / total.max(f32::EPSILON))
     }
 
     /// The texture of the sample nearest (x, y).
@@ -222,8 +203,9 @@ impl Painter {
         dds
     }
 
-    /// A digest of everything [`Painter::bake`] reads for tile (tx, ty): where it is, the paint and the heights under it and around
-    /// it (the heights give the slope its textures are drawn by), the textures that paint names, and the decals on it.
+    /// A digest of everything [`Painter::bake`] reads for tile (tx, ty): where it is, the smoothed paint under it (which reads the
+    /// paint a few samples beyond) and the heights around it (they give the slope its textures are drawn by), the textures that
+    /// paint names and their edges, and the decals on it.
     fn bake_key(&self, tx: usize, ty: usize, size: u32) -> [u8; 20] {
         use sha1::Digest;
         let mut h = sha1::Sha1::new();
@@ -233,14 +215,14 @@ impl Painter {
             h.update(v.to_le_bytes());
         }
         h.update(hm.spacing.to_le_bytes());
-        // (The samples a pixel's corners reach, and one more each way.)
+        // (The smoothed samples a pixel's corners reach, and one more each way.)
         let k = self.samples_per_tile();
         let mut used = Vec::new();
         for j in ty as i64 * k - 1..=(ty as i64 + 1) * k + 1 {
             for i in tx as i64 * k - 1..=(tx as i64 + 1) * k + 1 {
-                let m = hm.material(i, j);
-                h.update([m]);
-                used.push(m);
+                let s = self.soft.sample(i, j);
+                h.update(s);
+                used.extend([s[0], s[1]]);
             }
         }
         // (The heights a pixel's normal reads: its corners' samples and their neighbours.)
@@ -261,6 +243,10 @@ impl Painter {
             };
             h.update([m]);
             h.update(d);
+            // (Its id seeds its edge's noise.)
+            h.update([self.looks[m as usize].edge as u8]);
+            h.update(self.hm.palette[m as usize].as_bytes());
+            h.update([0]);
         }
         for d in self.decals.get(&(tx, ty)).into_iter().flatten() {
             for v in [d.x, d.y, d.cos, d.sin, d.scale, d.rect[0], d.rect[1], d.rect[2], d.rect[3]] {
@@ -303,8 +289,27 @@ impl Painter {
 
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
-/// (2: drawn from three sides by the slope. 3: small bakes read the textures halved.)
-const BAKE_VERSION: u32 = 4;
+/// (2: drawn from three sides by the slope. 3: small bakes read the textures halved. 4: blended by the ground's own slope.
+/// 5: soft paint.)
+const BAKE_VERSION: u32 = 5;
+
+/// What soft.rs needs of palette entry `id`'s texture.
+fn look(id: &str, t: &paint::Texture) -> soft::Look {
+    let mean = soft::luminance(t.mean);
+    // (An import's pictures: their range isn't worked out, so take the most it could be.)
+    let range = if t.tiles.is_some() {
+        1.0
+    } else {
+        t.image
+            .data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|p| (soft::luminance([p[0], p[1], p[2]].map(|v| f32::from(v) / 255.0)) - mean).abs())
+            .fold(0.0, f32::max)
+    };
+    soft::Look { edge: t.edge, seed: soft::seed(id), mean, range }
+}
 
 /// A picture's digest: its size and pixels.
 fn digest(img: &mg_image::Rgba) -> [u8; 20] {

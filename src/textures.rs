@@ -147,7 +147,8 @@ impl Library {
         paint::write_png(&self.dir.join(&small), &swatch)?;
         let entry = json!({
             "id": spec.id, "name": spec.name, "category": spec.category, "source": source, "file": file, "render": file, "swatch": small,
-            "surface": spec.surface, "size": [render.width, render.height], "original": original,
+            "surface": spec.surface, "edge": paint::edge_for(&spec.category).name(), "size": [render.width, render.height],
+            "original": original,
         });
         let mut entry = entry;
         if spec.repeats > 1 {

@@ -90,6 +90,10 @@ side, opaque) and `<id>_128.png` (the palette's swatch, at most 128 px). All at 
 - **`category`:** the palette group; a new name makes a new group, after the starter set's.
 - **`surface`:** the `surfacemat.2da` row ground painted with it walks as (footsteps): 1 dirt, 3 grass, 4 stone, 5 wood,
   13 mud, 19 snow, 20 sand.
+- **`edge`** (optional): how its edge meets another texture's in the game, `crisp` (a sharp line: laid surfaces such as cobbles,
+  flagstones, floors and planks) or `broken` (a sharp line ragged by noise and by the textures themselves: natural ground). Left
+  out, a category naming a floor, wall, cobbles, flagstones, paving, planks, wood, bricks, tiles, slabs, carpet, rugs or metal
+  is `crisp` and any other `broken`. Where two textures meet, `broken` wins.
 
 The catalog keeps a record of each installed pack (`"packs"` in `catalog.json`: its fields, the ids it installed, when, and
 from where), and each of its textures says `"pack": "<id>"`.
@@ -147,10 +151,10 @@ landscaper textures pack ground.json --out dist --index dist/index.json
 }
 ```
 
-`picture` is a PNG, TGA or DDS file, relative to the list; `surface` may be left out (the category's name suggests one, as for
-`textures build`). The list is checked as an install checks `pack.json`, so a pack that builds also installs. The zip is
-`<out>/<id>-<version>.zip`, and the same list makes the same bytes. With `--index`, the pack's entry is added to that file (made
-if missing) or replaces the entry of the same id, its `url` the zip's file name beside the index.
+`picture` is a PNG, TGA or DDS file, relative to the list; `edge` is as in `pack.json`; `surface` may be left out (the category's
+name suggests one, as for `textures build`). The list is checked as an install checks `pack.json`, so a pack that builds also
+installs. The zip is `<out>/<id>-<version>.zip`, and the same list makes the same bytes. With `--index`, the pack's entry is
+added to that file (made if missing) or replaces the entry of the same id, its `url` the zip's file name beside the index.
 
 To publish: upload the zip and `index.json` side by side (release assets of one release, or one folder of a CDN), then point
 `LANDSCAPER_PACKS_URL` at the index if it isn't the default.

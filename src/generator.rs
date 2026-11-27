@@ -23,6 +23,7 @@ mod mdl;
 mod overhang;
 mod painter;
 mod plan;
+mod soft;
 mod split;
 mod terrain;
 mod tile;
