@@ -41,3 +41,8 @@ on the model: the arrows move it, the ring turns it, the corner box sizes it.
 !!! tip "Scenery or a placeable"
     Place puts down scenery from a model. For a placeable with settings (a chest that holds items, a lever with a script), use
     [Things](things.md), which places one from its blueprint.
+
+## In the toolset
+
+Baked models taller than 2 m fade, as the stock forest tiles' trees do. In the game they fade out when they stand between the camera
+and the player. In the toolset, turn on Fade Geometry to hide them and work on the ground underneath.

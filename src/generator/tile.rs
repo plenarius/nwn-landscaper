@@ -16,12 +16,22 @@ use super::{
 };
 use crate::{ambience, heightmap, objects, paint, shared};
 
-/// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
-/// particle placements baked into it, and the pack they come from. `overhang`: the edge scenery a boundary tile draws over the
-/// halo.
 /// How high a tile's two main lights hang over its highest ground (m), as the stock tiles' do over theirs.
 const LIGHT_HEIGHT: f32 = 5.0;
 
+/// A baked model taller than this (m) fades (`tilefade 1`), as the stock rural tiles' trees do: the game fades it out between the
+/// camera and the player, and the toolsets' Fade Geometry hides it so the ground under a canopy can be worked on. Smaller ones (a
+/// bush, a rock) rarely block the view and stay solid.
+const FADE_HEIGHT: f32 = 2.0;
+
+/// Whether a baked model whose bounding box spans heights `min_z` to `max_z` fades.
+fn fades(min_z: f32, max_z: f32) -> bool {
+    max_z - min_z > FADE_HEIGHT
+}
+
+/// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
+/// particle placements baked into it, and the pack they come from. `overhang`: the edge scenery a boundary tile draws over the
+/// halo.
 pub(super) fn tile_model(
     name: &str,
     tx: usize,
@@ -305,6 +315,9 @@ pub(super) fn tile_model(
                 }
                 if !verts.is_empty() {
                     let mut props = if *hint != 0 { format!("  transparencyhint {hint}\n") } else { String::new() };
+                    if fades(o.min[2], o.max[2]) {
+                        props.push_str("  tilefade 1\n");
+                    }
                     // (a glowing mesh keeps its glow: crystals, mushrooms, embers)
                     if let Some(c) = o.glow.get(k).filter(|c| c.iter().any(|&x| x > 0.0)) {
                         let _ = writeln!(props, "  selfillumcolor {} {} {}", num(c[0]), num(c[1]), num(c[2]));
@@ -566,6 +579,13 @@ pub(super) fn set_file(nodes: &[(char, u8)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tall_baked_models_fade_and_small_ones_stay_solid() {
+        assert!(fades(10.0, 18.5), "a tree");
+        assert!(!fades(10.0, 11.2), "a bush");
+        assert!(!fades(-0.3, 0.6), "a rock");
+    }
 
     #[test]
     fn grass_is_off_unless_the_area_turns_it_on() {
