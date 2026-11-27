@@ -113,7 +113,9 @@ jobs:
           apt-get install -y -qq --no-install-recommends cmake clang libclang-dev pkg-config git ca-certificates \
             libwebkit2gtk-4.1-dev libxdo-dev file >/dev/null
       - name: Build
-        run: cargo build --release --locked
+        # The program for the archive. --workspace: with the features the app's crates turn on, the app's build below reuses
+        # every crate built here; built alone, the engine's dependencies get fewer features and the app's build compiles them again.
+        run: cargo build --release --locked --workspace --bin landscaper
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: extras
@@ -161,7 +163,8 @@ jobs:
       - name: Rust (stable)
         run: rustup toolchain install stable --profile minimal && rustup default stable
       - name: Build
-        run: cargo build --release --locked
+        # (--workspace: as on Linux, so the app's build reuses these crates.)
+        run: cargo build --release --locked --workspace --bin landscaper
       - name: Sign in to Azure Artifact Signing (version tags)
         # An Authenticode signature, so SmartScreen and antivirus see a verified publisher. GitHub's OIDC token signs in to
         # Azure; no signing secret is stored. The access token (about an hour) signs the program here and, through Tauri, the
@@ -256,8 +259,10 @@ jobs:
           rustup default stable
       - name: Build
         run: |
-          cargo build --release --locked --target aarch64-apple-darwin
-          cargo build --release --locked --target x86_64-apple-darwin
+          # As on Linux, so the app's build reuses these crates: --workspace, and the minimum macOS that Tauri builds the app for.
+          export MACOSX_DEPLOYMENT_TARGET=$(jq -r .bundle.macOS.minimumSystemVersion app/tauri.conf.json)
+          cargo build --release --locked --workspace --bin landscaper --target aarch64-apple-darwin
+          cargo build --release --locked --workspace --bin landscaper --target x86_64-apple-darwin
           mkdir -p universal
           lipo -create -output universal/landscaper target/aarch64-apple-darwin/release/landscaper target/x86_64-apple-darwin/release/landscaper
           # Apple silicon runs nothing unsigned: test builds keep this ad-hoc signature, a version tag replaces it below.
