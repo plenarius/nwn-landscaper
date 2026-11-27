@@ -10,10 +10,10 @@ on:
   push:
     branches: [master]
     paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, packs/demo/**, .github/workflows/docs.yml]
-  # A release (a version tag's Release run) brings a new landscaper-wasm.zip for /try/: the site is built again from master.
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
+  # A published release brings a new landscaper-wasm.zip for /try/. Its Release run ends while the release is still a draft,
+  # which /try/ can't see, so publishing it starts a build of master (the job "republish", below).
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -24,9 +24,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A release event runs on its tag; the site is master's, so start the build there.
+  republish:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref master
+
   build:
-    # (Of the Release runs, only a version tag's that succeeded: not its pull request checks or a run by hand.)
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     # (Until a release has landscaper-wasm.zip, /try/ builds the engine: about 5 minutes.)
     timeout-minutes: 30
