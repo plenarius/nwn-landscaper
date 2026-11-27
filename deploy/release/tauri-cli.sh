@@ -7,6 +7,7 @@
 # program, not `cargo install`, which would build it for minutes on every runner.
 set -euo pipefail
 
+# A new version may want other AppImage tools: deploy/release/appimage-tools.sh pins them, and its check fails until it is updated.
 version=2.12.4
 case "$(uname -s)-$(uname -m)" in
     Linux-x86_64) asset=cargo-tauri-x86_64-unknown-linux-gnu.tgz sum=820ae3c7580ca637cad15f65638960ee2a96e5a491e224691c86d6f25e6c9e8a ;;
