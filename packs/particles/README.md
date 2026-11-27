@@ -49,6 +49,9 @@ The models are written from scratch: no stock model is copied. *Derived from* na
 - **Mist and spray** float at the placement's height: place them on the water's surface.
 - **Leaves** fall from 4 m, under a tree's crown: started higher, they spent their life inside it. **Embers** start 0.6 m up, over
   a fire's flames. **Ground fog** lies flat 1 m up: lower, rolling ground hid most of each 10 m sprite.
+- **Sand** is small (half a metre to a metre), starts 0.6 m up and is drawn with motion blur, stretched along its travel, so
+  it streams downwind in streaks. Drawn as a camera-facing puff a metre or two across, half of it sunk in the ground, each
+  particle read as a pale oval on the sand.
 - **Birth rates are whole numbers:** in the client, an emitter at 0.5 a second drew nothing. A kind gets a small count from a short
   life instead.
 
@@ -122,7 +125,8 @@ The pack's own four textures are **placeholders for an artist**, written by `tex
 
 - `lspt_firefly`: a soft glow, four frames of brightness, so a firefly flickers as its frames run.
 - `lspt_motes`: four frames of three or four soft specks, so one particle reads as several motes.
-- `lspt_sandstrk`: a thin, grainy horizontal wisp.
+- `lspt_sandstrk`: a few faint, grainy fibres running up the picture (motion blur stretches a particle along its v), thin at the
+  middle as at the edges.
 - `lspt_shaft`: the light shafts' quads, bright at the foot and fading upwards and to the edges, drawn additively
   (`lspt_shaft.txi`).
 

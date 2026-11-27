@@ -297,16 +297,16 @@
         "sand": {
           "day": {
             "birthrate": 6.0,
-            "colorStart": [0.86, 0.74, 0.52],
-            "colorEnd": [0.86, 0.74, 0.52],
-            "alphaStart": 0.45,
+            "colorStart": [0.92, 0.82, 0.62],
+            "colorEnd": [0.92, 0.82, 0.62],
+            "alphaStart": 0.55,
             "alphaEnd": 0.0
           },
           "night": {
             "birthrate": 6.0,
             "colorStart": [0.28, 0.26, 0.24],
             "colorEnd": [0.28, 0.26, 0.24],
-            "alphaStart": 0.45,
+            "alphaStart": 0.55,
             "alphaEnd": 0.0
           }
         }

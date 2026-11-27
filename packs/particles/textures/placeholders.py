@@ -69,15 +69,18 @@ def motes(i, u, v):
     return (g, g, g, g)
 
 
-# Sand streak: a thin horizontal wisp with grain, fading at both ends.
+# Sand wisp: a few faint fibres of grain in a soft puff, thin at the middle as at the edges, running up the picture: the
+# emitter stretches it along its travel (motion blur), which in the client is the picture's v, so it reads as streaks of
+# blowing sand; a puff with a solid middle read as a pale oval on the ground, and fibres across the picture stood across the wind.
 grain = random.Random(11)
 NOISE = [[grain.random() for _ in range(64)] for _ in range(64)]
+FIBRES = [(grain.uniform(-0.6, 0.6), grain.uniform(0.06, 0.14), grain.uniform(0.5, 1.0)) for _ in range(5)]
 
 
 def sand(x, y):
     u, v = (x + 0.5) / 32 - 1, (y + 0.5) / 32 - 1
-    band = soft(abs(v), 0.35) * soft(abs(u), 1.0)
-    a = band * (0.55 + 0.45 * NOISE[y][x])
+    fibres = min(1.0, sum(b * soft(abs(u - c), w) for c, w, b in FIBRES))
+    a = 0.8 * soft(math.hypot(u, v), 1.0) * fibres * (0.35 + 0.65 * NOISE[y][x])
     return (1.0, 1.0, 1.0, a)
 
 
