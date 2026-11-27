@@ -131,7 +131,7 @@ pub(super) fn guard_assignment(name: &str, referenced: &[String]) -> Result<()> 
     }
     let me = crate::workspace::acting_user();
     for n in std::iter::once(name.to_string()).chain(referenced.iter().cloned()) {
-        if let Some(area) = crate::import::recorded(&n)
+        if let Some(area) = crate::import::recorded(&n)?
             && !crate::assignments::allows(&me, &area)?
         {
             return Err(Denied::Ended(area).into());
@@ -143,7 +143,7 @@ pub(super) fn guard_assignment(name: &str, referenced: &[String]) -> Result<()> 
 /// A new (not imported) area can't take an existing area's name or tag. Refused, too, when the module's area list isn't
 /// available (a review service that has never answered): the name can't be checked.
 pub(super) fn guard_new_name(name: &str) -> Result<()> {
-    if !crate::workspace::acting_admin() && crate::import::recorded(name).is_none() && crate::import::production_name(name)? {
+    if !crate::workspace::acting_admin() && crate::import::recorded(name)?.is_none() && crate::import::production_name(name)? {
         return Err(Denied::ProductionName(name.to_string()).into());
     }
     Ok(())

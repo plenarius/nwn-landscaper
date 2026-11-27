@@ -718,6 +718,33 @@ fn a_hung_review_service_costs_one_call_and_new_names_are_refused_without_its_li
 }
 
 #[test]
+fn an_import_whose_note_is_damaged_still_needs_its_assignment() {
+    let env = [("LANDSCAPER_AUTH", "headers"), ("LANDSCAPER_ALLOWED_GROUPS", "*"), ("LANDSCAPER_INSECURE", "1")];
+    let s = Server::start("import-note", &env, true);
+    let bob = |method: &str, target: &str| {
+        s.raw(method, target, &[("Host", "landscaper.test"), ("X-Landscaper", "1"), ("X-Forwarded-User", "bob")], b"")
+    };
+    // bob's import of town, as `twn`, and no assignment of town.
+    let import = s.data().join("workspaces/bob/exports/twn.import");
+    std::fs::create_dir_all(&import).unwrap();
+    std::fs::write(import.join("area.are"), b"ARE V3.2").unwrap();
+    let note = import.join("source.json");
+    std::fs::write(&note, r#"{"area":"town","by":"bob","at":1}"#).unwrap();
+    let (st, b) = bob("GET", "/api/originals?name=twn");
+    assert!(st == 403 && b.contains("your assignment of town has ended"), "{st} {b}");
+    // The note cut off: before, it read as "not an import", the area passed as bob's own, and his delete took the import.
+    let cut = br#"{"area":"to"#;
+    std::fs::write(&note, cut).unwrap();
+    let (st, b) = bob("GET", "/api/originals?name=twn");
+    assert!(st == 403 && b.contains("twn.import/source.json doesn't parse"), "{st} {b}");
+    let (st, b) = bob("DELETE", "/api/area?name=twn&base=none");
+    assert!(st == 400 && b.contains("twn.import/source.json doesn't parse") && !b.contains("workspaces/"), "{st} {b}");
+    assert!(import.join("area.are").exists(), "the import is still there");
+    assert_eq!(std::fs::read(&note).unwrap(), cut, "and its note as it was");
+    assert!(!s.data().join("workspaces/bob/deleted").exists());
+}
+
+#[test]
 fn a_damaged_assignments_file_is_never_read_as_empty_or_written_over() {
     let env = [
         ("LANDSCAPER_AUTH", "headers"),
