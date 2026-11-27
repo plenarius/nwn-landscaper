@@ -215,7 +215,11 @@ fn files(dir: &Path) -> Vec<(String, u64)> {
             if e.path().is_dir() {
                 stack.push(e.path());
             } else {
-                out.push((e.path().strip_prefix(dir).unwrap().display().to_string(), e.metadata().unwrap().len()));
+                // (With `/` on Windows too.)
+                let path = e.path();
+                let name: Vec<String> =
+                    path.strip_prefix(dir).unwrap().components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+                out.push((name.join("/"), e.metadata().unwrap().len()));
             }
         }
     }
