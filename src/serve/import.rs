@@ -80,7 +80,8 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
         },
         (Method::Post, "/api/reimport") => {
             let name = query.text("name");
-            let from = crate::import::recorded(&name);
+            // (For the log; the re-import itself stops on a note that can't be read.)
+            let from = crate::import::recorded(&name).ok().flatten();
             let res = {
                 let _job = job();
                 reimport_request(&name)

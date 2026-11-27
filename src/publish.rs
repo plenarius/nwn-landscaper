@@ -267,7 +267,7 @@ fn exported(name: &str) -> Result<Exported> {
     }
     let res = found.with_context(|| format!("{module}.mod has no area on {name}'s tileset: export again"))?;
     // An area built from an existing one replaces it; any other is new.
-    let rework = crate::import::recorded(name);
+    let rework = crate::import::recorded(name)?;
     let target = rework.clone().unwrap_or_else(|| name.to_string());
     Ok(Exported { module: m, res, target, rework: rework.is_some(), user_dir })
 }

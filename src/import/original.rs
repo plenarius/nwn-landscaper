@@ -100,10 +100,26 @@ pub fn adopt(o: &Original, are: &mut mg_gff::Struct, git: &mut mg_gff::Struct) {
     }
 }
 
-/// The production area the import called `name` came from (its resref), if it recorded one.
-pub fn recorded(name: &str) -> Option<String> {
-    let d = std::fs::read(paint::import_dir(name).join("source.json")).ok()?;
-    serde_json::from_slice::<serde_json::Value>(&d).ok()?["area"].as_str().filter(|a| !a.is_empty()).map(str::to_string)
+/// The production area the import called `name` came from (its resref): None when `name` isn't an import (no `source.json`) or
+/// is one of the builder's own file (`"area": ""`). An error, naming the file, when its `source.json` is there but can't be read,
+/// doesn't parse or has no `area`: read as "not an import", the area would pass as the builder's own, and every check of their
+/// assignment of it would be skipped.
+pub fn recorded(name: &str) -> anyhow::Result<Option<String>> {
+    recorded_in(&paint::import_dir(name).join("source.json"), name)
+}
+
+/// [`recorded`] from the note at `path`, of the import called `name`.
+fn recorded_in(path: &std::path::Path, name: &str) -> anyhow::Result<Option<String>> {
+    let shown = format!("{name}.import/source.json");
+    let d = match crate::atomic::read(path) {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => anyhow::bail!("{shown} can't be read ({e}): nothing was done; restore it, or ask an admin"),
+    };
+    let damaged = |why: String| anyhow::anyhow!("{shown} {why}: nothing was done; restore it, or ask an admin");
+    let v: serde_json::Value = serde_json::from_slice(&d).map_err(|e| damaged(format!("doesn't parse ({e})")))?;
+    let area = v["area"].as_str().ok_or_else(|| damaged("doesn't say which area it came from".into()))?;
+    Ok(Some(area.to_string()).filter(|a| !a.is_empty()))
 }
 
 /// Whether `name` is an existing area's resref or tag (new areas can't take those names: they'd collide when published). An
@@ -158,4 +174,33 @@ pub fn remove_imports_of(user: &str, area: &str) -> anyhow::Result<Vec<String>> 
         removed.push(name);
     }
     Ok(removed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_missing_import_note_means_not_an_import() {
+        let dir = std::env::temp_dir().join(format!("ls-import-note-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let note = dir.join("source.json");
+        assert_eq!(recorded_in(&note, "twn").unwrap(), None, "no note: not an import");
+        std::fs::write(&note, r#"{"area":"town","by":"bob","at":1}"#).unwrap();
+        assert_eq!(recorded_in(&note, "twn").unwrap().as_deref(), Some("town"));
+        std::fs::write(&note, r#"{"area":"","upload":{"file":"mine.mod","area":"cave1"}}"#).unwrap();
+        assert_eq!(recorded_in(&note, "twn").unwrap(), None, "the builder's own file: no production area");
+        // Cut off, without its area, or not a file: an error naming it, never "not an import".
+        for (bytes, why) in [(&br#"{"area":"to"#[..], "doesn't parse"), (&br#"{"by":"bob"}"#[..], "doesn't say which area")] {
+            std::fs::write(&note, bytes).unwrap();
+            let e = format!("{:#}", recorded_in(&note, "twn").unwrap_err());
+            assert!(e.starts_with(&format!("twn.import/source.json {why}")) && !e.contains(&*dir.to_string_lossy()), "{e}");
+        }
+        std::fs::remove_file(&note).unwrap();
+        std::fs::create_dir(&note).unwrap();
+        let e = format!("{:#}", recorded_in(&note, "twn").unwrap_err());
+        assert!(e.starts_with("twn.import/source.json can't be read"), "{e}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

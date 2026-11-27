@@ -115,7 +115,7 @@ fn entry(name: &str, library: Option<&serde_json::Value>, skies: Option<&serde_j
     let hak = export_id::hak_path(name)?;
     let (sha, bytes) = export_id::sha256_file(&hak).ok()?;
     let exported_at = std::fs::metadata(&hak).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-    let rework = crate::import::recorded(name);
+    let rework = crate::import::recorded(name).ok()?;
     Some(serde_json::json!({
         "name": name, "area": rework.clone().unwrap_or_else(|| name.to_string()), "new": rework.is_none(),
         "module": header["module"].as_str().unwrap_or(name), "exported_at": exported_at, "export": export_id::of(&header_bytes, &sha),

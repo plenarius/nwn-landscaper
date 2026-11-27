@@ -83,7 +83,7 @@ impl Source {
     pub fn kept(name: &str) -> Result<Source> {
         let dir = paint::import_dir(name);
         Ok(Source {
-            area: recorded(name).unwrap_or_default(),
+            area: recorded(name)?.unwrap_or_default(),
             are: std::fs::read(dir.join("area.are"))
                 .with_context(|| format!("{name} wasn't imported (no {})", dir.join("area.are").display()))?,
             git: std::fs::read(dir.join("area.git")).ok(),
