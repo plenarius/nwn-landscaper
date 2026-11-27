@@ -285,10 +285,12 @@ animations (spike 0's rule).
 | **Ground fog** | hollows, swamp | flat sprites 8 to 11 m across (`Billboard_to_Local_Z`), one a second for 10 s | thicker at night | 10 |
 
 **Cost:** the stock models give the scale. `dag_fog_med` keeps 20 particles alive, `tnp_gmist` about 50, the light shaft
-`tnp_gsol1` 28 plus its meshes, and `silm_fog_50_lo` 1,250 (25 emitters). The pack keeps each placement under 60 and proposes a
-budget of 1,500 live particles in view. A particle is a camera-facing quad: the CPU cost grows with the count, and large soft
-sprites cost fill rate on the GPU when they cover the screen, which is why mist uses few big particles at low alpha. Frame times
-are not measured yet ("What this design could not check").
+`tnp_gsol1` 28 plus its meshes, and `silm_fog_50_lo` 1,250 (25 emitters). The pack keeps each placement under 60. An area is
+**heavy** past 1,500 live particles: a guide, not a limit. The editor shows the count and says when an area passes it, and the
+export bakes every placement however many there are; how busy an area is, is the builder's call. A particle is a camera-facing
+quad: the CPU cost grows with the count, and large soft sprites cost fill rate on the GPU when they cover the screen, which is
+why mist uses few big particles at low alpha. Frame times are not measured yet ("What this design could not check"), so 1,500 is
+a starting point, not a measured threshold.
 
 **First cut (step 6):** the pack is in [`packs/particles`](../packs/particles/README.md), tuned against client stills. What the
 stills showed:
@@ -481,8 +483,8 @@ start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 an
 
 ## What this design could not check
 
-- **Frame time.** Every still came from the CPU renderer. Particle budgets above are counts, not milliseconds; step 6 should
-  measure them on a GPU.
+- **Frame time.** Every still came from the CPU renderer. The particle counts above (and the 1,500 the editor calls heavy) are
+  counts, not milliseconds; step 6 should measure them on a GPU.
 - **Real Skies on a GPU:** the Desert_Clear crash and the black triangles. The CPU renderer accepts 16,384 px textures, so it
   can't show a GPU's limit.
 - **Generated skies:** not made yet, so not seen in the game.

@@ -4,7 +4,7 @@
 light shafts, snow gusts, blowing sand, embers and ground fog. The export bakes them into the tiles, so they cost the game no
 objects and need no `placeables.2da` rows.
 
-![The Ambience tool after Fill: mist on the lake, leaves and light shafts in the trees, stopped at the particle cap](../assets/handbook/ambience.webp)
+![The Ambience tool after Fill and the brush: mist on the lake, ground fog over the meadow, past 1,500 particles at night](../assets/handbook/ambience.webp)
 
 ## Fill the area
 
@@ -25,10 +25,10 @@ The status line says how many of each kind Fill placed; Undo takes them back. **
 Click a kind to choose it for the brush, then drag to add it. Shift-drag clears it. **Density** sets how close the brush puts
 them. **Wind blows towards** turns the kinds that blow (snow, sand) and leans the light shafts.
 
-## The particle cap
+## Particles alive
 
-The panel counts the particles the placements keep alive by day (top) and at night (bottom), against the area's cap of 1,500.
-Fill and the brush stop at the cap; the count turns to a warning as it gets close.
+The panel counts the particles the placements keep alive by day and at night. Past 1,500 it says the area may be heavy on slower
+machines: a guide, not a limit. Fill, the brush and the export never stop on the count; how busy an area is, is your call.
 
 ## Day and night
 
