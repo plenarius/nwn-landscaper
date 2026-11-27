@@ -6,8 +6,159 @@ All notable changes to the Landscaper engine; the editor's are in
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog. Changes not
 released yet wait in `changelog.d/`, a file each, until the release puts them in its section.
 
-## Unreleased
+## 0.7.0
 
+- **Particles baked into the tiles.** An area's `ambience` list (`{ "kind": "mist", "x", "y", "z", "scale", "seed" }`, and
+  `bearing` for the kinds that blow or lean) exports as the particle pack's emitters in the tiles that hold them, under the
+  tile's `<tile>a` dummy, so night-only kinds come on at dusk and day-only ones go off, and mist and ground fog loop
+  (`SetTileAnimationLoops` clears them a tile at a time). A placement outside the area, of a kind the pack lacks, or past 1,500
+  live particles an area is skipped with a warning; the report gives the live count (`ambience`). The pack is built into the
+  program, so a release needs nothing beside it; `LANDSCAPER_PARTICLES` names another pack's folder.
+- **Baked shade doesn't darken local light.** A tile's shadow map multiplied all its light, so a torch, a tile light or a
+  glowing mesh in a tree's shade was dimmed with it. It now shades only the area's sun or moon (ambient and diffuse), through
+  `ls_lighting`, made at run time from the game's `inc_lighting` as the tile shaders are made from `fslit` and `vslit`. Ground
+  nothing else lights looks as before. The shared texture hak is rebuilt once, for the new shaders.
+- **No dark blotches on steep banks.** A steep face slanting across the samples' grid, like a river's bank, took each
+  sample's slope between its neighbours, which swung from one sample to the next with how the face crossed them. The game's
+  sun drew that as soft dark blotches along the face. Steep ground now takes its slope over 1.25 m each way, blended in
+  between 15 and 30 degrees; gentler ground keeps its normals as they were. The editor still lights steep ground with each
+  sample's own slope.
+- **An area can carry a halo: the ground beyond its edge, shown past the edge in the game.** The area format gains `halo`
+  (samples of ground around the area, whole tiles, at most 5) and `tagPrefix` (what entrance doors' and object-mode placeables'
+  tags start with, for the pieces of a canvas). With a halo, the area's normals, baked shade, chasm rims and cave ceilings read
+  the ground across its edge, and its boundary tiles draw the halo's real ground out to 50 m: a vertex every 2.5 m with a
+  128 px texture a halo tile, the samples' own detail where a shore or a road's groove runs, the halo's water and its trees,
+  fading to the fog colour from 25 m out. Trees 25 m or more out are crossed cards showing pictures of the tree's own model, one
+  atlas per tree model. The edge models the client repeats 5 deep are left empty. An area without a halo exports as before.
+  The canvas-cut design's trial area (10 by 10 tiles) draws 27,900 triangles past its edge (the trial's T, 32,500).
+- **Canvases can be stored on the engine** (step 3 of [the canvas design](docs/DESIGN-canvas-cut.md)): a canvas of up to 128
+  by 128 tiles is a folder, `canvases/<name>/`, with a small header and its ground in fixed blocks of 16 by 16 tiles, each one
+  file with its heights, paint and chasm mask. A save sends only the blocks that changed, with the version of each it started
+  from, and is refused whole when another tab saved any of them since; a delete names the versions of everything the tab
+  holds. A block or header that is damaged or can't be read stops whatever needs it, names the file, and is never written
+  over; only a block that has no file is flat ground. On a team server a canvas is one item of the builder's workspace, and
+  needs an assignment for every existing area it is built from, as an area does. The editor's side comes in a later step.
+- **Light shafts cross.** The light shafts' second quad leaned along the model's +y while the first leaned along +x, so a placement
+  drew two beams splaying apart. Both now lean along +x around one axis and draw one beam, as the design's two crossed quads
+  meant; the pack's test checks that every quad of a kind has the same foot and top.
+- **A texture pack for the web demo** (`packs/demo`, with its README and credits). One CC0 picture (ambientCG, Poly Haven)
+  for each of the 51 starter textures, under the same ids, so the browser demo paints with no game files: 2.7 MB of WebP,
+  under a 3 MB budget a test keeps. `packs/demo/make.py` fetches and fits them, and writes the credits.
+- **`landscaper textures init --pictures <folder>`** builds the starter set from pictures named by id instead of the game's
+  textures, with the starter list's names, groups and footsteps.
+- **`/api/me` says whether the engine has the game** (`"game"`): false when `LANDSCAPER_GAME=none`, as the web demo sets it,
+  so the editor's panels that need the game say so.
+- **Design: the Landscaper as a desktop app.** `docs/DESIGN-desktop-app.md` plans one signed installer per system that runs the
+  engine and shows the editor in a window of its own, with no browser: the engine inside a Tauri shell, the installers, signing
+  with today's identities, updates, finding the game, and team servers staying in the browser. A prototype drew the editor's 3D
+  view in the Linux, Windows and macOS webviews.
+- **The desktop app's installers in each release** (step 4 of `docs/DESIGN-desktop-app.md`): an NSIS installer for Windows
+  (for one user, no administrator), a `.dmg` with one universal app for macOS 11 and newer, and an AppImage and a `.deb` for
+  Linux, built by Tauri with the editor of the same tag inside. On a version tag Tauri signs them with the identities the program
+  already uses (Azure Artifact Signing on Windows; a Developer ID on macOS, notarized, with Apple's ticket stapled to the app and
+  the `.dmg`). The release checks each installer by installing it and starting the app (`scripts/app-smoke.sh`): its window must
+  load the editor at `/?app` from the engine inside it, a second start must only bring it forward, and the engine must stop with
+  the app. The archives with the program alone stay beside the installers. The app's log names each page its window loads.
+- **The desktop app** (`app/`, step 2 of `docs/DESIGN-desktop-app.md`): the editor in a window of its own, with the engine inside
+  it on 127.0.0.1:8766 (else the next free port up to 8785), opened at `/?app` so the editor knows it is in the app. The engine
+  in the app also answers `POST /api/app/open` (`{"what": "data" | "log" | "folders"}`: the data folder, the log, or the
+  game-folder page again); `landscaper serve` and team servers never do. Only one copy runs; a second start brings its window
+  forward. When it can't find the game, its first page asks for the game's folder and the user folder and keeps them in
+  `settings.json`. What it prints goes to `landscaper.log` in the data folder. Links to other sites open in the default
+  browser, and downloads go to the Downloads folder. On Linux it turns off WebKitGTK's DMA-BUF renderer under NVIDIA's driver,
+  and `LANDSCAPER_WEBVIEW_SAFE=1` turns off compositing as well. Not in the release yet: the installers come with step 4.
+- **The engine is also a library** (`src/lib.rs`), for the coming desktop app (`docs/DESIGN-desktop-app.md`, step 1): the
+  program is its command line, and `serve_local` serves the editor on this machine as `landscaper serve` does. The command line
+  and `serve` work as before.
+- **A settings file.** Every setting can also be in `settings.json` in the data folder, for a program started without a shell's
+  environment (the Dock, a desktop menu); the environment wins over it. `docs/CONFIGURATION.md` says how ("The settings file").
+- **The activity log counts an export's routes as the editor does.** It said "332 routes work", the routes that work in one
+  click, for an export whose report and editor said all 400 work, 68 of them in shorter clicks. It now says "400 of 400 routes
+  work (68 of them in shorter clicks)".
+- **A handbook site.** The documents are now also a site, built with MkDocs and published to GitHub Pages at
+  <https://plenarius.github.io/nwn-landscaper/>: a step-by-step handbook for builders (terrain, paint and the mix brush, caves,
+  scatter, things, light, ambience, skies, texture packs, export, publish), running a server, the design documents, and a
+  showcase page for filmed areas. Pull requests build it with `mkdocs build --strict`, so a dead link fails the check.
+- **An import whose note can't be read no longer passes as the builder's own area.** Each import keeps a note of the existing
+  area it came from (`source.json`), which is what ties it to the builder's assignment. A note that couldn't be read, or
+  didn't parse, was taken as "not an import", so the assignment check was skipped: a builder whose assignment had ended could
+  still delete or export the area, and its publish went out as a new area instead of a change to the existing one. Now only
+  a missing note means "not an import"; a damaged one stops the action with a message naming the file, and nothing changes.
+- **Design: why the ambience trial's keyed emitters never switched.** A tile's keyed emitters switch with its `day`, `night`
+  and loop animations only under a dummy named after the tile plus `a`, as in stock tiles. `docs/DESIGN-ambience.md` gives the
+  rule baked emitters must follow and when the game switches them.
+- **Tile lights.** An export takes `lights` from the editor, two `lightcolor.2da` rows a tile, and writes them as the area's
+  `Tile_MainLight1` and `Tile_MainLight2`; without them every tile's lights stay off, as before. The editor's Light tool
+  paints them.
+- **Baked objects keep their glow.** A baked placeable's meshes keep their self-illumination colour (`selfillumcolor`) in the
+  tile, so a glowing crystal or mushroom still glows. Before, baking dropped it.
+- **Routes too long for one click are no longer called blocked.** The path check now tries shorter clicks along each route
+  that stops short. When they get there, the route goes in the report's new `long_routes` list (with how many clicks) and
+  `routes.long` counts it, instead of a `failed_route` warning. NWN's route search gives up when the way is about 20 tiles
+  longer than going straight there, so a new 12 by 12 *Descending cave* showed 68 blocked routes though every one is walkable
+  in two or three clicks; the game client stops and arrives exactly where the check says. `check` and `export` print the
+  count after the routes.
+- **The particle pack, first cut** (`packs/particles`, with its README). Eleven kinds for the coming
+  Ambience tool: water mist, waterfall and rapids spray, fireflies, dust motes, falling leaves, snow gusts, blowing sand, embers,
+  light shafts and ground fog. Each is an ASCII model with a day and a darker night look in `pack.json`, keeps at most 56
+  particles alive, and doubles as a placeable that a script can switch off, with a sample `placeables.2da` row. Its four own
+  textures are placeholders for an artist. The pack is under CC0-1.0, so any team can ship it in its haks.
+- **`/api/particles`** gives the editor the particle pack's `pack.json` (its kinds, their colours and live counts) for the
+  Ambience tool: the pack the export bakes from, built into the program, or the folder `LANDSCAPER_PARTICLES` names.
+- **Preset skies, the first sky pack.** `cargo run --release --example preset-skies` makes it from your own Real Skies
+  download, then `landscaper skies pack` zips it: seven skies, each named for the Sky & fog preset it suits. Golden haze, Dusk,
+  Overcast, Starry night and Dawn haze put Real Skies' pictures in other times of day (Overcast's greyed); Thick mist and Swamp
+  are gradients painted from their presets' fog and light colours, on a dome of their own. The repository ships none of Real
+  Skies' pictures ([docs/PRESET-SKIES.md](docs/PRESET-SKIES.md)).
+- **Real Skies for modules.** `cargo run --release --example real-skies` turns the EE hak version of Savant1974's Real Skies,
+  which you download yourself, into one hak NWSync accepts: each sky texture a DXT1 DDS of 8,192 by 1,024 (5.6 MB, where the
+  originals are 77 MB and NWSync refuses files over 15 MB), and Icy's dawn, dusk and night from Winter_Clear. A step outside
+  the Landscaper ([docs/REAL-SKIES.md](docs/REAL-SKIES.md)); the repository ships none of Real Skies' pictures.
+- **A strip of shore at a tile corner stays reachable.** Where a lake's edge crossed near a tile corner, the tile was water but
+  for a strip about a metre wide, and no path node layout fit it: the strip was cut off, and Check paths showed a blocked route
+  into it in about 1 in 20 new 16 by 16 Valleys with a lake. Such a tile, and a tile its layout left an island, now takes a
+  one-node layout whose crossings (the points 1 to 9 m along an edge the game tries) all land on the strip; the game puts all
+  of a one-node tile in one region, so routes reach the strip. Over 64 new 16 by 16 valleys: 0 blocked routes and 0 closed
+  passages (were 3 and 41); other samples' routes are unchanged. `LS_NO_LONE` turns it off.
+- **An area with a Landscaper sky publishes with its sky.** Publish, a module's publish and Try on dev send `ls_skies.hak`'s
+  files as `skies_files` (a check names them in `skies_manifest`), the package for a module has them in `haks/ls_skies/`, and
+  `dev-pack` copies the hak and lists it: the area's sky row is in that hak's `skyboxes.2da`. The service routes give it as
+  `GET /api/service/skies`. Areas without one send what they did before.
+- **The editor picks skies.** `/api/skies` lists the installed Landscaper skies (with the preset each suits) and the module's own
+  `skyboxes.2da` rows; `/api/sky-picture/<sky>` draws a sky as the game's camera sees it, a strip of the horizon or the whole
+  panorama around, made from its model and textures once and kept in the sky library's `pictures` folder. An area's light and
+  fog can pick a game row too (`"skyRow": 3`), which the export writes as its `SkyBox`; an imported area keeps its sky that way
+  (or by its id, when it is an installed sky's row).
+- **Dirt is brown, not black.** The starter library's Dirt, the floor Dig and Room paint by default, was the game's
+  `tcm02_dirt02`, a near-black stone; it is now `tni01_dirt02`, a brown earth. A library that still has the old Dirt as it
+  was made gets the new one when the engine starts, and areas painted with it take it at their next export; a Dirt you
+  replaced or changed is left alone.
+- **Try the Landscaper in your browser**, nothing to install: `/try/` on the handbook site, with a handbook page,
+  [Try it in your browser](docs/handbook/try.md). The docs workflow builds it (`scripts/try-page.sh`) from the newest
+  release's `landscaper-wasm.zip` and the editor at the same tag, or builds the engine itself until a release has the zip, and
+  a release's run puts the new engine on the site.
+- **A texture or sky catalog that can't be read is never written over.** A damaged or unreadable `catalog.json` was read as
+  an empty library, and the next texture added or pack installed saved a catalog with only that in it: the library lost
+  every other texture or sky. Only a missing catalog starts an empty library now; any other stops the change with a message
+  naming the file, and lists of what is installed say so instead. A saved area that can't be read is no longer saved over
+  without a backup, and an export no longer starts its entrance ids again when the last export's header doesn't read.
+- **The engine builds for the browser.** `scripts/build-wasm.sh` builds it for WebAssembly (WASI) with the new `web` feature, for
+  the handbook site's coming "try it" page (`docs/DESIGN-web-demo.md`): no threads, the game's archives read without memory maps
+  (Moonglow's patched copy on the maintainer's fork), and `landscaper wasi-request` answering one of the editor's requests. Its
+  export is byte for byte the native one. Pull requests build it and check its size (1.8 MB with brotli, at most 3), and a
+  release carries it as `landscaper-wasm.zip`. Importing an area isn't in it yet.
+- **Design: the Landscaper in a browser.** `docs/DESIGN-web-demo.md` plans a public "try it" page with the editor and its engine
+  both in the visitor's browser, and no game files served: what of the engine builds for WebAssembly, measured speed, size and
+  memory, what needs the game and what stands in for it, saving, hosting on the handbook site, and the stages to build it.
+- **Design: the page in the browser, as built.** `docs/DESIGN-web-demo.md` describes step 4 (in nwn-landscaper-web): how the
+  page starts the engine and passes it the editor's requests, why the data folder is copied in and out of OPFS rather than
+  opened there, the texture library built on the first visit only, the export's zip, the measured start and export times, and
+  what to try in Firefox and Safari.
+- **On Windows, a file being replaced no longer fails its reader.** Windows can refuse to open a file ("Access is denied") at
+  the moment the Landscaper replaces it, for example the texture catalog while a pack installs, or an area while it saves, so
+  the request reading it failed once. Reads of the files the Landscaper replaces now try again for up to a second, and so
+  does the replace itself while another program has the file open. Publishing a pack no longer starts a new pack list when
+  the old one couldn't be read, which dropped every other pack from it.
 - **River banks meet the water cleanly.** 0.6.1 cut steep faces where their paint changes on the lines halfway between two
   samples, so the paint still changed in steps of a sample. On a bank that climbs 1.6 m in one sample, each step stood up the
   face: the bed's mud reached up to the water and the bank's sand down into it, a sawtooth seen through the water. Steep ground
