@@ -127,7 +127,12 @@ jobs:
         run: |
           set -euo pipefail
           deploy/release/tauri-cli.sh
+          # The AppImage's tools and runtime at fixed versions: Tauri and appimagetool would download some from releases that move.
+          export XDG_CACHE_HOME="$RUNNER_TEMP/cache"
+          LDAI_RUNTIME_FILE=$(deploy/release/appimage-tools.sh fetch "$XDG_CACHE_HOME/tauri")
+          export LDAI_RUNTIME_FILE
           cargo tauri build --ci --bundles appimage,deb --config deploy/release/tauri.json
+          deploy/release/appimage-tools.sh check "$XDG_CACHE_HOME/tauri" target/release/bundle/appimage/*.AppImage
           # Named as the archives are (Tauri names them after the app, with a space); the .deb as Debian names packages.
           mkdir app-out
           cp target/release/bundle/appimage/*.AppImage "app-out/nwn-landscaper-$VERSION-linux-x86_64.AppImage"
