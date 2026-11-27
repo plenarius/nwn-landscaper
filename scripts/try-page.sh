@@ -70,6 +70,23 @@ else
 fi
 if [[ -f "$stock/index.json" ]]; then
     cp -r "$stock" "$out/try/stock"
+    # site.json's stockSha256 names the browser cache the page keeps these files in: a new bundle, a new cache. The zip's
+    # SHA-256, or the files' when they were made here.
+    if [[ -f "$work/demo-stock.zip" ]]; then
+        stock_sha=$(sha256sum "$work/demo-stock.zip" | cut -d' ' -f1)
+    else
+        stock_sha=$(cd "$stock" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+    fi
+    python3 - "$out/try/site.json" "$stock_sha" << 'EOF'
+import json, sys
+path, sha = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    site = json.load(f)
+site["stockSha256"] = sha
+with open(path, "w") as f:
+    json.dump(site, f, indent=4)
+    f.write("\n")
+EOF
 fi
 
 # The engine's licence and what else is built into it (the zip's README), beside it: the page hands the engine out.
