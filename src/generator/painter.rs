@@ -233,22 +233,23 @@ impl Painter {
         }
         used.sort_unstable();
         used.dedup();
-        let (cx, cy) = ((tx as f32 + 0.5) * TILE, (ty as f32 + 0.5) * TILE);
         for m in used {
             let t = &self.textures[m as usize];
-            let d = match t.picture_at(cx, cy) {
-                // (An import's ground: only this tile's picture is read here.)
-                Some((p, _, _)) => digest(p),
-                None => *self.digests[m as usize].get_or_init(|| digest(&t.image)),
-            };
-            h.update([m]);
-            h.update(d);
+            // (An import's ground: this tile's picture and, in the margin, its neighbours'.)
+            for (cx, cy) in near(tx, ty).map(|(x, y)| ((x as f32 + 0.5) * TILE, (y as f32 + 0.5) * TILE)) {
+                let d = match t.picture_at(cx, cy) {
+                    Some((p, _, _)) => digest(p),
+                    None => *self.digests[m as usize].get_or_init(|| digest(&t.image)),
+                };
+                h.update([m]);
+                h.update(d);
+            }
             // (Its id seeds its edge's noise.)
             h.update([self.looks[m as usize].edge as u8]);
             h.update(self.hm.palette[m as usize].as_bytes());
             h.update([0]);
         }
-        for d in self.decals.get(&(tx, ty)).into_iter().flatten() {
+        for d in self.decals_near(tx, ty) {
             for v in [d.x, d.y, d.cos, d.sin, d.scale, d.rect[0], d.rect[1], d.rect[2], d.rect[3]] {
                 h.update(v.to_le_bytes());
             }
@@ -257,27 +258,44 @@ impl Painter {
         h.finalize().into()
     }
 
-    /// Tile (tx, ty)'s own texture, `size` pixels a side: its ground as painted, each pixel the mean of 2 x 2 samples. A small
-    /// bake reads the library textures halved to its samples' spacing: 2 x 2 samples of their full detail would glitter.
+    /// The decals on tile (tx, ty) and the tiles around it, each once: what its picture's margin may show.
+    fn decals_near(&self, tx: usize, ty: usize) -> Vec<std::sync::Arc<Decal>> {
+        let mut out: Vec<std::sync::Arc<Decal>> = Vec::new();
+        for d in near(tx, ty).filter_map(|t| self.decals.get(&t)).flatten() {
+            if !out.iter().any(|o| std::sync::Arc::ptr_eq(o, d)) {
+                out.push(d.clone());
+            }
+        }
+        out
+    }
+
+    /// Tile (tx, ty)'s own texture, `size` pixels a side: its ground as painted, each pixel the mean of 2 x 2 samples, over the
+    /// tile and [`BAKE_MARGIN`] past it. A small bake reads the library textures halved to its samples' spacing: 2 x 2 samples of
+    /// their full detail would glitter.
     pub(super) fn bake(&self, tx: usize, ty: usize, size: u32) -> mg_image::Rgba {
-        // (Every point drawn is on this tile: its decals, looked up once.)
-        let decals = self.decals.get(&(tx, ty)).map_or(&[][..], Vec::as_slice);
-        self.bake_over(tx as f32 * TILE, ty as f32 * TILE, size, decals)
+        let extent = TILE / (1.0 - 2.0 * BAKE_MARGIN);
+        let edge = BAKE_MARGIN * extent;
+        self.bake_over(tx as f32 * TILE - edge, ty as f32 * TILE - edge, extent, size, &self.decals_near(tx, ty))
     }
 
     /// The ground's texture over the tile-sized square from area point (ox, oy), as [`Painter::bake`] draws a tile's, without
     /// decals: a halo tile's (beyond the area, its paint is the halo's).
     pub(super) fn bake_square(&self, ox: f32, oy: f32, size: u32) -> mg_image::Rgba {
-        self.bake_over(ox, oy, size, &[])
+        self.bake_over(ox, oy, TILE, size, &[])
     }
 
-    fn bake_over(&self, ox: f32, oy: f32, size: u32, decals: &[std::sync::Arc<Decal>]) -> mg_image::Rgba {
-        let spacing = TILE / size as f32 / 2.0;
+    /// The ground over the `extent`-metre square from area point (ox, oy), `size` pixels a side.
+    fn bake_over(&self, ox: f32, oy: f32, extent: f32, size: u32, decals: &[std::sync::Arc<Decal>]) -> mg_image::Rgba {
+        let spacing = extent / size as f32 / 2.0;
         paint::picture(size, size, |px, py| {
             let mut c = [0.0; 3];
             for (dx, dy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
-                let g =
-                    self.ground(ox + (px as f32 + dx) / size as f32 * TILE, oy + (py as f32 + dy) / size as f32 * TILE, spacing, decals);
+                let g = self.ground(
+                    ox + (px as f32 + dx) / size as f32 * extent,
+                    oy + (py as f32 + dy) / size as f32 * extent,
+                    spacing,
+                    decals,
+                );
                 for k in 0..3 {
                     c[k] += g[k] / 4.0;
                 }
@@ -290,8 +308,24 @@ impl Painter {
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
 /// (2: drawn from three sides by the slope. 3: small bakes read the textures halved. 4: blended by the ground's own slope.
-/// 5: soft paint.)
-const BAKE_VERSION: u32 = 5;
+/// 5: soft paint. 6: the margin.)
+const BAKE_VERSION: u32 = 6;
+
+/// How far a tile's baked picture reaches past the tile on each side, as a part of the picture's side (16 pixels of 512, a
+/// third of a metre). Seen from afar the game reads the picture's smaller copies, whose pixels are a foot or more across: within
+/// a picture it blends neighbouring pixels, but at the picture's edge it can only repeat the last one, so neighbouring tiles met
+/// in a hard line along every border. With the ground beyond the border in the margin, the blend runs on across it.
+pub(super) const BAKE_MARGIN: f32 = 1.0 / 32.0;
+
+/// Where on its baked picture a point of tile ground lies, from where it lies on the tile's square (0 to 1 each way).
+pub(super) fn picture_uv(square: [f32; 2]) -> [f32; 2] {
+    square.map(|c| BAKE_MARGIN + c * (1.0 - 2.0 * BAKE_MARGIN))
+}
+
+/// Tile (tx, ty) and the tiles around it (any beyond the area too: nothing is painted there).
+fn near(tx: usize, ty: usize) -> impl Iterator<Item = (usize, usize)> {
+    (tx.saturating_sub(1)..=tx + 1).flat_map(move |x| (ty.saturating_sub(1)..=ty + 1).map(move |y| (x, y)))
+}
 
 /// What soft.rs needs of palette entry `id`'s texture.
 fn look(id: &str, t: &paint::Texture) -> soft::Look {

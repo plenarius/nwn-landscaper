@@ -251,7 +251,7 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(
                     Side::South => (bx, d),
                     Side::North => (bx, size_y - d),
                 };
-                [((x - ox) / TILE).clamp(0.002, 0.998), ((y - oy) / TILE).clamp(0.002, 0.998)]
+                super::painter::picture_uv([((x - ox) / TILE).clamp(0.002, 0.998), ((y - oy) / TILE).clamp(0.002, 0.998)])
             };
             trimesh(&mut s, &format!("{name}_g{n}"), &name, &baked_name(tx, ty), &g, faces, square);
         } else {
