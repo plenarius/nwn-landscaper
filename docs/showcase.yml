@@ -8,26 +8,22 @@
 #          Clips never go in the repository.
 # An entry with no still and no clip shows "Clip to come".
 - title: A lake valley at nightfall
-  text: Lamplight over a lakeside camp, fireflies on the shore and mist on the water under the night sky.
-  still: assets/showcase/lsvale-camp-night.webp
-  clip: assets/showcase/clips/lsvale-camp-night.mp4
-- title: The same camp at dawn
-  text: Morning mist over the lake and the camp, under the dawn haze sky.
-  still: assets/showcase/lsvale-camp-dawn.webp
-  clip: assets/showcase/clips/lsvale-camp-dawn.mp4
+  text: Over the south ridge and down to a lakeside camp as night falls and the fireflies come out.
+  still: assets/showcase/lake-valley-camp-night.webp
+  clip: assets/showcase/clips/lake-valley-dusk-to-night.mp4
 - title: A canyon in golden light
-  text: Trees and boulders on a sandy canyon floor, light shafts through the gaps.
-  still: assets/showcase/lscanyon-floor.webp
-  clip: assets/showcase/clips/lscanyon-walk.mp4
-- title: The canyon rim at golden hour
-  text: Along the plateau's edge as the light turns, the valley below in haze.
-  still: assets/showcase/lscanyon-rim-golden.webp
-  clip: assets/showcase/clips/lscanyon-rim-golden.mp4
-- title: A dune desert
-  text: Wind-piled dunes with cacti and dead trees, sand drifting off the crests at golden hour.
-  still: assets/showcase/lsdunes-golden.webp
-  clip: assets/showcase/clips/lsdunes-orbit-golden.mp4
-- title: A snowy mountain pass
-  text: A path between pines over a saddle, snow falling under an overcast sky.
+  text: Up the canyon floor between its walls in golden haze, rising toward the rim.
+  still: assets/showcase/canyon-glide.webp
+  clip: assets/showcase/clips/canyon-floor-to-rim-golden.mp4
+- title: A dune desert at sunset
+  text: A low pass over the crests with sand drifting off them, rising at the end.
+  still: assets/showcase/dunes-sunset.webp
+  clip: assets/showcase/clips/dunes-low-pass.mp4
+- title: A snowy mountain pass at dawn
+  text: Up the saddle between the cliffs along a gravel trail, snow falling through the pines.
+  still: assets/showcase/snowy-pass-cliffs.webp
+  clip: assets/showcase/clips/snowy-pass-up-the-saddle.mp4
 - title: A cave descent
-  text: Halls stepping down, lit by torches along the walls.
+  text: Down the ramp past a brazier into the cold blue bottom hall, then along the torchlit hall.
+  still: assets/showcase/cave-ramp-brazier.webp
+  clip: assets/showcase/clips/cave-down-the-halls.mp4
