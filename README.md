@@ -182,6 +182,13 @@ through `serve_local`'s handler. `cargo run -p nwn-landscaper` starts it; outsid
 development files (`libwebkit2gtk-4.1-dev` and `libxdo-dev` on Debian and Ubuntu). Started from a terminal it prints there;
 otherwise to `landscaper.log` in the data folder, the start before kept as `landscaper.previous.log`.
 
+A change that users would notice gets a changelog entry as a file of its own, `changelog.d/<short-name>.md`, holding the bullet
+(or bullets) it would have put under `## Unreleased` in CHANGELOG.md, in the same style, with links to our files written from
+`changelog.d/` (`../docs/X.md`). Don't edit CHANGELOG.md itself: each
+pull request's own file means two of them never conflict there. The release folds the files into its section
+(`scripts/changelog.sh`); `scripts/changelog.sh preview` shows them as that section, and `scripts/changelog.sh check` (run by
+CI) checks them.
+
 The tests that need the game's files are ignored by default, as CI has no game: the export, re-export and import cycle
 (`tests/game_cycle.rs`), an import into a folder of its own (`tests/import_dir.rs`), entrance doors (`tests/entrance_doors.rs`),
 packages in both module layouts (`tests/package_layouts.rs`), a conversation and a blueprint's fields. Where there is an install,
@@ -210,6 +217,19 @@ to check and publish by hand. The self-host image (`deploy/self-host/Dockerfile`
 of that tag by default (`WEB_REF`), and `tests/release.rs` fails when its default and `Cargo.toml`'s version disagree: bump both
 in the release's pull request, with `app/Cargo.toml`'s version (the app's own test checks it follows the engine's), then tag
 the two repositories.
+
+A release, step by step:
+
+1. In each repository, a pull request that runs `scripts/changelog.sh release X.Y.Z`: `## Unreleased`, if there is one, and
+   every `changelog.d/` file become the version's section, which the release's notes are made from. Here it also bumps
+   `Cargo.toml`'s version (and `Cargo.lock`) and the self-host image's `WEB_REF`.
+2. Merge both, tag the editor `vX.Y.Z`, then this repository. The release workflow fails if a `changelog.d/` file is left at
+   the tag.
+3. Check the draft release and publish it.
+
+Between releases a build says `+dev` after the last release's version while `changelog.d/` holds an entry, or CHANGELOG.md
+starts with `## Unreleased`: the engine counts its own when it is built (`build.rs`), and lists the editor's at `/changelog.d/`
+for the editor to say the same.
 
 When the engine moves to a new nwn-bake release (`Cargo.toml`'s tag), also run `scripts/shared-files.sh --pin vX.Y.Z` in
 nwn-landscaper-web with that tag, so its shared files (STYLE.md and the check configurations) stay pinned to the same nwn-bake

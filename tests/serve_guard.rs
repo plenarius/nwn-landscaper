@@ -1491,6 +1491,21 @@ fn on_a_team_server_only_admins_install_or_remove_texture_packs() {
     let _ = std::fs::remove_dir_all(&src);
 }
 
+#[test]
+fn the_editors_waiting_changelog_entries_are_listed_for_its_version() {
+    let s = Server::start("changes", &[], false);
+    assert_eq!(s.editor("GET", "/changelog.d/", &[], b""), (200, r#"{"fragments":[]}"#.into()), "no changelog.d/");
+    let dir = s.root.join("web/changelog.d");
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in ["light.md", "dig.md", ".markdownlint.jsonc"] {
+        std::fs::write(dir.join(f), "- x\n").unwrap();
+    }
+    assert_eq!(s.editor("GET", "/changelog.d/", &[], b""), (200, r#"{"fragments":["dig.md","light.md"]}"#.into()));
+    assert_eq!(s.editor("GET", "/changelog.d", &[], b"").0, 200);
+    // The entries themselves are files of the editor like any other.
+    assert_eq!(s.editor("GET", "/changelog.d/dig.md", &[], b""), (200, "- x\n".into()));
+}
+
 /// The Ambience palette (`/api/particles`) is the pack the export bakes from: the one built into the program, with no pack folder
 /// beside it and none named, unless `LANDSCAPER_PARTICLES` names another.
 #[test]

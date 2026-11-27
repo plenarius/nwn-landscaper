@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Builds the particle pack (`packs/particles`) into the program, so a released Landscaper bakes ambience with nothing beside
-//! it: a table of the pack's files (`OUT_DIR/particles.rs`), which `src/ambience.rs` reads.
+//! it: a table of the pack's files (`OUT_DIR/particles.rs`), which `src/ambience.rs` reads. And counts the changelog entries
+//! waiting in changelog.d/ for the next release (scripts/changelog.sh), for the engine's version (src/version.rs): a build
+//! with any says `+dev`.
 
 use std::fmt::Write as _;
 use std::path::Path;
 
 fn main() {
+    changes_waiting();
     let root = Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR")).join("packs").join("particles");
     // (A folder: cargo looks at everything in it.)
     println!("cargo:rerun-if-changed={}", root.display());
@@ -33,4 +36,14 @@ fn main() {
     out.push_str("];\n");
     let dest = Path::new(&std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR")).join("particles.rs");
     std::fs::write(dest, out).expect("writing the particle pack's table");
+}
+
+/// `LANDSCAPER_CHANGES_WAITING`: how many changelog entries changelog.d/ holds (the same rule as `version::fragments`: its
+/// `.md` files, not its dot files such as the folder's markdownlint settings).
+fn changes_waiting() {
+    let dir = Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR")).join("changelog.d");
+    println!("cargo:rerun-if-changed={}", dir.display());
+    let fragment = |n: &str| !n.starts_with('.') && Path::new(n).extension().is_some_and(|x| x == "md");
+    let waiting = std::fs::read_dir(&dir).map_or(0, |d| d.flatten().filter(|e| e.file_name().to_str().is_some_and(fragment)).count());
+    println!("cargo:rustc-env=LANDSCAPER_CHANGES_WAITING={waiting}");
 }
