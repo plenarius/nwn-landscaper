@@ -48,9 +48,10 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
                             report[key] = crate::workspace::shown(&path).into();
                         }
                     }
-                    // (Checks run all the time as someone edits: only exports are recorded.)
+                    // (Checks run all the time as someone edits: only exports are recorded, their routes counted as the editor
+                    // counts them.)
                     if !check {
-                        crate::audit::log("export", Some(&area), true, &format!("{} routes work", report["routes"]["ok"]));
+                        crate::audit::log("export", Some(&area), true, &crate::generator::routes_work(&report));
                     }
                     json_response(200, &report)
                 }

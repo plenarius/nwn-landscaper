@@ -63,6 +63,15 @@ pub(crate) fn long_note(n: usize) -> String {
     if n == 0 { String::new() } else { format!(" (and {n} in shorter clicks)") }
 }
 
+/// A report's routes as the editor counts them: one that shorter clicks complete works ("400 of 400 routes work (68 of them in
+/// shorter clicks)").
+pub(crate) fn routes_work(report: &serde_json::Value) -> String {
+    let n = |k: &str| report["routes"][k].as_u64().unwrap_or(0);
+    let (ok, long, total) = (n("ok"), n("long"), n("total"));
+    let clicks = if long == 0 { String::new() } else { format!(" ({long} of them in shorter clicks)") };
+    format!("{} of {total} routes work{clicks}", ok + long)
+}
+
 /// `n` with commas between thousands.
 fn thousands(n: i64) -> String {
     let digits = n.to_string();
@@ -387,7 +396,7 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{crossing_why, thousands};
+    use super::{crossing_why, routes_work, thousands};
 
     #[test]
     fn the_crossing_warning_names_the_limit() {
@@ -396,5 +405,13 @@ mod tests {
         assert_eq!(thousands(999), "999");
         assert!(crossing_why(1).contains(": one way across it costs the search over 200,000 units of work, more than"));
         assert!(crossing_why(3).contains(": 3 ways across it each cost the search over 200,000 units of work, more than"));
+    }
+
+    #[test]
+    fn routes_too_long_for_one_click_work() {
+        let r = |v: serde_json::Value| routes_work(&serde_json::json!({ "routes": v }));
+        assert_eq!(r(serde_json::json!({ "ok": 332, "total": 400, "long": 68 })), "400 of 400 routes work (68 of them in shorter clicks)");
+        assert_eq!(r(serde_json::json!({ "ok": 390, "total": 400, "long": 0 })), "390 of 400 routes work");
+        assert_eq!(r(serde_json::json!({ "ok": 40, "total": 40 })), "40 of 40 routes work");
     }
 }
