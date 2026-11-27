@@ -20,11 +20,9 @@ Made for [Layonara](https://layonara.com)'s builders. The code is configurable f
 Install the app for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases). It opens the editor in
 a window of its own, with the engine inside it: no browser, no terminal window.
 
-- **Windows 10 and 11:** `nwn-landscaper-X.Y.Z-windows-x86_64-setup.exe`, which installs for you alone (no administrator). The
-  installer and the program are signed, so SmartScreen sees a verified publisher.
+- **Windows 10 and 11:** `nwn-landscaper-X.Y.Z-windows-x86_64-setup.exe`, which installs for you alone (no administrator).
 - **macOS 11 and newer** (Apple silicon and Intel): `nwn-landscaper-X.Y.Z-macos-universal.dmg`; drag NWN Landscaper to
-  Applications. It is signed with a Developer ID and notarized by Apple, so the first start only asks whether to open an app
-  downloaded from the internet.
+  Applications. The first start asks whether to open an app downloaded from the internet.
 - **Linux:** `nwn-landscaper-X.Y.Z-linux-x86_64.AppImage`, or `nwn-landscaper_X.Y.Z_amd64.deb` for Debian 12, Ubuntu 22.04 and
   newer.
 
@@ -42,7 +40,7 @@ archive (macOS, Linux) with the engine and the editor in `web/` beside it. Unpac
 **Without installing anything,** [try it in your browser](https://plenarius.github.io/nwn-landscaper/try/).
 
 Each download holds the engine and the editor of the same release, so you need nothing else but the game. Check a download
-against `SHA256SUMS` on the release page. Releases up to 0.4.0 aren't signed for macOS, and up to 0.6.0 not for Windows.
+against `SHA256SUMS` on the release page.
 
 To build it from source instead, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) and "Development" below.
 
