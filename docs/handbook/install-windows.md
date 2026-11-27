@@ -4,6 +4,14 @@ The Windows installer puts the Landscaper in for you alone: no administrator, no
 
 ## Install
 
+With winget, in a terminal (PowerShell or Command Prompt):
+
+```powershell
+winget install Plenarius.NWNLandscaper
+```
+
+Or by hand:
+
 1. Download `nwn-landscaper-0.7.0-windows-x86_64-setup.exe` from the
    [releases](https://github.com/plenarius/nwn-landscaper/releases).
 2. Run it. If SmartScreen says it protected your PC, click **More info**, then **Run anyway**.
@@ -30,6 +38,8 @@ A Landscaper you ran from the zip archive before uses the same data folder, so t
 
 ## Update or remove it
 
-- **Update:** run the new release's installer. It replaces the program and leaves the data folder alone.
-- **Remove:** uninstall **NWN Landscaper** in Windows' **Settings > Apps**, as any other program. The data folder stays; delete
+- **Update:** run the new release's installer, or `winget upgrade Plenarius.NWNLandscaper`. It replaces the program and leaves
+  the data folder alone.
+- **Remove:** uninstall **NWN Landscaper** in Windows' **Settings > Apps**, as any other program, or
+  `winget uninstall Plenarius.NWNLandscaper`. The data folder stays; delete
   `%LOCALAPPDATA%\landscaper` yourself to remove your areas too.

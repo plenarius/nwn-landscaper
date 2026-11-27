@@ -4,6 +4,14 @@ The Landscaper for macOS is one app for Apple silicon and Intel Macs, on macOS 1
 
 ## Install
 
+With [Homebrew](https://brew.sh/), in Terminal:
+
+```sh
+brew install --cask plenarius/tap/nwn-landscaper
+```
+
+Or by hand:
+
 1. Download `nwn-landscaper-0.7.0-macos-universal.dmg` from the
    [releases](https://github.com/plenarius/nwn-landscaper/releases).
 2. Open it and drag **NWN Landscaper** onto **Applications**.
@@ -30,6 +38,8 @@ Only one copy runs: starting it again brings its window forward. Quit it (Cmd+Q)
 
 ## Update or remove it
 
-- **Update:** drag the new release's app onto Applications and replace the old one. The data folder stays as it is.
-- **Remove:** drag **NWN Landscaper** from Applications to the Trash. The data folder stays; delete `~/.local/share/landscaper`
-  yourself to remove your areas too.
+- **Update:** drag the new release's app onto Applications and replace the old one, or with Homebrew,
+  `brew upgrade --cask nwn-landscaper`. The data folder stays as it is.
+- **Remove:** drag **NWN Landscaper** from Applications to the Trash, or `brew uninstall --cask nwn-landscaper`. The data folder
+  stays; delete `~/.local/share/landscaper` yourself to remove your areas too (`brew uninstall --zap --cask nwn-landscaper`
+  does both).

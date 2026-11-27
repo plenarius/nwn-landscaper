@@ -20,9 +20,11 @@ Made for [Layonara](https://layonara.com)'s builders. The code is configurable f
 Install the app for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases). It opens the editor in
 a window of its own, with the engine inside it: no browser, no terminal window.
 
-- **Windows 10 and 11:** `nwn-landscaper-X.Y.Z-windows-x86_64-setup.exe`, which installs for you alone (no administrator).
+- **Windows 10 and 11:** `nwn-landscaper-X.Y.Z-windows-x86_64-setup.exe`, which installs for you alone (no administrator), or
+  `winget install Plenarius.NWNLandscaper`.
 - **macOS 11 and newer** (Apple silicon and Intel): `nwn-landscaper-X.Y.Z-macos-universal.dmg`; drag NWN Landscaper to
-  Applications. The first start asks whether to open an app downloaded from the internet.
+  Applications. The first start asks whether to open an app downloaded from the internet. Or with Homebrew:
+  `brew install --cask plenarius/tap/nwn-landscaper`.
 - **Linux:** `nwn-landscaper-X.Y.Z-linux-x86_64.AppImage`, or `nwn-landscaper_X.Y.Z_amd64.deb` for Debian 12, Ubuntu 22.04 and
   newer.
 
