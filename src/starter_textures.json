@@ -1,5 +1,5 @@
 {
-  "_": "The starter texture library: ground, rock, sand, snow, floors and walls read from the player's own copy of NWN:EE the first time the Landscaper runs with no library. Each `resref` is a texture of the base game; `id` is letters and digits, at most 16 (`ls_` and its first 13, lower case, are the texture's resref in the hak); the editor's defaults are among them (`textures.rs`, EDITOR_DEFAULTS); `surface` is the surfacemat.2da row for footsteps (1 dirt, 3 grass, 4 stone, 5 wood, 13 mud, 19 snow, 20 sand).",
+  "_": "The starter texture library: ground, rock, sand, snow, floors and walls read from the player's own copy of NWN:EE the first time the Landscaper runs with no library. Each `resref` is a texture of the base game; `id` is letters and digits, at most 16 (`ls_` and its first 13, lower case, are the texture's resref in the hak); the editor's defaults are among them (`textures.rs`, EDITOR_DEFAULTS); `surface` is the surfacemat.2da row for footsteps (1 dirt, 3 grass, 4 stone, 5 wood, 13 mud, 19 snow, 20 sand); `repeats` (1, 2 or 4; 1 when not given) how many times the game's picture repeats each way across the 4 m a library texture covers, so close-ups of pebbles, cobbles, bricks and planks come out their real size (stock tiles show these pictures over 3 to 5 m, made for a camera far above).",
   "textures": [
     { "id": "grassMedium", "name": "Medium grass", "category": "Grass", "surface": 3, "resref": "tcm02_grass01" },
     { "id": "grassBright", "name": "Bright grass", "category": "Grass", "surface": 3, "resref": "ttz01_grass02" },
@@ -16,13 +16,13 @@
     { "id": "mudSwamp", "name": "Mud", "category": "Earth", "surface": 13, "resref": "trm02_dirt03" },
     { "id": "mudCracked", "name": "Cracked mud", "category": "Earth", "surface": 1, "resref": "ttd01_driedmud01" },
     { "id": "earthCracked", "name": "Cracked earth", "category": "Earth", "surface": 1, "resref": "ttd01_crkdrock01" },
-    { "id": "gravelPebbles", "name": "Pebbles", "category": "Earth", "surface": 1, "resref": "ttf01_gravel01" },
+    { "id": "gravelPebbles", "name": "Pebbles", "category": "Earth", "surface": 1, "resref": "ttf01_gravel01", "repeats": 2 },
     { "id": "gravelGrey", "name": "Grey gravel", "category": "Earth", "surface": 1, "resref": "ttf02_gravel01" },
     { "id": "gravelMuddy", "name": "Muddy gravel", "category": "Earth", "surface": 1, "resref": "trm02_gravel" },
 
     { "id": "sandFine", "name": "Sand", "category": "Sand", "surface": 20, "resref": "ttz01_sand01" },
-    { "id": "sandSoft", "name": "Soft sand", "category": "Sand", "surface": 20, "resref": "tcn01_sand" },
-    { "id": "sandDune", "name": "Dune sand", "category": "Sand", "surface": 20, "resref": "ttd01_grass01" },
+    { "id": "sandSoft", "name": "Soft sand", "category": "Sand", "surface": 20, "resref": "tcn01_sand", "repeats": 2 },
+    { "id": "sandDune", "name": "Dune sand", "category": "Sand", "surface": 20, "resref": "ttd01_grass01", "repeats": 2 },
     { "id": "sandSilt", "name": "Silt", "category": "Sand", "surface": 20, "resref": "trm02_sand01" },
 
     { "id": "rock", "name": "Rock", "category": "Rock", "surface": 4, "resref": "tdm01_rock01" },
@@ -44,17 +44,17 @@
     { "id": "snowDrift", "name": "Snow drift", "category": "Snow", "surface": 19, "resref": "tts01_grass02" },
     { "id": "iceFloor", "name": "Ice", "category": "Snow", "surface": 19, "resref": "tti01_icefloor" },
 
-    { "id": "floorBrick", "name": "Brick floor", "category": "Floors", "surface": 4, "resref": "tin01_floor" },
+    { "id": "floorBrick", "name": "Brick floor", "category": "Floors", "surface": 4, "resref": "tin01_floor", "repeats": 2 },
     { "id": "floorFlag", "name": "Flagstones", "category": "Floors", "surface": 4, "resref": "tin01_stone05" },
     { "id": "floorStone", "name": "Stone floor", "category": "Floors", "surface": 4, "resref": "tni02_floor01" },
-    { "id": "floorCobble", "name": "Cobblestones", "category": "Floors", "surface": 4, "resref": "tcm02_cobble01" },
+    { "id": "floorCobble", "name": "Cobblestones", "category": "Floors", "surface": 4, "resref": "tcm02_cobble01", "repeats": 2 },
     { "id": "floorSlabs", "name": "Floor slabs", "category": "Floors", "surface": 4, "resref": "tcm02_flrslabs01" },
-    { "id": "floorPlank", "name": "Plank floor", "category": "Floors", "surface": 5, "resref": "tin01_plank" },
-    { "id": "woodOld", "name": "Old planks", "category": "Floors", "surface": 5, "resref": "trs02_planks01" },
+    { "id": "floorPlank", "name": "Plank floor", "category": "Floors", "surface": 5, "resref": "tin01_plank", "repeats": 2 },
+    { "id": "woodOld", "name": "Old planks", "category": "Floors", "surface": 5, "resref": "trs02_planks01", "repeats": 2 },
 
-    { "id": "wallFieldstone", "name": "Fieldstone", "category": "Walls", "surface": 4, "resref": "trm02_wall01" },
+    { "id": "wallFieldstone", "name": "Fieldstone", "category": "Walls", "surface": 4, "resref": "trm02_wall01", "repeats": 2 },
     { "id": "wallMossy", "name": "Mossy stone", "category": "Walls", "surface": 4, "resref": "ttf02_stone04" },
-    { "id": "wallField", "name": "Fieldstone wall", "category": "Walls", "surface": 4, "resref": "tcm02_wall01" },
+    { "id": "wallField", "name": "Fieldstone wall", "category": "Walls", "surface": 4, "resref": "tcm02_wall01", "repeats": 2 },
     { "id": "wallWeathered", "name": "Weathered wall", "category": "Walls", "surface": 4, "resref": "trs02_wall03" },
     { "id": "wallDark", "name": "Dark stone wall", "category": "Walls", "surface": 4, "resref": "tni02_stone01" },
     { "id": "wallWood", "name": "Dark wood boards", "category": "Walls", "surface": 5, "resref": "tcm02_wood01" }
