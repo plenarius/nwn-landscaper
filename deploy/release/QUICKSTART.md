@@ -3,7 +3,7 @@
 This archive is the program alone: the engine, with the editor in `web/` beside it, for the command line, a server, or your
 own browser. To build areas on your own computer, the app is simpler: each release also has an installer for Windows
 (`-setup.exe`), macOS (`.dmg`) and Linux (`.AppImage`, `.deb`) that opens the editor in a window of its own
-(<https://plenarius.github.io/nwn-landscaper/handbook/getting-started/>).
+(<https://landscaper.layonara.com/handbook/getting-started/>).
 
 You need Neverwinter Nights: Enhanced Edition, installed and started once (the first start makes your user folder,
 `Documents/Neverwinter Nights`). The Landscaper reads the game's files and ships none of them.
@@ -40,4 +40,4 @@ If you have used the app, the program also finds the folders you gave it there (
 - **Package for your module…** needs `nwn_gff` from neverwinter.nim (<https://github.com/niv/neverwinter.nim/releases>) on
   your `PATH`.
 - From a terminal, `landscaper --help` lists the commands; `landscaper serve` starts the editor without opening the browser.
-- The handbook: <https://plenarius.github.io/nwn-landscaper/>. The source: <https://github.com/plenarius/nwn-landscaper>.
+- The handbook: <https://landscaper.layonara.com/>. The source: <https://github.com/plenarius/nwn-landscaper>.

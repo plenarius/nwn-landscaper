@@ -37,7 +37,7 @@ archive (macOS, Linux) with the engine and the editor in `web/` beside it. Unpac
 <http://127.0.0.1:8765/> (or the next free port). `QUICKSTART.txt` in the archive says what to set when it can't find the game
 ([The program alone](docs/handbook/program-alone.md)).
 
-**Without installing anything,** [try it in your browser](https://plenarius.github.io/nwn-landscaper/try/).
+**Without installing anything,** [try it in your browser](https://landscaper.layonara.com/try/).
 
 Each download holds the engine and the editor of the same release, so you need nothing else but the game. Check a download
 against `SHA256SUMS` on the release page.
@@ -161,7 +161,7 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 ## Documents
 
 The documents below, with a step-by-step handbook for builders, are also a site:
-<https://plenarius.github.io/nwn-landscaper/> (`mkdocs serve` with `requirements-docs.txt` installed shows it locally).
+<https://landscaper.layonara.com/> (`mkdocs serve` with `requirements-docs.txt` installed shows it locally).
 
 - [docs/handbook/](docs/handbook/index.md): the builder's handbook, one tool a page.
 - [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md): running it on your machine, or as a team server with Docker.

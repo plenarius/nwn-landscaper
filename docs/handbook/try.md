@@ -1,6 +1,6 @@
 # Try it in your browser
 
-**[Open the Landscaper in your browser](https://plenarius.github.io/nwn-landscaper/try/)**: the editor and its engine both
+**[Open the Landscaper in your browser](https://landscaper.layonara.com/try/)**: the editor and its engine both
 run in the page, with nothing to install and nothing sent to a server. It paints with textures of its own, and carries the
 game's stock placeables and the shaders an export needs.
 
@@ -60,8 +60,8 @@ BioWare. The demo's ground textures are credited in [packs/demo/CREDITS.md](../.
 
 The engine in the page is the Landscaper's, GPL-3.0-or-later, built for WebAssembly: its source is
 [nwn-landscaper](https://github.com/plenarius/nwn-landscaper), and the page serves its
-[licence](https://plenarius.github.io/nwn-landscaper/try/try/LICENSE-engine.txt) and a
-[note](https://plenarius.github.io/nwn-landscaper/try/try/NOTICE-engine.md) of the C and C++ libraries built into it. The
+[licence](https://landscaper.layonara.com/try/try/LICENSE-engine.txt) and a
+[note](https://landscaper.layonara.com/try/try/NOTICE-engine.md) of the C and C++ libraries built into it. The
 editor is [nwn-landscaper-web](https://github.com/plenarius/nwn-landscaper-web) (MIT).
 
 ## How the page is built

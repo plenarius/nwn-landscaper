@@ -2,11 +2,11 @@
 # builds it with --strict on every pull request and publishes it to GitHub Pages on every merge to master.
 site_name: NWN Landscaper
 site_description: Draw terrain in your browser and get a Neverwinter Nights area. The builder's handbook.
-site_url: https://plenarius.github.io/nwn-landscaper/
+site_url: https://landscaper.layonara.com/
 repo_url: https://github.com/plenarius/nwn-landscaper
 repo_name: plenarius/nwn-landscaper
 edit_uri: edit/master/docs/
-copyright: Copyright (C) 2026 plenarius. GPL-3.0-or-later.
+copyright: Copyright (C) 2026 plenarius. GPL-3.0-or-later. Made by the team behind <a href="https://www.layonara.com/">Layonara</a>.
 
 docs_dir: docs
 strict: true

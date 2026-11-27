@@ -339,7 +339,7 @@ Considered and not chosen:
 
 ### 6. Hosting
 
-**Decided: `/try/` on the handbook site** (`plenarius.github.io/nwn-landscaper/try/`, not there yet). The docs workflow downloads the
+**Decided: `/try/` on the handbook site** (`landscaper.layonara.com/try/`). The docs workflow downloads the
 release's `landscaper-wasm.zip` and the editor at the same tag, and copies them under `site/try/` before uploading the site. One
 site, one deploy, the handbook a click away.
 
