@@ -6,6 +6,29 @@ All notable changes to the Landscaper engine; the editor's are in
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog. Changes not
 released yet wait in `changelog.d/`, a file each, until the release puts them in its section.
 
+## 0.7.2
+
+- **Tall cliffs read as one rock face.** The starter set's cliff rock, swamp rock and canyon rock pictures end in moss, grass
+  or sand where the game's own cliffs meet the ground; repeated every 4 m up a tall face, that band drew a stripe at each
+  repeat. It is now replaced by rock from higher up the picture (`foot` in `src/starter_textures.json`). A library made before
+  is updated when the Landscaper starts, except a texture you changed. See
+  [Paint](docs/handbook/paint.md#walls-and-steep-ground).
+- **Tall cliffs read as rock, not fur.** The starter set's cliff rock, swamp rock and canyon rock repeat every 8 m instead of
+  every 4 m: their fine layers, repeated up a tall wall, blurred into streaks from the game's camera. A texture's `metres` in the
+  library's catalog sets the ground one repeat covers, in the game and in the editor (with the editor of the same release). A
+  library made before is updated when the Landscaper starts, except a texture you changed. See
+  [Paint](docs/handbook/paint.md#how-large-a-texture-is-drawn).
+- **Design: normal maps for the ground** ([DESIGN-normal-maps.md](docs/DESIGN-normal-maps.md)). Real normal maps for the
+  stony textures in place of #96's relief from brightness: one shared normal map per library texture, nothing more in an area's
+  hak, generated for the starter set on the builder's machine and taken from the demo pack's sources, measured in the client.
+- **Blowing sand streams in wisps.** The particle pack's blowing sand drew each particle as a pale oval lying on the ground. It
+  is now small, starts 0.6 m up and is drawn with motion blur, its texture faint fibres of grain, so it streams downwind in
+  streaks. See [the particle pack](packs/particles/README.md).
+- **No bright spot on a cliff from its tile's lights.** Each tile's two main lights hang 5 m over the tile's highest ground,
+  as the game's own tiles hang theirs, not 5 m over its base: on a cliff tile they hung against the wall and lit a hot spot on
+  the rock that slid about as the camera moved. In a cave they stay over the floor's level. See
+  [Light](docs/handbook/light.md).
+
 ## 0.7.1
 
 - **Ambience: no particle cap.** The export bakes every placement, however many particles the area keeps alive; its report and
