@@ -95,7 +95,7 @@ pub(super) fn tile_model(
         };
         let props = if shadow || look != Look::Plain {
             let mat = mtr_name(name, mtrs.len());
-            let relief = painter.map_or(0.0, |p| p.relief(bitmap, tx, ty));
+            let relief = painter.map_or(0.0, |p| p.relief(bitmap, tx, ty, shadow));
             mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), look, relief)));
             format!("  materialname {mat}\n")
         } else {

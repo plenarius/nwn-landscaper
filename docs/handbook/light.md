@@ -31,9 +31,10 @@ On pebbles, cobbles and rock the game's light falls as if the texture had relief
 the stones catch a torch or the sun on one side and fall into shade on the other. Each library texture says how much in its
 `relief` (metres between its darkest and lightest parts; none unless set); the starter set gives it to **Pebbles**,
 **Cobblestones** and **Rock**, also in a library made before, and to nothing else: on grass, snow or a cliff's streaks light
-isn't height. A tile painted with several textures takes their mean over its walkable ground.
+isn't height. On a tile painted with several textures each spot takes its own texture's (a pebble path across grass has
+relief, the grass none) when the area has baked shadows; without them the tile takes their mean.
 
-The relief shows only on ground near flat and within about 15 m of the camera, and fades out before that, so far ground
+The relief shows only on ground near flat and within about 20 m of the camera, and fades out from 8 m, so far ground
 doesn't blotch and cliffs don't glitter. It keeps the ground's average brightness and costs nothing in the hak. It needs the
 game's shaders set above **Minimal**; at Minimal the ground is lit flat.
 

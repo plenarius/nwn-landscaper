@@ -121,11 +121,15 @@ impl Painter {
         (TILE / self.hm.spacing).round() as i64
     }
 
-    /// The relief ([`paint::Texture::relief`]) of a tile mesh drawn with `bitmap`: a library texture's own; for tile (tx, ty)'s
-    /// baked picture, the mean of its walkable ground's textures' (one value for the picture: it has no room for one a pixel).
-    pub(super) fn relief(&self, bitmap: &str, tx: usize, ty: usize) -> f32 {
+    /// The relief ([`paint::Texture::relief`]) of a tile mesh drawn with `bitmap`: a library texture's own. For tile (tx, ty)'s
+    /// baked picture with `shares` (a shadow map, which carries each pixel's share of it: [`Painter::relief_shares`]), the most
+    /// of its textures'; without, the mean of its walkable ground's.
+    pub(super) fn relief(&self, bitmap: &str, tx: usize, ty: usize, shares: bool) -> f32 {
         if bitmap != super::baked_name(tx, ty) {
             return self.hm.palette.iter().position(|id| paint::resref(id) == bitmap).map_or(0.0, |m| self.textures[m].relief);
+        }
+        if shares {
+            return self.tile_materials(tx, ty).iter().map(|&m| self.textures[m as usize].relief).fold(0.0, f32::max);
         }
         let k = self.samples_per_tile();
         let (mut sum, mut n) = (0.0, 0.0);
@@ -139,6 +143,28 @@ impl Painter {
             }
         }
         if n > 0.0 { sum / n } else { 0.0 }
+    }
+
+    /// Writes into the blue of tile (tx, ty)'s shadow map (rows from the south, over the tile's square) each pixel's share of the
+    /// tile's relief ([`Painter::relief`] with shares): its textures' relief, as the paint mixes them, over the tile's most. The
+    /// shade stays in red and green. A path of pebbles across grass then has relief and the grass none.
+    pub(super) fn relief_shares(&self, tx: usize, ty: usize, map: &mut mg_image::Rgba) {
+        let most = self.relief(&super::baked_name(tx, ty), tx, ty, true);
+        let size = map.width;
+        let texel = TILE / size as f32;
+        for py in 0..size {
+            for px in 0..size {
+                let (x, y) = (tx as f32 * TILE + (px as f32 + 0.5) * texel, ty as f32 * TILE + (py as f32 + 0.5) * texel);
+                let mix = self.soft.mix(x, y);
+                let (mut sum, mut total) = (0.0, 0.0);
+                for &(m, w) in &mix.0[..mix.1] {
+                    sum += w * self.textures[m as usize].relief;
+                    total += w;
+                }
+                let share = if most > 0.0 && total > 0.0 { sum / total / most } else { 0.0 };
+                map.data[((py * size + px) * 4 + 2) as usize] = (share.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            }
+        }
     }
 
     /// Whether palette entry `m` is an import's pictures.

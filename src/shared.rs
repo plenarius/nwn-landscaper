@@ -280,11 +280,11 @@ fn patch_fslit(stock: &str) -> Result<String> {
         "fslit",
         "ApplyStandardShader();",
         &[
-            "// The Landscaper's baked shade, on the area's sun or moon only (its shared.rs). In the light's colour space, so where",
-            "// nothing else lights the ground the colour comes out the shadow map times the stock one.",
+            "// The Landscaper's baked shade (green: blue may carry the relief's share), on the area's sun or moon only (its shared.rs).",
+            "// In the light's colour space, so where nothing else lights the ground the colour comes out the shadow map times the stock one.",
             "if (texture7Bound != 0)",
             "{",
-            "    vec3 lsShade = ApplyColorSpace(texture2D(texUnit7, vShadowUV).rgb);",
+            "    vec3 lsShade = ApplyColorSpace(texture2D(texUnit7, vShadowUV).ggg);",
             PER_VERTEX,
             "    // VertexColor is the light with the area's at full, vLsLocalLight without it; the second is never the brighter.",
             "    FragmentColor.rgb *= mix(vLsLocalLight, VertexColor.rgb, lsShade) / max(VertexColor.rgb, vec3(0.0001));",
@@ -339,13 +339,13 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
 
 /// Where the relief fades out with distance from the camera (m): from, to. Further off a pixel spans many of the texture's, and
 /// its slope only blotched the ground.
-pub const RELIEF_FADE: [f32; 2] = [6.0, 16.0];
+pub const RELIEF_FADE: [f32; 2] = [8.0, 24.0];
 
 /// The light read off a relief made from the texture's own brightness, taken as height: lit per fragment, the normal the light
 /// reads is tilted by the brightness's slope, so the stones of pebbles, cobbles and rock take a lit side and a shaded one under a
 /// torch or the sun instead of lying flat. How high is the texture's (the material's `lsRelief`, from the library's `relief`: 0, none,
 /// for grass, snow or a cliff whose streaks aren't its shape). Only near flat ground (none on steep faces, where it glittered on
-/// dark cliffs) and near the camera ([`RELIEF_FADE`]). The slope is read over two texels (one's is noise) and kept under half
+/// dark cliffs) and near the camera ([`RELIEF_FADE`]). The slope is read over three texels (one's is noise, two still jagged the stones' rims) and kept under half
 /// a unit, and the tilted normal is not made unit length again: the diffuse light then changes by the tilt alone, as much
 /// up as down, so the ground keeps its average brightness (normalised, every tilt darkened it). Four more texture reads; nothing
 /// more in the hak. Lit per vertex (the game's "Minimal" shaders) it does nothing. `triplanar`: in `ls_tp_fs`, over the projection
@@ -378,7 +378,7 @@ fn patch_relief(fs: &str, triplanar: bool) -> Result<String> {
         &k,
         "    if (lsK > 0.0)",
         "    {",
-        "        float lsE = 2.0 / 512.0;",
+        "        float lsE = 3.0 / 512.0;",
         &g,
         "        float lsL = length(lsG);",
         "        if (lsL > 0.5) lsG *= 0.5 / lsL;",
@@ -396,6 +396,9 @@ fn patch_relief(fs: &str, triplanar: bool) -> Result<String> {
         return replace_line(&s, "ls_tp_fs", "FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);", &lines);
     }
     with.insert(0, "SetupStandardShaderInputs();");
+    // (A baked picture mixes textures: the shadow map's blue says how much of the tile's relief each pixel has.)
+    let at = with.iter().position(|l| l.starts_with("    float lsK")).map_or(0, |i| i + 1);
+    with.insert(at, "    if (texture7Bound != 0) lsK *= texture2D(texUnit7, vShadowUV).b;");
     let with: Vec<&str> =
         with.into_iter().map(|l| if l == "    if (lsK > 0.0)" { "    if (lsK > 0.0 && texture0Bound != 0)" } else { l }).collect();
     replace_line(&s, "fslit", "SetupStandardShaderInputs();", &with)
@@ -532,7 +535,7 @@ mod tests {
             "SetupStandardShaderInputs();",
             "if (texture7Bound != 0)",
             "{",
-            "vec3 lsShade = ApplyColorSpace(texture2D(texUnit7, vShadowUV).rgb);",
+            "vec3 lsShade = ApplyColorSpace(texture2D(texUnit7, vShadowUV).ggg);",
             PER_VERTEX,
             "FragmentColor.rgb *= mix(vLsLocalLight, VertexColor.rgb, lsShade) / max(VertexColor.rgb, vec3(0.0001));",
             "#else",
@@ -575,12 +578,13 @@ mod tests {
         assert!(at("uniform float lsRelief;") < at("void main ()"));
         // From above only, over two texels of 512 across the 4 m a library texture covers; none on steep ground or far off.
         assert!(tp.contains("lsHeight(lsP.xy + vec2(lsE, 0.0)) - lsHeight(lsP.xy - vec2(lsE, 0.0))") && tp.contains("(2.0 * lsE * 4.0)"));
-        assert!(tp.contains("smoothstep(0.8, 0.95, lsNw.z) * (1.0 - smoothstep(6.0, 16.0, length(vPosView)))"), "{tp}");
+        assert!(tp.contains("smoothstep(0.8, 0.95, lsNw.z) * (1.0 - smoothstep(8.0, 24.0, length(vPosView)))"), "{tp}");
         let bk = patch_relief(&patch_fslit(FSLIT).unwrap(), false).unwrap();
         let lines = code(&bk);
         let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{bk}"));
         assert!(at("SetupStandardShaderInputs();") < at(tilt) && at(tilt) < at("ApplyStandardShader();"));
         assert!(at("if (lsK > 0.0 && texture0Bound != 0)") < at(tilt));
+        assert!(at("if (texture7Bound != 0) lsK *= texture2D(texUnit7, vShadowUV).b;") < at("if (lsK > 0.0 && texture0Bound != 0)"));
         assert!(bk.contains("(2.0 * lsE * 10.0)") && bk.contains("lsHeight(vTexCoords + vec2(lsE, 0.0))"), "{bk}");
     }
 

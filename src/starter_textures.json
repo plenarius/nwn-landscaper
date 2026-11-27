@@ -16,7 +16,7 @@
     { "id": "mudSwamp", "name": "Mud", "category": "Earth", "surface": 13, "resref": "trm02_dirt03" },
     { "id": "mudCracked", "name": "Cracked mud", "category": "Earth", "surface": 1, "resref": "ttd01_driedmud01" },
     { "id": "earthCracked", "name": "Cracked earth", "category": "Earth", "surface": 1, "resref": "ttd01_crkdrock01" },
-    { "id": "gravelPebbles", "name": "Pebbles", "category": "Earth", "surface": 1, "resref": "ttf01_gravel01", "repeats": 2, "relief": 0.06 },
+    { "id": "gravelPebbles", "name": "Pebbles", "category": "Earth", "surface": 1, "resref": "ttf01_gravel01", "repeats": 2, "relief": 0.15 },
     { "id": "gravelGrey", "name": "Grey gravel", "category": "Earth", "surface": 1, "resref": "ttf02_gravel01" },
     { "id": "gravelMuddy", "name": "Muddy gravel", "category": "Earth", "surface": 1, "resref": "trm02_gravel" },
 
@@ -25,7 +25,7 @@
     { "id": "sandDune", "name": "Dune sand", "category": "Sand", "surface": 20, "resref": "ttd01_grass01", "repeats": 2 },
     { "id": "sandSilt", "name": "Silt", "category": "Sand", "surface": 20, "resref": "trm02_sand01" },
 
-    { "id": "rock", "name": "Rock", "category": "Rock", "surface": 4, "resref": "tdm01_rock01", "relief": 0.04 },
+    { "id": "rock", "name": "Rock", "category": "Rock", "surface": 4, "resref": "tdm01_rock01", "relief": 0.1 },
     { "id": "rockCliff", "name": "Cliff rock", "category": "Rock", "surface": 4, "resref": "ttf01_cliff01" },
     { "id": "swampRock", "name": "Swamp rock", "category": "Rock", "surface": 4, "resref": "trm02_cliff01" },
     { "id": "canyonRock", "name": "Canyon rock", "category": "Rock", "surface": 4, "resref": "ttd01_cliff01" },
@@ -47,7 +47,7 @@
     { "id": "floorBrick", "name": "Brick floor", "category": "Floors", "surface": 4, "resref": "tin01_floor", "repeats": 2 },
     { "id": "floorFlag", "name": "Flagstones", "category": "Floors", "surface": 4, "resref": "tin01_stone05" },
     { "id": "floorStone", "name": "Stone floor", "category": "Floors", "surface": 4, "resref": "tni02_floor01" },
-    { "id": "floorCobble", "name": "Cobblestones", "category": "Floors", "surface": 4, "resref": "tcm02_cobble01", "repeats": 2, "relief": 0.05 },
+    { "id": "floorCobble", "name": "Cobblestones", "category": "Floors", "surface": 4, "resref": "tcm02_cobble01", "repeats": 2, "relief": 0.12 },
     { "id": "floorSlabs", "name": "Floor slabs", "category": "Floors", "surface": 4, "resref": "tcm02_flrslabs01" },
     { "id": "floorPlank", "name": "Plank floor", "category": "Floors", "surface": 5, "resref": "tin01_plank", "repeats": 2 },
     { "id": "woodOld", "name": "Old planks", "category": "Floors", "surface": 5, "resref": "trs02_planks01", "repeats": 2 },

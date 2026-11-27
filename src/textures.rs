@@ -74,7 +74,7 @@ pub struct Spec {
 }
 
 /// The most relief a list may give a texture ([`Spec::relief`], m).
-pub const MAX_RELIEF: f32 = 0.2;
+pub const MAX_RELIEF: f32 = 0.5;
 
 /// The relief of the starter texture made from `original` (`game:<resref>`), for a library entry that doesn't give one: a library
 /// made before relief was added still gets it on its pebbles, cobbles and rock.

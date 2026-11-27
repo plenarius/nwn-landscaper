@@ -218,7 +218,11 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             _ => None,
         };
         phase(3);
-        let shadow = (strength > 0.0).then(|| shadow_map(tx, ty, strength));
+        let mut shadow = (strength > 0.0).then(|| shadow_map(tx, ty, strength));
+        // (A baked picture's relief, pixel by pixel, in the shadow map's blue.)
+        if let (Some(map), Some(p)) = (shadow.as_mut(), painter.as_ref().filter(|p| p.baked(tx, ty))) {
+            p.relief_shares(tx, ty, map);
+        }
         let shadow_dds = shadow.as_ref().map(paint::dds);
         phase(2);
         let name = tile_name(tx, ty);
