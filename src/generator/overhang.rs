@@ -144,7 +144,7 @@ impl Overhang {
         let mut wet = (false, false);
         for b in 0..=f {
             for a in 0..=f {
-                if hm.water_level(i0 + a, j0 + b).is_some() {
+                if hm.surface_level(i0 + a, j0 + b).is_some() {
                     wet.0 = true;
                 } else {
                     wet.1 = true;
@@ -337,7 +337,8 @@ impl Overhang {
         let sp = hm.spacing;
         // (A cell is wet when any of its corners is, at the highest of their levels, as the area's tiles draw water.)
         let level = |a: i64, b: i64| {
-            let l = [(0, 0), (1, 0), (0, 1), (1, 1)].iter().filter_map(|(da, db)| hm.water_level(a + da, b + db)).fold(f32::NAN, f32::max);
+            let l =
+                [(0, 0), (1, 0), (0, 1), (1, 1)].iter().filter_map(|(da, db)| hm.surface_level(a + da, b + db)).fold(f32::NAN, f32::max);
             (!l.is_nan()).then_some(l)
         };
         // Runs per row, then runs that repeat on the next row joined into one rectangle.
