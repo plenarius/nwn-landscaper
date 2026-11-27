@@ -221,6 +221,12 @@ fn main() {
                     let _ = links.opener().open_url(url.as_str(), None::<&str>);
                     false
                 })
+                // In the log, so a report (and the release's smoke test) shows what the window got to.
+                .on_page_load(|_, page| {
+                    if matches!(page.event(), tauri::webview::PageLoadEvent::Finished) {
+                        println!("window: {}", page.url());
+                    }
+                })
                 .on_new_window(move |url, _| {
                     let _ = popups.opener().open_url(url.as_str(), None::<&str>);
                     tauri::webview::NewWindowResponse::Deny
