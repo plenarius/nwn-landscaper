@@ -1,20 +1,31 @@
 # Getting started
 
-Start the program, make your first area and find your way around the view.
+Install the Landscaper, make your first area and find your way around the view.
 
-## Start the Landscaper
+## Install the Landscaper
 
-1. Download the archive for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases) and unpack it
-   anywhere.
-2. Start `landscaper.exe` (Windows) or `landscaper` (macOS, Linux). A window shows the game and the user folder it found.
-3. Your browser opens the editor at `http://127.0.0.1:8765/`. Close the program's window to stop it.
+From 0.7.0 the Landscaper is an app: install it, start it, and the editor opens in a window of its own with the engine inside
+it. Take the download for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases):
 
-You need the game itself, Neverwinter Nights: Enhanced Edition. The Landscaper builds its texture library and reads models from
-your install the first time it starts. When it can't find the game, `QUICKSTART.txt` in the archive says what to set.
+| System | Download | Page |
+| --- | --- | --- |
+| Windows 10 and 11 | `nwn-landscaper-0.7.0-windows-x86_64-setup.exe` | [Windows](install-windows.md) |
+| macOS 11 and newer | `nwn-landscaper-0.7.0-macos-universal.dmg` | [macOS](install-macos.md) |
+| Linux | `nwn-landscaper-0.7.0-linux-x86_64.AppImage`, or `nwn-landscaper_0.7.0_amd64.deb` | [Linux](install-linux.md) |
+
+You need the game itself, Neverwinter Nights: Enhanced Edition. The Landscaper reads its files and ships none of them. The first
+start looks for the game, asks for its folder when it can't find it, and builds the texture library from it:
+[The first start](first-start.md).
+
+Two other ways in:
+
+- **[The program alone](program-alone.md):** the zip or tar archives, for the command line, a server, or your own browser.
+- **[Try it in your browser](try.md):** the editor and its engine in a web page, nothing to install.
 
 !!! note "No engine, sculpting only"
-    When the page says *No engine: sculpting only*, the program isn't running. You can still shape the ground, and the browser
-    keeps your area until the engine is back, but textures, import, export and the game's models need the engine.
+    When the page says *No engine: sculpting only*, the engine isn't answering. You can still shape the ground, and the editor
+    keeps your area until the engine is back, but textures, import, export and the game's models need the engine. In the app,
+    close it and start it again; with the program alone, start the program again.
 
 ## Make an area
 

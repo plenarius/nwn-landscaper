@@ -16,9 +16,11 @@ can open in the toolset or the game, checked against the game's pathfinding.
 
 ## Get it
 
-Download the archive for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases) (Windows,
-macOS, Linux), unpack it and start `landscaper`. Your browser opens the editor at `http://127.0.0.1:8765/`. You need the game
-itself: the Landscaper reads its files and ships none of them. [Getting started](handbook/getting-started.md) has the details.
+Install the app for your system from the [releases](https://github.com/plenarius/nwn-landscaper/releases):
+[Windows](handbook/install-windows.md), [macOS](handbook/install-macos.md) or [Linux](handbook/install-linux.md). It opens the
+editor in a window of its own, with the engine inside it. You need the game itself: the Landscaper reads its files and ships
+none of them. [Getting started](handbook/getting-started.md) has the details, and [the program alone](handbook/program-alone.md)
+is still there for the command line and servers.
 
 The engine (Rust) is [nwn-landscaper](https://github.com/plenarius/nwn-landscaper); the editor (three.js) is
 [nwn-landscaper-web](https://github.com/plenarius/nwn-landscaper-web). A release holds both.

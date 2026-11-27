@@ -1,6 +1,6 @@
 # Terrain
 
-Shape the ground with the sculpting tools, then add water, chasms and cave mouths.
+Shape the ground with the sculpting tools, shape the band of ground round the area, then add water, chasms and cave mouths.
 
 ![A valley with a lake; the orange marks are the live path check](../assets/handbook/terrain.webp)
 
@@ -14,6 +14,25 @@ Pick a tool, set **Brush size** (`[` `]`) and **Strength**, and left-drag over t
 
 Keep **Walkable** (`W`) on while you work. Red ground is too steep for creatures; the export uses the same rule, so what is red
 in the editor is closed to them in the game.
+
+## The band round the area
+
+Every outdoor area has a band of ground 50 m wide round it, past its edge. Nobody walks there and it isn't built into tiles: it is
+what the game shows beyond the area's edge, so the hills, the valley or the shore carry on past it as you shape them.
+
+![A 12 by 12 tile area (the grid) with its band sculpted: hills beyond its north and west edges, and a valley with a dirt path running out across its south edge](../assets/handbook/band.webp)
+
+- **Raise, Lower, Smooth, Flatten and Paint** work in it: drag past the edge and the brush shapes the band as it shapes the
+  area, across the edge in one stroke. Undo takes it back.
+- **A new area's band carries its edge straight out**, as the game's edge scenery showed it before. An area made before the band
+  gets the same band when you open it. Shape it from there.
+- **The area's water runs on into the band** where the band's ground is lower than the water.
+- **Not in the band yet:** the texture mix, chasms, Dig and objects. A chasm along the edge stops at the edge: lower the band
+  past it to keep the drop going.
+- The status bar says *the band round the area* when the cursor is over it.
+- Caves and interiors have no band: the game shows nothing past their edge.
+
+[Past the edge in the game](export.md#past-the-edge-in-the-game) says how the band comes out in the game.
 
 ## Start from a picture
 
