@@ -19,6 +19,10 @@ A cave or an interior starts as solid rock. You cut rooms and passages out of it
 **Room** (`r`) cuts a rectangle at the floor height where you start dragging. Rooms snap to 1.25 m and are 5 m a side at least;
 rooms that overlap join.
 
+In an interior the walls stand upright on the room's edge, in the game and in the editor. To fit a door in a wall, put it on the
+room's edge and turn it into the wall's line: it sits flush from the floor to its top. A door pushed a little into a wall goes
+onto the wall's line; any other thing pushed into a wall stands on the floor at its foot.
+
 ## Ramps and stairs
 
 **Ramp** (`p`): drag from one level to another. The brush size sets the width (6 m at least). It rises to where you let go, or by

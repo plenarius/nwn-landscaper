@@ -11,8 +11,8 @@ use super::overhang;
 use super::{
     ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
     WALKABLE_NZ, WATER_METRES, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name, mtr_name, normal_z,
-    num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh, trimesh_full,
-    trimesh_listed, trimesh_with,
+    num, render_point, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
+    trimesh_full, trimesh_listed, trimesh_with,
 };
 use crate::{ambience, heightmap, objects, paint, shared};
 
@@ -59,7 +59,7 @@ pub(super) fn tile_model(
             tiles: (tiles_x(), tiles_y()),
             spacing: h.spacing,
             material: &|i, j| h.material(i, j),
-            height: &height,
+            point: &|x, y| render_point(x, y, RENDER_STEP),
             base: &level,
             steep: &|x, y, f| part(Some(h), f, [centre(x), centre(y), level(x, y)]) == Part::Rock,
         };

@@ -32,8 +32,8 @@ pub(super) struct Area<'a> {
     /// The paint's sample spacing (m) and sample (i, j)'s paint.
     pub(super) spacing: f32,
     pub(super) material: &'a dyn Fn(i64, i64) -> u8,
-    /// The ground's height at an area point.
-    pub(super) height: &'a dyn Fn(f32, f32) -> f32,
+    /// The mesh's vertex for an area point, in the area, and the point whose paint it takes ([`super::render_point`]).
+    pub(super) point: &'a dyn Fn(f32, f32) -> ([f32; 3], [f32; 2]),
     /// Tile (tx, ty)'s base height (its level).
     pub(super) base: &'a dyn Fn(usize, usize) -> f32,
     /// Whether tile (tx, ty) draws a face (its own coordinates, as [`super::grid`] makes them) as steep ground.
@@ -50,13 +50,12 @@ impl Area<'_> {
     }
 
     /// The grid vertex (gi, gj) of the whole area: in tile (tx, ty)'s own coordinates, as [`super::grid`] makes it (so a vertex two
-    /// tiles share is the same in both), and in the area's, with its height read again (the same in every tile).
-    fn vertex(&self, (tx, ty): (usize, usize), (gi, gj): Vertex) -> ([f32; 3], [f32; 3]) {
+    /// tiles share is the same in both), in the area's, read again (the same in every tile), and the point whose paint it takes.
+    fn vertex(&self, (tx, ty): (usize, usize), (gi, gj): Vertex) -> ([f32; 3], [f32; 3], [f32; 2]) {
         let (i, j) = (gi - tx as i64 * self.n(), gj - ty as i64 * self.n());
         let (ox, oy) = (tx as f32 * self.tile, ty as f32 * self.tile);
-        let (lx, ly) = (i as f32 * self.step, j as f32 * self.step);
-        let h = (self.height)(ox + lx, oy + ly);
-        ([lx - self.tile / 2.0, ly - self.tile / 2.0, h - (self.base)(tx, ty)], [ox + lx, oy + ly, h])
+        let (p, at) = (self.point)(ox + i as f32 * self.step, oy + j as f32 * self.step);
+        ([p[0] - ox - self.tile / 2.0, p[1] - oy - self.tile / 2.0, p[2] - (self.base)(tx, ty)], p, at)
     }
 
     /// Each texture's weight at area point (x, y) in the bilinear blend of the four samples around it.
@@ -108,10 +107,11 @@ pub(super) fn split(g: &mut Grid, (tx, ty): (usize, usize), parts: &mut [Vec<[u3
     let (gx, gy) = (tx as i64 * n, ty as i64 * n);
     let global = |v: u32| (gx + i64::from(v) % (n + 1), gy + i64::from(v) / (n + 1));
     let world = |v: Vertex| area.vertex((tx, ty), v).1;
+    let at = |v: Vertex| area.vertex((tx, ty), v).2;
     let mut paints: HashMap<Vertex, u8> = HashMap::new();
     let mut paint = |v: Vertex| {
         *paints.entry(v).or_insert_with(|| {
-            let p = world(v);
+            let p = at(v);
             area.paint(p[0], p[1])
         })
     };
@@ -152,7 +152,8 @@ pub(super) fn split(g: &mut Grid, (tx, ty): (usize, usize), parts: &mut [Vec<[u3
     let mut points: HashMap<Edge, u32> = HashMap::new();
     for &[a, b] in &edges {
         let (pa, pb, ma, mb) = (world(a), world(b), paint(a), paint(b));
-        let (la, lb) = (area.lead(pa[0], pa[1], ma, mb), area.lead(pb[0], pb[1], ma, mb));
+        let (qa, qb) = (at(a), at(b));
+        let (la, lb) = (area.lead(qa[0], qa[1], ma, mb), area.lead(qb[0], qb[1], ma, mb));
         let s = if la - lb > 1e-6 { (la / (la - lb)).clamp(0.01, 0.99) } else { 0.5 };
         points.insert([a, b], g.verts.len() as u32);
         g.verts.push(std::array::from_fn(|d| pa[d] + s * (pb[d] - pa[d]) - origin[d]));
@@ -238,7 +239,7 @@ mod tests {
             tiles: (2, 2),
             spacing: 0.625,
             material,
-            height: &|x, y| 3.0 * (x * 0.31).sin() + 2.0 * (y * 0.23).cos() + 0.1 * x,
+            point: &|x, y| ([x, y, 3.0 * (x * 0.31).sin() + 2.0 * (y * 0.23).cos() + 0.1 * x], [x, y]),
             base: &|tx, ty| [0.0, 5.0, 5.0, 10.0][ty * 2 + tx],
             steep,
         }
@@ -335,7 +336,7 @@ mod tests {
             tiles: (2, 2),
             spacing: 0.625,
             material: &material,
-            height: &height,
+            point: &|x, y| ([x, y, height(x, y)], [x, y]),
             base: &|_, _| 0.0,
             steep: &steep,
         };
