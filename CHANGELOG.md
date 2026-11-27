@@ -6,6 +6,27 @@ All notable changes to the Landscaper engine; the editor's are in
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog. Changes not
 released yet wait in `changelog.d/`, a file each, until the release puts them in its section.
 
+## 0.7.3
+
+- **The game's grass, per area.** An area can turn on the game's own animated grass (off by default, so areas exported again
+  keep their look): its tileset gets the grass settings and each piece of walkable ground its painted texture's surface, and the
+  game grows grass on the grass-surfaced ground (the Grass textures), not on earth, sand, rock, snow or water. Density and height
+  can be set. See [Atmosphere and skies](docs/handbook/atmosphere.md#grass).
+- **The installers and archives start the editor again.** Releases 0.7.0 to 0.7.2 packed the editor without its `try/`
+  folder, which it loads while it starts, so the page stopped with an empty toolbar and no tools in every browser. The release
+  now packs it, and fails if the packed editor names a file it doesn't have.
+- **The showcase's areas to download and open.** Each card on the [showcase page](docs/showcase.md) has **Download**, the
+  area file its clip was filmed in, and **Open in Landscaper**, which opens that area in the Landscaper in
+  the browser.
+- **Natural ground and rock hide their repeat.** A texture with stones, tufts or cracks showed the same ones in a grid every
+  4 m. Each repeat is now drawn in small hex cells, each shifted its own way and blended into its neighbours, with a slow change
+  of brightness, in the game's tile shader, in the baked tiles and in the editor (with the editor of the same release). It is on
+  for natural textures and off for laid ones (cobbles, planks, flagstones); a texture's `vary` in the catalog sets it. See
+  [Paint](docs/handbook/paint.md#how-large-a-texture-is-drawn).
+- **Water that isn't clear.** Sky & fog's **Water** gives an area murky, stagnant green or dark water: a stock water texture
+  and a tint for its meshes (the atmosphere's `water`: `texture`, `tint`, `opacity`), checked when the area loads. The Swamp
+  look picks Murky. An area without one exports its water exactly as before ([Atmosphere](docs/handbook/atmosphere.md)).
+
 ## 0.7.2
 
 - **Tall cliffs read as one rock face.** The starter set's cliff rock, swamp rock and canyon rock pictures end in moss, grass
