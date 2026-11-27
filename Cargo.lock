@@ -2437,7 +2437,7 @@ dependencies = [
 
 [[package]]
 name = "landscaper"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "nwn-landscaper"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "landscaper",
  "serde",
