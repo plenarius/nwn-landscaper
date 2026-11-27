@@ -36,6 +36,9 @@ jobs:
       - name: Rust (stable)
         run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable && rustc --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: The app's Linux packages (WebKitGTK)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev >/dev/null
       - name: Build
         run: cargo test --workspace --locked --no-run
       - name: Test

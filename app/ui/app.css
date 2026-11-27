@@ -1,0 +1,77 @@
+/* SPDX-FileCopyrightText: Copyright (C) 2026 plenarius */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* The app's own page, in the editor's colours. */
+:root {
+    color-scheme: dark;
+    --bg: #1d2228;
+    --panel: #262c34;
+    --text: #d7dbe0;
+    --muted: #8e98a4;
+    --accent: #e0a243;
+    --problem: #ff8a7a;
+}
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, sans-serif;
+}
+main {
+    width: min(640px, 90vw);
+}
+h1 {
+    font-weight: 400;
+    color: var(--muted);
+}
+h1 span {
+    color: var(--accent);
+    font-weight: 600;
+}
+label {
+    display: block;
+    margin: 1em 0 0.3em;
+}
+.row {
+    display: flex;
+    gap: 0.5em;
+}
+input {
+    flex: 1;
+    padding: 0.45em 0.6em;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid #3a424d;
+    border-radius: 4px;
+    font: inherit;
+}
+button {
+    padding: 0.45em 1em;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid #3a424d;
+    border-radius: 4px;
+    font: inherit;
+    cursor: pointer;
+}
+button.primary {
+    margin-top: 1.2em;
+    background: var(--accent);
+    color: #1d2228;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+.note {
+    color: var(--muted);
+}
+.problem {
+    color: var(--problem);
+}
+pre {
+    white-space: pre-wrap;
+    background: var(--panel);
+    padding: 0.8em;
+    border-radius: 4px;
+}

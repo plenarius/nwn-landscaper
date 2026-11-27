@@ -122,6 +122,7 @@ The texture library the editor paints with. The first start builds the starter s
 
 ```sh
 landscaper textures init                          # the starter set again, adding what is missing
+landscaper textures init --pictures ./pics        # the starter set from pictures named by id, no game
 landscaper textures add my-textures.json          # the game's or your haks' textures, by name
 landscaper textures build ~/pictures/ground --category Grass --surface 3
 landscaper textures list
@@ -151,6 +152,10 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 
 ## Documents
 
+The documents below, with a step-by-step handbook for builders, are also a site:
+<https://plenarius.github.io/nwn-landscaper/> (`mkdocs serve` with `requirements-docs.txt` installed shows it locally).
+
+- [docs/handbook/](docs/handbook/index.md): the builder's handbook, one tool a page.
 - [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md): running it on your machine, or as a team server with Docker.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): every setting.
 - [docs/BUILDER-WORKFLOW.md](docs/BUILDER-WORKFLOW.md): building an area.
@@ -158,14 +163,24 @@ landscaper dev-pack prod.mod elmwood.mod ~/nwn/hak town01 WP_Gate out/
 - [docs/REVIEW-SERVICE.md](docs/REVIEW-SERVICE.md): the calls a review service answers, to write one.
 - [docs/DEBUGGING.md](docs/DEBUGGING.md): the `LS_*` debugging switches.
 - [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): texture packs: installing them, their format, the index, making one.
+- [docs/REAL-SKIES.md](docs/REAL-SKIES.md): Savant1974's Real Skies made fit for NWSync, for any module.
+- [docs/PRESET-SKIES.md](docs/PRESET-SKIES.md): the first sky pack, a sky for each preset, made from your Real Skies download.
 - [MOONGLOW.md](MOONGLOW.md): the Moonglow version the Landscaper is pinned to, and how to move it.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each version.
 - [SECURITY.md](SECURITY.md): reporting a security problem.
 
 ## Development
 
-`cargo build --release` builds the engine, and `cargo test --workspace --locked` runs its tests. `scripts/check.sh` runs every
-check of the code and documentation standard, [STYLE.md](STYLE.md); run it before you push.
+`cargo build --release` builds the engine, and `cargo test --workspace --locked` runs its tests and the desktop app's.
+`scripts/check.sh` runs every check of the code and documentation standard, [STYLE.md](STYLE.md); run it before you push.
+
+The desktop app is `app/` (Tauri, [docs/DESIGN-desktop-app.md](docs/DESIGN-desktop-app.md)): the editor in a window of its own,
+with the engine inside it on 127.0.0.1:8766, at `/?app` so the editor knows. Only there does the engine answer
+`POST /api/app/open` (`{"what": "data" | "log" | "folders"}`: 204, or `{"error": ...}` with 409), which the app answers
+through `serve_local`'s handler. `cargo run -p nwn-landscaper` starts it; outside a bundle it finds the editor as
+`landscaper serve` does (`LANDSCAPER_WEB`, or a `nwn-landscaper-web` checkout beside this one). On Linux it needs WebKitGTK's
+development files (`libwebkit2gtk-4.1-dev` and `libxdo-dev` on Debian and Ubuntu). Started from a terminal it prints there;
+otherwise to `landscaper.log` in the data folder, the start before kept as `landscaper.previous.log`.
 
 A change that users would notice gets a changelog entry as a file of its own, `changelog.d/<short-name>.md`, holding the bullet
 (or bullets) it would have put under `## Unreleased` in CHANGELOG.md, in the same style, with links to our files written from
@@ -200,7 +215,8 @@ The engine and the editor (nwn-landscaper-web) change together, so each release 
 `.github/workflows/release.yml`, which packs the editor of the same tag with the engine for each system and makes a draft release
 to check and publish by hand. The self-host image (`deploy/self-host/Dockerfile`) builds the editor
 of that tag by default (`WEB_REF`), and `tests/release.rs` fails when its default and `Cargo.toml`'s version disagree: bump both
-in the release's pull request, then tag the two repositories.
+in the release's pull request, with `app/Cargo.toml`'s version (the app's own test checks it follows the engine's), then tag
+the two repositories.
 
 A release, step by step:
 

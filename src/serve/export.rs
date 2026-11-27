@@ -175,9 +175,9 @@ const IN_BODY: [&str; 4] = ["palette", "water", "entrances", "atmosphere"];
 ///
 /// The query string has the area's name and its simple settings: `tiles`, `tilesY`, `shadow`, `module`, `kind`, `roof` and
 /// `clearance`. The body is the heights (f32 a sample, rows from the south), then the paint (one byte a sample: an index into the
-/// palette), then JSON: `palette` (the paint's texture ids), `water`, `chasm`, `entrances`, `atmosphere`, `objects`, `things`,
-/// `settings`, `originals` and `ambience`. A query string that still has one of [`IN_BODY`] (an editor older than this engine) is
-/// refused.
+/// palette), then JSON: `palette` (the paint's texture ids), `water`, `chasm`, `lights`, `entrances`, `atmosphere`, `objects`,
+/// `things`, `settings`, `originals` and `ambience`. A query string that still has one of [`IN_BODY`] (an editor older than this
+/// engine) is refused.
 pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<serde_json::Value> {
     let query = Query::new(query);
     if let Some(key) = IN_BODY.iter().find(|k| query.raw(k).is_some()) {
@@ -228,9 +228,15 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     // The last export's header, a check's too: the scratch copy is only the last check's, by which an entrance undone and
     // redone between checks looked like a taken-out entrance's id given again.
     // (Freshly imported, not exported since: the installed module has never had this light, whatever the header says.)
-    let old_header = std::fs::read_to_string(exports_dir().join(format!("{name}.json")))
-        .ok()
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+    // (One that can't be read stops the export: taken as none, the area's entrance ids would start again, and a door's tag
+    // could be given twice.)
+    let old_header = match crate::atomic::read(&exports_dir().join(format!("{name}.json"))) {
+        Ok(d) => Some(serde_json::from_slice::<serde_json::Value>(&d).with_context(|| {
+            format!("{name}'s last export ({name}.json in its exports) doesn't parse: nothing was exported; restore it, or remove it to export afresh")
+        })?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => anyhow::bail!("{name}'s last export ({name}.json in its exports) can't be read ({e}): nothing was exported; fix or restore it"),
+    };
     let just_imported = old_header.as_ref().is_some_and(|h| h["imported"].as_bool() == Some(true));
     // The entrances (each with its id) and the area's next entrance id, which never goes down: an id is never given twice.
     let entrances = extra.get("entrances").cloned().unwrap_or_default();
@@ -280,9 +286,11 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     if let Some(water) = extra.get("water") {
         header["water"] = water.clone();
     }
-    // (checked as the header is read, `heightmap::chasm_of`)
-    if let Some(chasm) = extra.get("chasm").filter(|c| !c.is_null()) {
-        header["chasm"] = chasm.clone();
+    // (checked as the header is read, `heightmap::chasm_of` and `heightmap::lights_of`)
+    for key in ["chasm", "lights"] {
+        if let Some(v) = extra.get(key).filter(|v| !v.is_null()) {
+            header[key] = v.clone();
+        }
     }
     // Without one (an export not from the editor), the last one carries on.
     if let Some(a) = extra.get("atmosphere").or(old_atmosphere.as_ref().filter(|a| a.is_object())) {
@@ -380,11 +388,11 @@ impl Drop for Rollback {
 
 /// The heights of the last export of `name`, if its files are complete.
 fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightmap> {
-    let header: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{name}.json"))).ok()?).ok()?;
+    let header: serde_json::Value = serde_json::from_str(&crate::atomic::read_to_string(&dir.join(format!("{name}.json"))).ok()?).ok()?;
     let tiles = header["tiles"].as_u64()? as usize;
     let tiles_y = header["tilesY"].as_u64().map_or(tiles, |v| v as usize);
     let (nx, ny) = (tiles * 16 + 1, tiles_y * 16 + 1);
-    let bytes = std::fs::read(dir.join(format!("{name}.f32"))).ok()?;
+    let bytes = crate::atomic::read(&dir.join(format!("{name}.f32"))).ok()?;
     if bytes.len() != nx * ny * 4 {
         return None;
     }
@@ -404,6 +412,7 @@ fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightma
         originals: None,
         water: Vec::new(),
         shadow: None,
+        lights: Vec::new(),
         entrances: Vec::new(),
         objects: Vec::new(),
         ambience: Vec::new(),
@@ -422,7 +431,7 @@ const TILES: std::ops::RangeInclusive<usize> = 3..=32;
 
 /// The header of `name`'s last export (`<name>.json` in the exports folder), the file a publish or a package is built from.
 fn exported(name: &str) -> Result<serde_json::Value> {
-    std::fs::read(exports_dir().join(format!("{name}.json")))
+    crate::atomic::read(&exports_dir().join(format!("{name}.json")))
         .ok()
         .and_then(|d| serde_json::from_slice(&d).ok())
         .with_context(|| format!("{name} hasn't been exported yet"))
@@ -450,7 +459,9 @@ fn areas_in_module(module: &str) -> Vec<String> {
     for e in std::fs::read_dir(exports_dir()).into_iter().flatten().flatten() {
         let file = e.file_name().to_string_lossy().into_owned();
         let Some(name) = file.strip_suffix(".json").filter(|n| area_name_ok(n)) else { continue };
-        let Some(h) = std::fs::read(e.path()).ok().and_then(|d| serde_json::from_slice::<serde_json::Value>(&d).ok()) else { continue };
+        let Some(h) = crate::atomic::read(&e.path()).ok().and_then(|d| serde_json::from_slice::<serde_json::Value>(&d).ok()) else {
+            continue;
+        };
         if h["tiles"].is_u64() && h["module"].as_str().unwrap_or(name) == module {
             names.push(name.to_string());
         }
@@ -563,7 +574,7 @@ fn version_request(name: &str, note: Option<String>) -> Result<serde_json::Value
     anyhow::ensure!(area_name_ok(name), "bad area name {name:?}");
     guard_new_name(name)?;
     let user = crate::workspace::acting_user();
-    let body = std::fs::read(areas_dir().join(format!("{name}.json"))).with_context(|| format!("{name} hasn't been saved yet"))?;
+    let body = crate::atomic::read(&areas_dir().join(format!("{name}.json"))).with_context(|| format!("{name} hasn't been saved yet"))?;
     let v: serde_json::Value = serde_json::from_slice(&body).context("the saved area isn't JSON")?;
     // The working copy, not the export: a version saves what the builder has now, so it is what must stand.
     guard_area(name, &v)?;

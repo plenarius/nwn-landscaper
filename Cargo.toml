@@ -1,8 +1,13 @@
 # nwn-bake lives in its own repository (https://github.com/plenarius/nwn-bake) and comes in as a git dependency at a release tag.
 # Moonglow's `rev` below must stay the one that nwn-bake release pins (MOONGLOW.md; `tests/nwn_bake_split.rs` checks).
 [workspace]
-# Vendored crates are dependencies, not members: they keep their own style and lints.
-exclude = ["vendor"]
+# The engine, and the desktop app (app/, docs/DESIGN-desktop-app.md). `cargo build` and `cargo run` mean the engine; the app needs
+# WebKitGTK's development files on Linux, so it builds only when asked (`-p nwn-landscaper`, `--workspace`).
+members = ["app"]
+default-members = ["."]
+# Vendored crates are dependencies, not members: they keep their own style and lints. So is the browser build's nwn-bake
+# (scripts/build-wasm.sh).
+exclude = ["vendor", "target/wasm-deps"]
 
 # The lint set shared by every Rust workspace that follows STYLE.md ("Lints"): the same block is in each workspace's Cargo.toml,
 # so change them together. CI runs `cargo clippy --workspace --all-targets --locked -- -D warnings`. Clippy's default set stays on.
@@ -52,6 +57,18 @@ description = "Paint terrain, get a Neverwinter Nights area with its own generat
 repository = "https://github.com/plenarius/nwn-landscaper"
 readme = "README.md"
 
+# Real Skies for modules (docs/REAL-SKIES.md): a step outside the Landscaper, kept with it for its DDS encoder and hak writer.
+[[example]]
+name = "real-skies"
+path = "scripts/real-skies.rs"
+test = true
+
+# The first sky pack (docs/PRESET-SKIES.md): made from the same download.
+[[example]]
+name = "preset-skies"
+path = "scripts/preset-skies.rs"
+test = true
+
 [dependencies]
 # A release of nwn-bake. To work on both at once, point a local, uncommitted
 # `[patch."https://github.com/plenarius/nwn-bake"]` at a checkout (README, "Development").
@@ -67,7 +84,6 @@ mg-resman = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17a
 mg-rules = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-module = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-tiles = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
-mg-area = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 mg-script = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
 fastrand = "2"
 anyhow = "1"
@@ -84,7 +100,6 @@ mg-image = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ad
 serde = { version = "1.0.229", features = ["derive"] }
 glam = "0.30"
 base64 = "0.23"
-ureq = { version = "2", features = ["json"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 # Writes the vendored tiny_http's warnings (connections dropped) to the server's log (`src/serve/open_files.rs`).
 log = "0.4"
@@ -93,10 +108,24 @@ sha1 = "0.10"
 # An export's id and the hashes a trusted service checks its downloads by (docs/REVIEW-SERVICE.md, "Fetching exports").
 sha2 = "0.10"
 
+# Off WASI only (the browser build, scripts/build-wasm.sh): mg-area draws with wgpu, which doesn't build there, and only importing
+# an area needs it; ureq's TLS (rustls, ring) can't reach anything from a browser's WASI, which has no sockets.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+ureq = { version = "2", features = ["json"] }
+mg-area = { git = "https://github.com/jadzziaa/moonglow-toolset", rev = "ac17ade3292c9e9a81ac72efbd75411899cf4583" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+ureq = { version = "2", default-features = false, features = ["json"] }
+
 # Raises the server's limit on open files at its start (`src/serve/open_files.rs`): safe calls to `getrlimit`/`setrlimit`, capped
 # by macOS's own per-process limit.
 [target.'cfg(unix)'.dependencies]
 rlimit = "0.11"
+
+[features]
+# The browser build (docs/DESIGN-web-demo.md): `landscaper wasi-request` answers one API request, and an export with no game to
+# make the tile shaders from still builds (with placeholders). scripts/build-wasm.sh turns it on.
+web = []
 
 # The tests' own small games (a placeables.2da in a hak over the game's) need an empty talk table.
 [dev-dependencies]
@@ -109,3 +138,12 @@ workspace = true
 # builds too (the Landscaper is not), as in nwn-bake's own workspace.
 [profile.dev.package.nwn-bake]
 opt-level = 3
+
+# The browser build's profile (scripts/build-wasm.sh): link-time optimisation and no symbols, 2.0 MB with brotli where the release
+# profile gives 2.2, at the same speed (docs/DESIGN-web-demo.md, "Measured").
+[profile.wasm]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

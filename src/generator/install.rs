@@ -32,7 +32,7 @@ pub(crate) fn install(json: &Path, before: &Before, report: &mut serde_json::Val
     let Some(user) = crate::workspace::nwn_user_dir() else {
         return Ok(());
     };
-    let header: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(json)?)?;
+    let header: serde_json::Value = serde_json::from_str(&crate::atomic::read_to_string(json)?)?;
     let name = header["name"].as_str().context("the area has no name")?.to_string();
     let module = header["module"].as_str().unwrap_or(&name).to_string();
     let out = json.parent().unwrap_or(Path::new(".")).join(format!("{name}_nwn"));
@@ -114,7 +114,7 @@ pub(crate) fn replace_module(dest: &Path, change: impl FnOnce(&Path) -> Result<(
     let dir = dest.parent().context("the module has no folder")?;
     let file = dest.file_name().context("the module has no file name")?.to_string_lossy().into_owned();
     // (Hidden and not a .mod, so the game never lists it; a name of its own, so two exports never share one.)
-    let work = dir.join(format!(".{file}.{}-{}.work", std::process::id(), WORK.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let work = dir.join(format!(".{file}.{}-{}.work", crate::pid(), WORK.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let changed = (|| -> Result<()> {
         if dest.exists() {
             std::fs::copy(dest, &work).with_context(|| format!("copying {}", dest.display()))?;

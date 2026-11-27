@@ -58,6 +58,11 @@ fn crossing_why(count: usize) -> String {
     )
 }
 
+/// What the one-line summaries add for `n` routes too long for one click ("" for none).
+pub(crate) fn long_note(n: usize) -> String {
+    if n == 0 { String::new() } else { format!(" (and {n} in shorter clicks)") }
+}
+
 /// `n` with commas between thousands.
 fn thousands(n: i64) -> String {
     let digits = n.to_string();
@@ -281,18 +286,43 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         let ends: Vec<_> = pairs.iter().map(|p| (p.from, p.to)).collect();
         simulate_all(&area, plan_digest(&plan.0, &plan.1), &ends, i64::MAX)
     };
+    let mut failed = Vec::new();
     for (p, r) in pairs.iter().zip(routes) {
         total += 1;
         if ((r.end.0 - p.to.0).powi(2) + (r.end.1 - p.to.1).powi(2)).sqrt() < 1.5 {
             ok += 1;
         } else {
-            warnings.push(serde_json::json!({
-                "kind": "failed_route", "from": [p.from.0, p.from.1], "to": [p.to.0, p.to.1],
-                "stops_at": [r.end.0, r.end.1], "why": describe(&r),
-            }));
+            failed.push((p, r));
         }
     }
     lap("routes");
+    // A failed route that shorter clicks along the way complete is too long for one click, not blocked: its own list, apart from
+    // the warnings, with how many clicks.
+    let clicks = in_parallel(&failed.iter().map(|(p, _)| (p.from, p.to)).collect::<Vec<_>>(), |(from, to)| {
+        super::hops::hops(&area, &wide, &conn, from, to)
+    });
+    let mut long_routes = Vec::new();
+    for ((p, r), clicks) in failed.into_iter().zip(clicks) {
+        let mut route = serde_json::json!({
+            "kind": "failed_route", "from": [p.from.0, p.from.1], "to": [p.to.0, p.to.1],
+            "stops_at": [r.end.0, r.end.1], "why": describe(&r),
+        });
+        match clicks {
+            Some(n) => {
+                route["kind"] = "long_route".into();
+                route["clicks"] = n.into();
+                route["why"] = format!(
+                    "too long for one click ({}): NWN's route search gives up when the way is about 20 tiles longer than going \
+                     straight there, so one click stops here; {n} shorter clicks get there",
+                    describe(&r)
+                )
+                .into();
+                long_routes.push(route);
+            }
+            None => warnings.push(route),
+        }
+    }
+    lap("long routes");
     // One warning per tile with crossings over the limit: one of them and how many. Each search stops at the limit.
     let all: Vec<usize> = (0..tiles_x() * tiles_y()).collect();
     let mut per_tile: std::collections::BTreeMap<usize, ((f32, f32), (f32, f32), usize)> = Default::default();
@@ -332,7 +362,8 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         "tilesY": tiles_y(),
         "faces_max": faces_max,
         "coverage": covered as f32 / truly.max(1) as f32,
-        "routes": { "ok": ok, "total": total },
+        "routes": { "ok": ok, "total": total, "long": long_routes.len() },
+        "long_routes": long_routes,
         "start": start_point(),
         "warnings": warnings,
         "ambience": ambience.report(),
@@ -342,10 +373,11 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
     }
     std::fs::write(out.join("report.json"), serde_json::to_string_pretty(&report)?)?;
     println!(
-        "export {}: {}x{} tiles, routes {ok}/{total}, coverage {:.1}%, {} warnings -> {}",
+        "export {}: {}x{} tiles, routes {ok}/{total}{}, coverage {:.1}%, {} warnings -> {}",
         hm.name,
         tiles_x(),
         tiles_y(),
+        long_note(long_routes.len()),
         100.0 * covered as f32 / truly.max(1) as f32,
         report["warnings"].as_array().map_or(0, Vec::len),
         out.join("report.json").display()

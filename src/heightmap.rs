@@ -22,6 +22,10 @@
 //! Chasms, optional: `"chasm": [[first, count], ...]`, runs of samples (indices in the order above) that drop away into a bottomless
 //! chasm: each is lowered to [`CHASM_DEPTH`] under its rim (the nearest sample that is not in a chasm, see [`fit_chasm`]), nothing
 //! walks there, and it is drawn fading to black. Water never fills a chasm.
+//!
+//! Tile lights, optional: `"lights": [[1, 30], ...]`, each tile's two main light colours (rows of `lightcolor.2da`, 0 to
+//! [`MAX_LIGHT`], the game's `TILE_MAIN_LIGHT_COLOR_*`), a pair a tile, rows of tiles from the south, each west to east. They
+//! become the `.are`'s `Tile_MainLight1` and `Tile_MainLight2`; without them every tile's lights are 0, black (off).
 
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -178,6 +182,8 @@ pub struct Heightmap {
     /// Each sample's rim height when the area has a chasm ([`fit_chasm`]): a chasm sample's is its nearest open sample's, an open
     /// one's its own. Empty: no chasm.
     pub rim: Vec<f32>,
+    /// Each tile's two main light colours (`lightcolor.2da` rows), tiles from the south; empty: all black.
+    pub lights: Vec<[u8; 2]>,
     /// Baked shadows' strength (0..1), if the editor set it.
     pub shadow: Option<f32>,
     /// The editor's light and fog (see `atmosphere`), if set.
@@ -234,7 +240,7 @@ pub fn load(json_path: &Path) -> Result<Arc<Heightmap>> {
 /// Reads the terrain `json_path`, checked, without loading it.
 fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
     static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let text = std::fs::read_to_string(json_path).with_context(|| format!("reading {}", json_path.display()))?;
+    let text = crate::atomic::read_to_string(json_path).with_context(|| format!("reading {}", json_path.display()))?;
     let j: serde_json::Value = serde_json::from_str(&text)?;
     let name = j["name"].as_str().context("name")?.to_lowercase();
     if name.is_empty() || name.len() > 9 || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -255,7 +261,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         bail!("{tiles} by {tiles_y} tiles at {spacing} m need a {} x {} grid, not {width} x {height}", samples(tiles), samples(tiles_y));
     }
     let data_path = json_path.parent().unwrap_or(Path::new(".")).join(j["data"].as_str().context("data")?);
-    let bytes = std::fs::read(&data_path).with_context(|| format!("reading {}", data_path.display()))?;
+    let bytes = crate::atomic::read(&data_path).with_context(|| format!("reading {}", data_path.display()))?;
     if bytes.len() != width * height * 4 {
         bail!("{}: {} bytes, expected {}", data_path.display(), bytes.len(), width * height * 4);
     }
@@ -272,7 +278,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
     let (mut materials, mut palette) = (Vec::new(), Vec::new());
     if let Some(file) = j["materials"].as_str() {
         let path = json_path.parent().unwrap_or(Path::new(".")).join(file);
-        materials = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+        materials = crate::atomic::read(&path).with_context(|| format!("reading {}", path.display()))?;
         if materials.len() != width * height {
             bail!("{}: {} bytes, expected {}", path.display(), materials.len(), width * height);
         }
@@ -324,6 +330,7 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         originals: j.get("originals").filter(|a| a.is_object()).cloned(),
         water,
         shadow: j["shadow"].as_f64().map(|v| v as f32),
+        lights: lights_of(&j["lights"], tiles * tiles_y)?,
         entrances: entrances_of(&j["entrances"])?,
         underground: matches!(j["kind"].as_str(), Some("underground" | "interior")),
         interior: j["kind"].as_str() == Some("interior"),
@@ -548,6 +555,30 @@ pub fn chasm_of(list: &serde_json::Value, samples: usize) -> Result<Vec<bool>> {
         mask[first..first + count].iter_mut().for_each(|c| *c = true);
     }
     Ok(mask)
+}
+
+/// The last row of `lightcolor.2da` a tile's main light may take (`TILE_MAIN_LIGHT_COLOR_ORANGE`).
+pub const MAX_LIGHT: u64 = 31;
+
+/// The tile lights of a header's `lights` list (a `[light1, light2]` pair for each of `tiles` tiles; null or missing: none, and
+/// none when every one is black).
+pub fn lights_of(list: &serde_json::Value, tiles: usize) -> Result<Vec<[u8; 2]>> {
+    if list.is_null() {
+        return Ok(Vec::new());
+    }
+    let pairs = list.as_array().context("lights: a list of [light1, light2] pairs, one a tile")?;
+    anyhow::ensure!(pairs.len() == tiles, "lights: {} pairs for the area's {tiles} tiles", pairs.len());
+    let lights = pairs
+        .iter()
+        .map(|p| {
+            let row = |k: usize| p.get(k).and_then(serde_json::Value::as_u64).filter(|&c| c <= MAX_LIGHT).map(|c| c as u8);
+            match (p.as_array().map(Vec::len), row(0), row(1)) {
+                (Some(2), Some(a), Some(b)) => Ok([a, b]),
+                _ => bail!("lights: each tile's is [light1, light2], rows 0 to {MAX_LIGHT} of lightcolor.2da, not {p}"),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(if lights.iter().all(|l| *l == [0, 0]) { Vec::new() } else { lights })
 }
 
 /// Drops the chasm (`chasm`, one flag a sample, rows `width` wide): every chasm sample's rim is the height of the nearest sample
@@ -805,6 +836,31 @@ mod tests {
     }
 
     #[test]
+    fn tile_lights_are_a_pair_a_tile() {
+        let mut pairs = vec![serde_json::json!([0, 0]); 9];
+        pairs[4] = serde_json::json!([30, 31]);
+        let hm = read(&area("lights", serde_json::json!({ "lights": pairs }), None)).unwrap();
+        assert_eq!((hm.lights.len(), hm.lights[4], hm.lights[0]), (9, [30, 31], [0, 0]));
+        // All black, or none: no lights.
+        assert!(read(&area("dark", serde_json::json!({ "lights": vec![[0, 0]; 9] }), None)).unwrap().lights.is_empty());
+        assert!(read(&area("unlit", serde_json::json!({}), None)).unwrap().lights.is_empty());
+        let refused = [
+            (serde_json::json!(vec![[1, 1]; 8]), "8 pairs for the area's 9 tiles"),
+            (serde_json::json!([[32, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]), "rows 0 to 31"),
+            (serde_json::json!([[1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]), "[light1, light2]"),
+            (serde_json::json!([[-1, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]), "[light1, light2]"),
+            (serde_json::json!("orange"), "a list"),
+        ];
+        for (k, (lights, why)) in refused.into_iter().enumerate() {
+            let e = format!(
+                "{:#}",
+                read(&area(&format!("badlight{k}"), serde_json::json!({ "lights": lights }), None)).err().expect("refused")
+            );
+            assert!(e.contains(why), "{e}");
+        }
+    }
+
+    #[test]
     fn a_height_that_isnt_a_number_is_refused() {
         for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
             let mut h = vec![1.0; 49 * 49];
@@ -886,6 +942,7 @@ mod tests {
             originals: None,
             water: vec![],
             shadow: None,
+            lights: Vec::new(),
             entrances: vec![],
             objects: vec![],
             ambience: vec![],
@@ -978,6 +1035,7 @@ mod tests {
             originals: None,
             water: vec![],
             shadow: None,
+            lights: Vec::new(),
             entrances: vec![],
             objects: vec![],
             ambience: vec![],

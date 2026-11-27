@@ -127,6 +127,7 @@ fn every_kind_matches_its_model() {
 
         // Meshes (the light shafts): their alpha is the look's, and night hides a day-only kind's.
         if let Some(meshes) = kind.get("meshes").and_then(Value::as_object) {
+            let mut axes = Vec::new();
             for (node, looks) in meshes {
                 let i = m.node(node).unwrap_or_else(|| panic!("{id}: no mesh {node}"));
                 let mesh = m.nodes[i].mesh().unwrap_or_else(|| panic!("{id}: {node} is no mesh"));
@@ -138,9 +139,27 @@ fn every_kind_matches_its_model() {
                     assert_eq!(floats(&looks["night"]["alpha"]), [0.0], "{id}: {node} at night");
                 }
                 assert_eq!(key(&m, "off", node, "alpha"), 0.0, "{id}: off hides {node}");
+                axes.push((node.as_str(), axis(&mesh.vertices)));
+            }
+            // Crossed quads draw one beam: every quad has the same foot and the same top.
+            for (node, (foot, top)) in &axes[1..] {
+                let (first, (foot0, top0)) = axes[0];
+                let same = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-3);
+                assert!(same(*foot, foot0) && same(*top, top0), "{id}: {node} doesn't cross {first}: {foot:?}-{top:?}");
             }
         }
     }
+}
+
+/// A quad's foot and top: the middles of its lowest and its highest vertices.
+fn axis(vertices: &[[f32; 3]]) -> ([f32; 3], [f32; 3]) {
+    let (low, high) = vertices.iter().fold((f32::MAX, f32::MIN), |(l, h), v| (l.min(v[2]), h.max(v[2])));
+    let middle = |z: f32| {
+        let at: Vec<_> = vertices.iter().filter(|v| (v[2] - z).abs() < 1e-3).collect();
+        let n = at.len() as f32;
+        [0, 1, 2].map(|i| at.iter().map(|v| v[i]).sum::<f32>() / n)
+    };
+    (middle(low), middle(high))
 }
 
 #[test]

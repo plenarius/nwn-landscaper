@@ -40,6 +40,22 @@ Underground areas have no sky, whatever their atmosphere says.
 package for a module has them in `haks/ls_skies/`, and `dev-pack` copies the hak and lists it. An area without one sends nothing
 more than before.
 
+## In the editor
+
+The Sky & fog panel picks an area's sky with its light: each preset names its sky, and the Sky row lists the installed skies and
+the module's own rows to pick another. The area keeps an installed sky by its id (`"sky": "dusk"`), and a row of the module's
+own table by its number (`"skyRow": 3`), which the export writes as the area's `SkyBox` after the area settings. A preset whose
+sky isn't installed picks the game's row nearest to it. An imported area keeps its original's sky as its `skyRow`, or as the
+installed sky's id when the row is one's.
+
+- **`GET /api/skies`:** the installed skies (`id`, `name`, `preset`, `pack`, `row`), their packs, and the module's own rows
+  (`game`: `row` and `name`, the installed skies' rows left out).
+- **`GET /api/sky-picture/<sky>?time=day&kind=strip`:** a PNG of the sky, an installed sky's id or `row-<n>`, at `dawn`, `day`,
+  `dusk` or `night`. The game draws a sky's model around the camera, so the picture is the model's textured triangles seen from
+  its origin, laid out by direction: 6 px a degree, the columns turning from east towards north. `strip` is the horizon from 5°
+  below to 25° above, 720 by 60 px; `panorama` is all around from overhead to 30° below, 2,160 by 720 px, and clear where the
+  model draws nothing. Each picture is made once for its model's and textures' bytes, and kept in `pictures` in the sky library.
+
 ## What an install checks
 
 Everything a texture pack's install checks about the download, the index's hash, each file's sha256 and the zip's names, and:
@@ -113,3 +129,5 @@ The list has the fields of `pack.json`, with `files` the paths of the pack's fil
 in as it is; a `.tga` or `.png` picture becomes a DDS (DXT1, with mipmaps) of the same name, halved until it is at most 8,192 px
 a side. The pack is checked as an install checks it, with the game when the Landscaper finds it. The same list makes the same
 bytes.
+
+[Preset skies](PRESET-SKIES.md), the first pack, is made this way from a script's list.

@@ -116,10 +116,10 @@ fn starter_ids() -> Vec<String> {
 }
 
 impl Library {
-    fn open(dir: &Path) -> Library {
-        let catalog = std::fs::read(dir.join("catalog.json")).ok().and_then(|d| serde_json::from_slice::<Value>(&d).ok());
-        let list = |k: &str| catalog.as_ref().and_then(|v| v[k].as_array().cloned()).unwrap_or_default();
-        Library { dir: dir.to_path_buf(), entries: list("textures"), packs: list("packs") }
+    /// The library in `dir`: empty when it has no catalog yet, an error when its catalog can't be read ([`crate::packs::read_catalog`]).
+    fn open(dir: &Path) -> Result<Library> {
+        let [entries, packs] = crate::packs::read_catalog(dir, "texture", ["textures", "packs"])?;
+        Ok(Library { dir: dir.to_path_buf(), entries, packs })
     }
 
     /// Writes `spec`'s pictures and its entry (replacing one with the same id). An id whose resref in the hak is another
@@ -261,7 +261,7 @@ fn add_specs(library: &mut Library, haks: &[String], specs: &[Spec], replace: bo
 /// Builds the starter set from the game's files, adding what the library lacks.
 pub fn init() -> Result<Report> {
     let (_, specs) = parse_list(STARTER)?;
-    let mut library = Library::open(&paint::texture_dir());
+    let mut library = Library::open(&paint::texture_dir())?;
     let mut report = add_specs(&mut library, &[], &specs, false)?;
     anyhow::ensure!(
         report.added > 0 || report.kept > 0,
@@ -275,11 +275,51 @@ pub fn init() -> Result<Report> {
     Ok(report)
 }
 
+/// Builds the starter set from `folder`'s pictures instead of the game's files (the web demo, which has no game): `<id>.png`,
+/// `.tga` or `.dds` for each starter id, with the starter list's names, groups and footsteps. A missing picture is reported.
+pub fn init_from_pictures(folder: &Path) -> Result<Report> {
+    let (_, specs) = parse_list(STARTER)?;
+    let mut library = Library::open(&paint::texture_dir())?;
+    let report = add_pictures(&mut library, folder, &specs)?;
+    anyhow::ensure!(
+        report.added > 0 || report.kept > 0,
+        "none of the starter textures' pictures are in {} ({})",
+        folder.display(),
+        report.problems.first().cloned().unwrap_or_default()
+    );
+    library.save()?;
+    Ok(report)
+}
+
+/// Adds `specs` to `library` from the pictures in `folder` named by their ids, leaving an id the library has as it is.
+fn add_pictures(library: &mut Library, folder: &Path, specs: &[Spec]) -> Result<Report> {
+    let mut report = Report::default();
+    for s in specs {
+        if library.has(&s.id) {
+            report.kept += 1;
+            continue;
+        }
+        let Some(path) = ["png", "tga", "dds"].iter().map(|e| folder.join(format!("{}.{e}", s.id))).find(|p| p.is_file()) else {
+            report.problems.push(format!("{}: no {}.png in {}", s.id, s.id, folder.display()));
+            continue;
+        };
+        match read_picture(&path) {
+            Ok(img) => {
+                let file = path.file_name().map_or_default(|n| n.to_string_lossy().into_owned());
+                library.put(s, "Your pictures", &file, img)?;
+                report.added += 1;
+            }
+            Err(e) => report.problems.push(format!("{e:#}")),
+        }
+    }
+    Ok(report)
+}
+
 /// Adds the textures a list names (`{ "haks": [...], "textures": [...] }`, see [`parse_list`]); an existing id is replaced.
 pub fn add_listed(list: &Path) -> Result<Report> {
     let text = std::fs::read_to_string(list).with_context(|| format!("reading {}", list.display()))?;
     let (haks, specs) = parse_list(&text)?;
-    let mut library = Library::open(&paint::texture_dir());
+    let mut library = Library::open(&paint::texture_dir())?;
     let report = add_specs(&mut library, &haks, &specs, true)?;
     library.save()?;
     Ok(report)
@@ -324,7 +364,7 @@ pub struct Picked {
 pub fn add_picked(haks: &[String], resref: &str, surface: u32) -> Result<Picked> {
     let _one = lock();
     anyhow::ensure!(ResRef::from_str(resref).is_ok(), "'{resref}' is not a texture name");
-    let mut library = Library::open(&paint::texture_dir());
+    let mut library = Library::open(&paint::texture_dir())?;
     let name = resref.to_ascii_lowercase();
     // The library may have it already, as the starter set's or an earlier pick.
     if let Some(id) = library.id_from(&format!("game:{name}")) {
@@ -432,7 +472,7 @@ fn build_into(library_dir: &Path, folder: &Path, category: Option<&str>, surface
     }
     anyhow::ensure!(!found.is_empty(), "no PNG, TGA or DDS pictures in {}", folder.display());
 
-    let mut library = Library::open(library_dir);
+    let mut library = Library::open(library_dir)?;
     let mut taken: std::collections::HashSet<String> =
         library.entries.iter().filter_map(|e| e["id"].as_str().map(str::to_ascii_lowercase)).collect();
     let mut report = Report::default();
@@ -493,7 +533,7 @@ fn refresh_retired(library: &mut Library, picture: impl Fn(&str) -> Option<Rgba>
 /// was replaced, so the shared hak and the next export of an area painted with it take the new picture.
 pub fn refresh_starter() -> Result<Vec<String>> {
     let _one = lock();
-    let mut library = Library::open(&paint::texture_dir());
+    let mut library = Library::open(&paint::texture_dir())?;
     if !has_retired(&library) {
         return Ok(Vec::new());
     }
@@ -516,7 +556,13 @@ pub fn ensure_starter() {
             Err(e) => eprintln!("The texture library's old starter textures could not be refreshed: {e:#}"),
         }
         // A library made before the starter set had all of them: say how to add the editor's defaults it lacks.
-        let library = Library::open(&paint::texture_dir());
+        let library = match Library::open(&paint::texture_dir()) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("{e:#}");
+                return;
+            }
+        };
         let missing: Vec<&str> = EDITOR_DEFAULTS.into_iter().filter(|id| !library.has(id)).collect();
         if !missing.is_empty() && !library.entries.is_empty() {
             eprintln!(
@@ -549,11 +595,12 @@ fn print_report(r: &Report) {
 pub fn run(command: crate::cli::Textures) -> Result<()> {
     use crate::cli::Textures;
     match command {
-        Textures::Init => print_report(&init()?),
+        Textures::Init { pictures: None } => print_report(&init()?),
+        Textures::Init { pictures: Some(folder) } => print_report(&init_from_pictures(&folder)?),
         Textures::Add { list } => print_report(&add_listed(&list)?),
         Textures::Build { folder, category, surface } => print_report(&build_from_folder(&folder, category.as_deref(), surface)?),
         Textures::List => {
-            let library = Library::open(&paint::texture_dir());
+            let library = Library::open(&paint::texture_dir())?;
             println!("{} textures in {}", library.entries.len(), library.dir.display());
             for e in &library.entries {
                 println!(
@@ -589,7 +636,7 @@ pub fn run(command: crate::cli::Textures) -> Result<()> {
             }
         }
         Textures::ListPacks { index } => {
-            let installed = packs::installed();
+            let installed = packs::installed()?;
             println!("installed ({}):", installed.len());
             for p in &installed {
                 println!(
@@ -734,11 +781,11 @@ mod tests {
     fn a_picture_is_fitted_written_and_listed_the_way_the_loader_reads_it() {
         let dir = scratch("put");
         let spec = Spec { id: "grassTest".into(), name: "Test grass".into(), category: "Grass".into(), surface: 3, resref: String::new() };
-        let mut lib = Library::open(&dir);
+        let mut lib = Library::open(&dir).unwrap();
         lib.put(&spec, "test", "x", picture(1024, 1024)).unwrap();
         lib.save().unwrap();
         // A second library object sees it, and putting the same id again replaces it.
-        let mut again = Library::open(&dir);
+        let mut again = Library::open(&dir).unwrap();
         assert_eq!(again.entries.len(), 1);
         again.put(&Spec { name: "Renamed".into(), ..spec.clone() }, "test", "x", picture(128, 64)).unwrap();
         again.save().unwrap();
@@ -752,7 +799,7 @@ mod tests {
         assert!(dir.join(entries[0]["swatch"].as_str().unwrap()).is_file());
         assert_eq!(entries[0]["surface"], 3);
         // A bigger one is halved to the render size, and alpha is dropped.
-        let mut big = Library::open(&dir);
+        let mut big = Library::open(&dir).unwrap();
         big.put(&Spec { id: "big".into(), ..spec }, "test", "x", picture(2048, 1024)).unwrap();
         let e = big.entries.iter().find(|e| e["id"] == "big").unwrap();
         assert_eq!(e["size"], json!([512, 256]));
@@ -762,9 +809,38 @@ mod tests {
     }
 
     #[test]
+    fn only_a_missing_catalog_is_an_empty_library_and_one_that_cant_be_read_is_never_written_over() {
+        let (src, data) = (scratch("catalog-src"), scratch("catalog-data"));
+        std::fs::create_dir_all(&src).unwrap();
+        paint::write_png(&src.join("moss_patch.png"), &picture(64, 64)).unwrap();
+        // Missing: an empty library, which the build starts.
+        assert!(Library::open(&data).unwrap().entries.is_empty());
+        assert_eq!(build_into(&data, &src, None, None).unwrap().added, 1);
+        // Damaged: refused, by name, and the build writes nothing over it.
+        let catalog = data.join("catalog.json");
+        let whole = std::fs::read(&catalog).unwrap();
+        for (why, damaged) in
+            [("cut off", &whole[..whole.len() / 2]), ("not a catalog", b"[]".as_slice()), ("a list that isn't one", br#"{"textures": {}}"#)]
+        {
+            std::fs::write(&catalog, damaged).unwrap();
+            let e = format!("{:#}", build_into(&data, &src, None, None).unwrap_err());
+            assert!(e.contains("the texture library's catalog.json") && e.contains("nothing was changed"), "{why}: {e}");
+            assert_eq!(std::fs::read(&catalog).unwrap(), damaged, "{why}: not written over");
+        }
+        // Unreadable (a folder where the file is: no system reads that as a file, nor as a missing one): refused, and left.
+        std::fs::remove_file(&catalog).unwrap();
+        std::fs::create_dir(&catalog).unwrap();
+        let e = format!("{:#}", build_into(&data, &src, None, None).unwrap_err());
+        assert!(e.contains("the texture library's catalog.json can't be read"), "{e}");
+        assert!(catalog.is_dir() && std::fs::read_dir(&catalog).unwrap().next().is_none());
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
     fn two_ids_that_would_share_a_hak_name_are_refused() {
         let dir = scratch("hak-names");
-        let mut library = Library::open(&dir);
+        let mut library = Library::open(&dir).unwrap();
         let spec = |id: &str| Spec { id: id.into(), name: id.into(), category: "Walls".into(), surface: 4, resref: String::new() };
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
         // The same id again replaces it; another that starts with the same 13 letters can't go in beside it.
@@ -784,7 +860,7 @@ mod tests {
         std::fs::write(src.join("notes.txt"), "not a picture").unwrap();
         let report = build_into(&data, &src, None, None).unwrap();
         assert_eq!((report.added, report.problems.len()), (2, 0));
-        let lib = Library::open(&data);
+        let lib = Library::open(&data).unwrap();
         let by = |id: &str| lib.entries.iter().find(|e| e["id"] == id).unwrap().clone();
         assert_eq!((by("mosspatch")["category"].as_str(), by("mosspatch")["surface"].as_u64()), (Some("Custom"), Some(3)));
         assert_eq!((by("beach")["category"].as_str(), by("beach")["surface"].as_u64()), (Some("Sand"), Some(20)));
@@ -793,9 +869,49 @@ mod tests {
     }
 
     #[test]
+    fn the_starter_set_builds_from_pictures_with_its_names_and_footsteps() {
+        let (src, data) = (scratch("starter-src"), scratch("starter-data"));
+        std::fs::create_dir_all(&src).unwrap();
+        paint::write_png(&src.join("grassMedium.png"), &picture(64, 64)).unwrap();
+        paint::write_png(&src.join("mudSwamp.png"), &picture(64, 64)).unwrap();
+        paint::write_png(&src.join("notAStarter.png"), &picture(64, 64)).unwrap();
+        let (_, specs) = parse_list(STARTER).unwrap();
+        let mut lib = Library::open(&data).unwrap();
+        let report = add_pictures(&mut lib, &src, &specs).unwrap();
+        // Only starter ids are read; each one without a picture is reported.
+        assert_eq!((report.added, report.problems.len()), (2, specs.len() - 2));
+        let by = |id: &str| lib.entries.iter().find(|e| e["id"] == id).unwrap().clone();
+        assert_eq!((by("grassMedium")["name"].as_str(), by("grassMedium")["category"].as_str()), (Some("Medium grass"), Some("Grass")));
+        assert_eq!(by("mudSwamp")["surface"], 13);
+        assert!(!lib.has("notAStarter"));
+        // Run again: what the library has is kept.
+        assert_eq!(add_pictures(&mut lib, &src, &specs).unwrap().kept, 2);
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_demo_pack_has_every_starter_texture_within_its_budget() {
+        // The web demo (packs/demo) has no game: its pictures stand in for the whole starter set, and are downloaded on a first visit.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("packs/demo");
+        let pack: Value = serde_json::from_slice(&std::fs::read(dir.join("pack.json")).unwrap()).unwrap();
+        let listed = pack["textures"].as_array().unwrap();
+        let (_, specs) = parse_list(STARTER).unwrap();
+        assert_eq!(listed.len(), specs.len(), "one picture for each starter texture, and no others");
+        let mut total = 0;
+        for s in &specs {
+            let t = listed.iter().find(|t| t["id"] == s.id.as_str()).unwrap_or_else(|| panic!("the demo pack has no {}", s.id));
+            let (sha, size) = crate::export_id::sha256_file(&dir.join("pictures").join(t["file"].as_str().unwrap())).unwrap();
+            assert_eq!(t["sha256"].as_str(), Some(sha.as_str()), "{}: run packs/demo/make.py again", s.id);
+            total += size;
+        }
+        assert!(total <= 3 << 20, "the demo pack is {} KB, over its 3 MB budget (packs/demo/README.md)", total >> 10);
+    }
+
+    #[test]
     fn a_tileset_texture_gets_an_id_that_fits_and_does_not_clash() {
         let dir = scratch("tileset-ids");
-        let mut lib = Library::open(&dir);
+        let mut lib = Library::open(&dir).unwrap();
         assert_eq!(tileset_id("TCN01_Grass01", &lib), "tcn01grass01");
         // Too long for an id: its start and four hex digits of the whole name.
         let long = tileset_id("tdc01_floor_stone01_a", &lib);
@@ -815,12 +931,12 @@ mod tests {
 
     /// The starter's `dirt` as an old library holds it: made from the retired texture, `old` its picture.
     fn old_dirt(dir: &Path, old: &Rgba) -> Library {
-        let mut lib = Library::open(dir);
+        let mut lib = Library::open(dir).unwrap();
         let (_, specs) = parse_list(STARTER).unwrap();
         let spec = Spec { resref: RETIRED[0].1.into(), ..specs.into_iter().find(|s| s.id == "dirt").unwrap() };
         lib.put(&spec, "Neverwinter Nights", &format!("game:{}", RETIRED[0].1), old.clone()).unwrap();
         lib.save().unwrap();
-        Library::open(dir)
+        Library::open(dir).unwrap()
     }
 
     /// Two game textures, the retired dirt and its replacement, as `refresh_retired` reads them.
@@ -845,11 +961,11 @@ mod tests {
         assert!(has_retired(&lib));
         assert_eq!(refresh_retired(&mut lib, &read).unwrap(), vec!["dirt".to_string()]);
         lib.save().unwrap();
-        let lib = Library::open(&dir);
+        let lib = Library::open(&dir).unwrap();
         assert_eq!(lib.original_of("dirt"), Some("game:tni01_dirt02"));
         assert_eq!(paint::read_png(&dir.join("dirt.png")).unwrap().data, library_pictures(new).0.data);
         // Again: nothing left to replace.
-        let mut again = Library::open(&dir);
+        let mut again = Library::open(&dir).unwrap();
         assert!(!has_retired(&again));
         assert!(refresh_retired(&mut again, &read).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
@@ -870,7 +986,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         // Replaced with another game texture (`textures add`).
         let dir = scratch("retired-replaced");
-        let mut lib = Library::open(&dir);
+        let mut lib = Library::open(&dir).unwrap();
         let spec = Spec { id: "dirt".into(), name: "Dirt".into(), category: "Earth".into(), surface: 1, resref: "ttr01_dirt03".into() };
         lib.put(&spec, "Neverwinter Nights", "game:ttr01_dirt03", old.clone()).unwrap();
         assert!(!has_retired(&lib));

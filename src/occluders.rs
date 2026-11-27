@@ -389,6 +389,7 @@ mod tests {
         Placed {
             uvs: vec![[0.0, 0.0]; n],
             groups: vec![("solid".into(), 0, n / 3, 0)],
+            glow: Vec::new(),
             footprint: Vec::new(),
             min: [0.0; 3],
             max: [0.0; 3],

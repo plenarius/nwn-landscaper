@@ -20,6 +20,8 @@ pub struct Placed {
     pub uvs: Vec<[f32; 2]>,
     /// (texture, first triangle, count, transparency hint).
     pub groups: Vec<(String, usize, usize, u32)>,
+    /// Each group's self-illumination colour; empty: none glows.
+    pub glow: Vec<[f32; 3]>,
     /// The triangles it covers on the ground (x, y): where it blocks walking or casts its patch.
     pub footprint: Vec<[[f32; 2]; 3]>,
     /// Its bounding box's low corner (area metres).
@@ -59,7 +61,7 @@ fn place(o: &Object, f: &Flat) -> Placed {
         .collect();
     let groups = f.groups.iter().zip(&f.transparency).map(|((t, a, n), h)| (t.clone(), *a, *n, *h)).collect();
     let what = format!("{}:{}:{}:{}:{}:{}", o.model, o.x, o.y, o.z, o.bearing, o.scale);
-    Placed { positions, uvs: f.uvs.clone(), groups, footprint, min, max, baked: o.baked, what }
+    Placed { positions, uvs: f.uvs.clone(), groups, glow: f.glow.clone(), footprint, min, max, baked: o.baked, what }
 }
 
 /// The current terrain's objects placed, and an index of their footprints.

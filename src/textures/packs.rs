@@ -259,7 +259,7 @@ fn install_into(
     let m = unpack(&zip, &pictures, progress)?;
 
     let _one = super::lock();
-    let mut library = Library::open(dir);
+    let mut library = Library::open(dir)?;
     library.clash(&m)?;
     let before = library.pack(&m.id).cloned();
     let replaced = before.as_ref().and_then(|p| p["version"].as_str().map(str::to_string));
@@ -363,7 +363,7 @@ pub fn remove(id: &str, force: bool) -> Result<Removed> {
 
 fn remove_from(dir: &Path, id: &str, force: bool, used: &dyn Fn(&[String]) -> Vec<String>) -> Result<Removed> {
     let _one = super::lock();
-    let mut library = Library::open(dir);
+    let mut library = Library::open(dir)?;
     let pack = library.pack(id).cloned().with_context(|| format!("no pack '{id}' is installed"))?;
     let name = pack["name"].as_str().unwrap_or(id).to_string();
     let ids = library.pack_textures(id);
@@ -383,8 +383,8 @@ fn remove_from(dir: &Path, id: &str, force: bool, used: &dyn Fn(&[String]) -> Ve
 }
 
 /// The installed packs, as the catalog records them.
-pub fn installed() -> Vec<Value> {
-    Library::open(&paint::texture_dir()).packs
+pub fn installed() -> Result<Vec<Value>> {
+    Ok(Library::open(&paint::texture_dir())?.packs)
 }
 
 /// The areas that paint with any of `ids`: working copies and exports, in this machine's data folder, or on a team server in
@@ -401,7 +401,7 @@ fn painted_ids(dir: &Path, palette: &[Value], materials: Option<&str>) -> Vec<St
     let names: Vec<&str> = palette.iter().map(|p| p.as_str().unwrap_or("")).collect();
     let bytes = materials.and_then(|m| {
         if m.ends_with(".materials") && plain_name(m) {
-            std::fs::read(dir.join(m)).ok()
+            crate::atomic::read(&dir.join(m)).ok()
         } else {
             base64::engine::general_purpose::STANDARD.decode(m).ok()
         }
@@ -650,7 +650,7 @@ mod tests {
     /// A library with one texture of its own (`wallOwn`).
     fn library(name: &str) -> PathBuf {
         let dir = scratch(name);
-        let mut lib = Library::open(&dir);
+        let mut lib = Library::open(&dir).unwrap();
         let spec =
             super::super::Spec { id: "wallOwn".into(), name: "Own".into(), category: "Walls".into(), surface: 4, resref: String::new() };
         lib.put(&spec, "test", "x", picture(8, 8, 0)).unwrap();
@@ -709,7 +709,7 @@ mod tests {
         assert_eq!((moss["pack"].as_str(), moss["size"].clone(), moss["surface"].as_u64()), (Some("demo"), json!([512, 512]), Some(4)));
         assert_eq!(c["packs"][0]["textures"], json!(["dmMoss", "dmSlate"]));
         // What the exporter reads: the library loads it.
-        let lib = Library::open(&dir);
+        let lib = Library::open(&dir).unwrap();
         assert!(lib.has("wallOwn") && lib.has("dmSlate"));
         assert_eq!(paint::read_png(&dir.join("dmSlate_128.png")).unwrap().width, 128);
         assert!(!dir.join(".incoming").exists(), "the staging folder is cleared");
@@ -721,7 +721,7 @@ mod tests {
         let painting = |ids: &[String]| if ids.iter().any(|i| i == "dmSlate") { vec!["cave".to_string()] } else { vec![] };
         let e = install_into(&dir, &Source::File(v2.zip.clone()), &Expect::default(), &quiet, &painting).unwrap_err();
         assert!(e.downcast_ref::<InUse>().is_some_and(|u| u.areas == ["cave"]), "{e}");
-        assert!(dir.join("dmSlate.png").is_file() && Library::open(&dir).has("dmSlate"), "a refused upgrade changes nothing");
+        assert!(dir.join("dmSlate.png").is_file() && Library::open(&dir).unwrap().has("dmSlate"), "a refused upgrade changes nothing");
         let r = install_into(&dir, &Source::File(v2.zip), &Expect::default(), &quiet, &nobody).unwrap();
         assert_eq!(r.replaced.as_deref(), Some("1.0"));
         assert!(!dir.join("dmSlate.png").exists() && dir.join("dmClay.png").is_file());
@@ -851,7 +851,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(last.get(), (data.len() as u64, data.len() as u64));
-        assert!(Library::open(&dir).has("dmMoss"));
+        assert!(Library::open(&dir).unwrap().has("dmMoss"));
     }
 
     #[test]

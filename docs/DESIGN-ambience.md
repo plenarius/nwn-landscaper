@@ -99,11 +99,13 @@ The comments' three problems, checked:
   MB or more. Re-encoded as DDS DXT1 at 8,192 by 1,024 with mipmaps, each is about 5.6 MB.
 - **High camera sees past the band: not seen at 45 m.** With the camera 45 m out and about 18 m up, stock and Real Skies look
   the same: past the edge tiles the client draws the fog colour, and the sky shows only at the top of the frame. The game's
-  camera can't look above level, so the missing cap shows only from far higher. A flyover above the trial's 60 m camera limit
-  wasn't tried.
+  camera can't look above level, so the missing cap shows only from far higher. **Step 1's flyover** shows it from about 300 m
+  above the character, as flat grey, where the stock cap still covers; up to 200 m the two look alike
+  ([REAL-SKIES.md](REAL-SKIES.md)).
 - **Crash loading Desert_Clear, black triangles on the grass skies: not reproduced** in 17 stills on the CPU renderer, which
   accepts 16,384 px textures. Both likely come from the GPU: a card whose limit is 8,192 px, or one short of memory for 77 MB
-  textures (inferred). The DDS re-encode removes both suspects.
+  textures (inferred). The DDS re-encode removes both suspects. Step 1 saw none in about 50 more stills; looking down from 60
+  m and higher, a black wedge fills the view past the area's edge, with stock skies as with Real Skies.
 
 ![Each preset with the stock sky the sample landscapes give it, and the clear area with a scripted golden look](ambience-1-presets.png)
 
@@ -127,8 +129,9 @@ the Light brush, with baked objects keeping their glow (question 6). The build o
 
 **Decided: both.** A re-encoded Real Skies replaces the five stock skies module-wide, in the team's own hak: every area that uses a
 stock row, Landscaper's or not, looks better at once, and it needs no table. The Landscaper's own preset skies are new rows. The
-textures become DDS DXT1 at 8,192 by 1,024; Real Skies' band mesh stays unless a flyover shows its open top. Icy gets dawn, dusk
-and night from Winter_Clear, which Real Skies left stock.
+textures become DDS DXT1 at 8,192 by 1,024; Real Skies' band mesh stays unless a flyover shows its open top. (Step 1: only from
+about 300 m up, higher than the player's camera goes, so it stays for now.) Icy gets dawn, dusk and night from Winter_Clear,
+which Real Skies left stock.
 
 Considered and not chosen:
 
@@ -156,6 +159,9 @@ are new; *re-use* means Real Skies' pictures in other columns, with new models (
 A generated sky is a panorama the engine paints from the preset's fog colour at the horizon and its diffuse colour at the top, so
 it always matches. The trial's thick mist shows why that matters: ground fogged at 20 m under a sunny sky with clouds.
 
+Step 3 made the re-used and generated seven as the Preset skies pack ([PRESET-SKIES.md](PRESET-SKIES.md)), built from the
+user's own Real Skies download since Real Skies states no licence. Dawn haze suits the `dawn` preset, which step 4 added.
+
 Considered and not chosen: **only the re-used skies**, leaving thick mist and swamp under a mismatched sky and dropping the two new
 presets that need art.
 
@@ -167,6 +173,9 @@ in the panel shows the chosen sky's day picture as a strip, with a list of the i
 to the nearest stock row, as the sample landscapes do today.
 
 The editor's 3D view can draw the sky's day or night panorama as its background, so the preview matches the game's horizon.
+
+Step 4 built it ([SKY-PACKS.md](SKY-PACKS.md#in-the-editor)). The Sky row lists the module's own rows too, and Area settings no
+longer has a sky box of its own, so the sky is chosen in one place; an area keeps a game row as `"skyRow"`.
 
 Considered and not chosen: **a separate dropdown in Area settings**, as today, with names instead of numbers. Builders would pick
 light and sky apart and get the mismatch this design is about.
@@ -410,6 +419,8 @@ Every call below is in the current `nwscript.nss` (build 37-17).
   cycle day and night, the time changes nothing; `DayToNight` and `NightToDay` act on one player's view, which suits the cameraman.
 - **`SetTime` doesn't switch baked day and night emitters** in the area the camera is in (spike 0). A night look sets the time
   before the cameraman enters the area.
+- **`SetTime` into dawn or dusk keeps the night or day sky** (step 1, [REAL-SKIES.md](REAL-SKIES.md)): the client fades to the
+  dawn and dusk skies only as the clock runs into those hours. A look that needs one sets the time a little before the hour.
 - **`SetTime` runs pending delays:** in the trial, jumping to 23:00 ran the script's queued `DelayCommand`s at once, so two shots
   fired before their area had loaded. The director sets the time before it schedules a shot's ticks.
 
@@ -479,5 +490,5 @@ start at once; step 3 needs 2, step 4 needs 3, step 5 needs 0, step 7 needs 5 an
 - **`DayToNight` in an area that doesn't cycle,** and whether it shows the night sky as well as the night light.
 - **Dawn in a cycling area:** spike 0 watched dusk switch the tiles, not dawn.
 - **Emitter culling:** whether the client drops a tile's emitters with the tile when it is out of view, as it does meshes (T52).
-- **Baked self-illumination** is dropped judging by the code (`src/objects.rs` keeps texture and transparency per group), not
-  seen in game.
+- **Baked self-illumination** was dropped judging by the code (`src/objects.rs` kept texture and transparency per group). Step 8
+  keeps it, and a baked crystal ball's globe glows in the game client, also on a tile whose lights are off.

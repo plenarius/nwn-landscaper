@@ -86,7 +86,7 @@ fn zip_of(files: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
 
 /// Every resource of a hak as (`resref.ext`, bytes).
 fn hak_files(path: &Path) -> Result<Vec<(String, Vec<u8>)>> {
-    let data = std::fs::read(path).with_context(|| format!("no {}", path.display()))?;
+    let data = crate::atomic::read(path).with_context(|| format!("no {}", path.display()))?;
     let erf = mg_erf::Erf::read(&data)?;
     erf.entries.iter().map(|e| Ok((e.filename(), erf.data(e)?.into_owned()))).collect()
 }
@@ -248,7 +248,7 @@ struct Exported {
 fn exported(name: &str) -> Result<Exported> {
     let exports = crate::workspace::exports_dir();
     let header: Value = serde_json::from_slice(
-        &std::fs::read(exports.join(format!("{name}.json"))).with_context(|| format!("{name} hasn't been exported yet"))?,
+        &crate::atomic::read(&exports.join(format!("{name}.json"))).with_context(|| format!("{name} hasn't been exported yet"))?,
     )?;
     let module = header["module"].as_str().unwrap_or(name).to_string();
     let user_dir = crate::workspace::nwn_user_dir().context("no module folder")?;

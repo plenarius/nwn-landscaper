@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The handbook site (mkdocs.yml): MkDocs, the Material theme and the image lightbox, with every package they pull in pinned,
+# so the site builds the same in CI as on your machine. `pip install -r requirements-docs.txt`, then `mkdocs serve`.
+babel==2.19.0
+backrefs==8.3.1
+certifi==2026.11.20
+charset-normalizer==3.5.3
+click==8.5.1
+colorama==0.4.6
+ghp-import==2.1.0
+idna==3.20
+jinja2==3.1.6
+markdown==3.11.4
+markupsafe==3.0.4
+mergedeep==1.3.4
+mkdocs==1.6.1
+mkdocs-get-deps==0.2.2
+mkdocs-glightbox==0.5.3
+mkdocs-material==9.8.2
+mkdocs-material-extensions==1.3.1
+packaging==26.4
+paginate==0.5.7
+pathspec==1.1.1
+platformdirs==4.14.8
+pygments==2.21.0
+pymdown-extensions==13.1.2
+python-dateutil==4.0.0
+pyyaml==6.0.4
+pyyaml-env-tag==1.1
+requests==2.34.2
+selectolax==1.0.2
+tzdata==2026.6
+urllib3==2.8.0
+watchdog==7.1.1

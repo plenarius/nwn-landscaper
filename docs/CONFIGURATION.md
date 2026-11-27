@@ -1,7 +1,7 @@
 # Configuration
 
 The Landscaper runs on a fresh machine with no setup beyond the game's files; everything below is optional and read from the
-environment. (`src/config.rs` is the source of truth.)
+environment, or from the settings file ("The settings file" below). (`src/config.rs` is the source of truth.)
 
 The command line's options win over the environment. `landscaper --help` lists the commands; the options below work before or
 after any command (the same names as nwn-bake's options):
@@ -27,12 +27,34 @@ after any command (the same names as nwn-bake's options):
 | `LANDSCAPER_HAKS` (or `--haks`) | The haks the editor reads the game with: the Place and Scatter panels offer their placeables (placeables.2da's rows, from the haks' table when one has it), and their models, textures and blueprints are drawn, baked and placed from them. Hak names in your module's order, first highest, comma separated (`my_plc,my_tex`; `.hak` may be added), found in the user folder's `hak/`; or `module` for the `Mod_HakList` of the checkout's `module.ifo.json` (`LANDSCAPER_MODULE_REPO`). An export lists these haks in the module it builds, and adds the ones a module lacks when it installs an area in it, after the module's own: what was placed from them is there in the game only with them. The game with a module's haks opens once, when the editor first needs it (see "The editor's haks" below) | on a team server with a review service, the module's hak list from it (`GET /api/v1/areas/module`); otherwise none: the game's own placeables |
 | `LANDSCAPER_PROJECT` | What your module is called in messages | "the module" |
 | `LANDSCAPER_JOBS` (or `--jobs N`) | How many threads an import, an export or a check works on. What they make is the same whatever it is; fewer threads leave more of a shared server to everything else, more make them quicker. A team server started with it keeps that limit for every job | every core for an export; half the machine's cores (at least 1) for an import or a check |
+| `LANDSCAPER_GAME` | `none`: the install the engine is given holds none of the game's files (the web demo's stand-in). `/api/me` answers `"game": false`, and the editor's Place, Scatter, Things, Scripts and Import say they need the game | the game's files are there |
 | `LANDSCAPER_PARTICLES` | Another particle pack's folder (its `pack.json`, `models/` and textures): the kinds an area's `ambience` placements bake into its tiles. A pack that fails its checks makes an export skip them and say why | the pack built into the program (`packs/particles`) |
 | `LANDSCAPER_LOG` | Set to anything: print every request (address, method, path, browser) to stderr | off |
+| `LANDSCAPER_WEBVIEW_SAFE` | The desktop app on Linux: `1` turns off WebKitGTK's DMA-BUF renderer and its compositing, for a window that stays blank or flickers | off; the DMA-BUF renderer alone is turned off when NVIDIA's own driver is loaded |
 | `LS_*` | Debugging switches; none is needed. Some change what an export writes, so the program names the ones that are set at start. [DEBUGGING.md](DEBUGGING.md) lists them | off |
 
 At start `landscaper serve` prints the game install, the user folder and the module it found, and where each came from, so a wrong
 guess shows at once.
+
+## The settings file
+
+Every setting in the table above can also be in `settings.json` in the data folder (`~/.local/share/landscaper/settings.json`;
+on Windows `%LOCALAPPDATA%\landscaper\settings.json`), for a program started without your shell's environment: from the Dock or
+Finder on macOS, from a desktop menu on Linux. One JSON object, each setting named as in the environment, its value a string:
+
+```json
+{
+  "NWN_ROOT": "D:\\Games\\Neverwinter Nights",
+  "LANDSCAPER_HAKS": "my_plc,my_tex"
+}
+```
+
+- The command line wins over the environment, and the environment over the file. A variable that is set but blank counts as unset.
+- `NWN_ROOT`, `NWN_HOME`, `NWN_USER_DIRECTORY` and the `LANDSCAPER_*` settings only. The data folder (`XDG_DATA_HOME`) can't be
+  set there, since it says where the file is, and the debugging switches (`LS_*`) stay in the environment.
+- A number or `true` is taken as written; `null` leaves the setting unset. Anything else, and a name that is no setting, is
+  ignored with a warning at start; so is the whole file when it isn't a JSON object.
+- It is read once, at start: restart the Landscaper after changing it.
 
 ## The editor's haks
 
@@ -47,8 +69,8 @@ the first list of placeables took 0.16 s against 0.10 s for the game alone, and 
 ## Textures
 
 The library lives in `textures/` in the data folder (`XDG_DATA_HOME`). It is built from the game's files the first time there is none;
-`landscaper textures init | add <list.json> | build <folder> [--category NAME] [--surface N] | list` fill it otherwise (see
-SELF-HOSTING.md, "Textures"). Texture packs add to it ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)):
+`landscaper textures init [--pictures <folder>] | add <list.json> | build <folder> [--category NAME] [--surface N] | list`
+fill it otherwise (see SELF-HOSTING.md, "Textures"). Texture packs add to it ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)):
 
 | Variable | What it is | Default |
 |----------|------------|---------|

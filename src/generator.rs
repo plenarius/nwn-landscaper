@@ -16,6 +16,7 @@ mod analyse;
 mod edge;
 mod entrance;
 mod generate;
+mod hops;
 mod install;
 mod mdl;
 mod painter;
@@ -25,7 +26,7 @@ mod terrain;
 mod tile;
 
 use self::analyse::start_point;
-pub(crate) use self::analyse::{check, describe, export, sim_area};
+pub(crate) use self::analyse::{check, describe, export, long_note, sim_area};
 pub(crate) use self::entrance::{DOOR_MARK, door_mark};
 pub(crate) use self::generate::{generate, module_haks, our_haks};
 pub(crate) use self::install::Before;

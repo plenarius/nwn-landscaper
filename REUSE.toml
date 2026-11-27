@@ -16,6 +16,8 @@ path = [
     "**/*.yml",
     "**/*.hbs",
     "**/*.png",
+    "app/icons/**",
+    "**/*.webp",
     "**/.gitignore",
     "**/.dockerignore",
     "**/Dockerfile",
@@ -64,3 +66,11 @@ path = ["tests/ambience-pack/pack.json", "tests/ambience-pack/textures/*.tga"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Copyright (C) 2026 plenarius"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The web demo's texture pack: CC0 photographs from ambientCG and Poly Haven, fitted by packs/demo/make.py. Each picture's
+# source and authors are in packs/demo/CREDITS.md.
+[[annotations]]
+path = "packs/demo/pictures/**"
+precedence = "override"
+SPDX-FileCopyrightText = "ambientCG, Poly Haven and their authors (packs/demo/CREDITS.md)"
+SPDX-License-Identifier = "CC0-1.0"

@@ -1,0 +1,33 @@
+# The showcase page's gallery (docs/showcase.md), one card per entry, in this order.
+#   title: the area's name.
+#   text:  one line: what it shows.
+#   still: a picture beside this file, under assets/showcase/ (WebP or PNG, 1280 wide at most).
+#   clip:  where the clip is: a video file's address (.mp4, .webm), played in the card, or a page that plays it. A path
+#          under assets/showcase/clips/ is a file on the "showcase" release, which the docs workflow copies into the
+#          site when it builds it (GitHub serves release files as downloads, which a page can't play).
+#          Clips never go in the repository.
+# An entry with no still and no clip shows "Clip to come".
+- title: A lake valley at nightfall
+  text: Lamplight over a lakeside camp, fireflies on the shore and mist on the water under the night sky.
+  still: assets/showcase/lsvale-camp-night.webp
+  clip: assets/showcase/clips/lsvale-camp-night.mp4
+- title: The same camp at dawn
+  text: Morning mist over the lake and the camp, under the dawn haze sky.
+  still: assets/showcase/lsvale-camp-dawn.webp
+  clip: assets/showcase/clips/lsvale-camp-dawn.mp4
+- title: A canyon in golden light
+  text: Trees and boulders on a sandy canyon floor, light shafts through the gaps.
+  still: assets/showcase/lscanyon-floor.webp
+  clip: assets/showcase/clips/lscanyon-walk.mp4
+- title: The canyon rim at golden hour
+  text: Along the plateau's edge as the light turns, the valley below in haze.
+  still: assets/showcase/lscanyon-rim-golden.webp
+  clip: assets/showcase/clips/lscanyon-rim-golden.mp4
+- title: A dune desert
+  text: Wind-piled dunes with cacti and dead trees, sand drifting off the crests at golden hour.
+  still: assets/showcase/lsdunes-golden.webp
+  clip: assets/showcase/clips/lsdunes-orbit-golden.mp4
+- title: A snowy mountain pass
+  text: A path between pines over a saddle, snow falling under an overcast sky.
+- title: A cave descent
+  text: Halls stepping down, lit by torches along the walls.

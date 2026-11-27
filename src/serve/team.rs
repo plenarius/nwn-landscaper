@@ -17,6 +17,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             200,
             &serde_json::json!({
                 "version": crate::version::text(),
+                "game": crate::config::has_game(),
                 "team": crate::workspace::team(),
                 "user": me.user,
                 "name": me.name,
@@ -26,7 +27,7 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
                 "versions": crate::gitea::enabled(),
                 "publish": crate::review::active(),
                 "package": crate::review::config().is_none(),
-                "reviewers": std::env::var("LANDSCAPER_REVIEWERS").unwrap_or_default(),
+                "reviewers": crate::config::setting("LANDSCAPER_REVIEWERS").unwrap_or_default(),
             }),
         ),
         (Method::Get, "/api/users") if me.admin => json_response(

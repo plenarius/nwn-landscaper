@@ -14,7 +14,7 @@ use serde::de::DeserializeOwned;
 /// names the file without its folder, since builders see it.
 pub fn read<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
     let name = path.file_name().map_or_default(|n| n.to_string_lossy().into_owned());
-    let data = match std::fs::read(path) {
+    let data = match crate::atomic::read(path) {
         Ok(d) => d,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(T::default()),
         Err(e) => return Err(e).with_context(|| format!("{name} can't be read")),
