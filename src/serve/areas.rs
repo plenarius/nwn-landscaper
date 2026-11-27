@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use tiny_http::Method;
 
-use super::query::area_name_ok;
+use super::query::{area_name_ok, area_name_why};
 use super::{Answer, Ask, fail, json_response, read_body, refuse, response_header};
 use crate::workspace::{areas_dir, exports_dir};
 
@@ -493,21 +493,67 @@ impl Header {
     }
 }
 
-/// The areas there are: saved by the editor, exported, or both; newest first.
+/// The working copy in `file` of the areas folder (its path `path`): its name and header, or why it can't be listed (as a
+/// builder reads it). An area is opened by its file's name ([`load_area`]), so its `name` must be that, and a name the editor
+/// can make.
+fn working_copy(path: &std::path::Path, file: &str) -> std::result::Result<(String, Header), String> {
+    let bytes = crate::atomic::read(path).map_err(|e| format!("it can't be read ({e})"))?;
+    let h: Header = serde_json::from_slice(&bytes).map_err(|e| match e.classify() {
+        serde_json::error::Category::Data => "it isn't an area: its JSON has no area header (name, tiles, heights)".to_string(),
+        _ => format!("it isn't valid JSON ({e})"),
+    })?;
+    let name = match &h.name {
+        serde_json::Value::String(n) => n.clone(),
+        serde_json::Value::Null => return Err("it has no \"name\"".to_string()),
+        _ => return Err("its \"name\" isn't text".to_string()),
+    };
+    if let Some(why) = area_name_why(&name) {
+        return Err(format!("its name {name:?} {why}"));
+    }
+    if file.strip_suffix(".json") != Some(name.as_str()) {
+        return Err(format!("its name is {name:?} but the file is {file}: an area is opened by its file's name, so rename it {name}.json"));
+    }
+    Ok((name, h))
+}
+
+/// Says in the server's log that the working copy at `path` isn't listed, and why: once, not at every listing (the editor asks
+/// for the list at each Open). Again if the reason changes. Whether it said so.
+fn warn_unlisted(path: &std::path::Path, why: &str) -> bool {
+    static SAID: std::sync::Mutex<Option<std::collections::HashSet<(PathBuf, String)>>> = std::sync::Mutex::new(None);
+    let mut said = SAID.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let first = said.get_or_insert_with(Default::default).insert((path.to_path_buf(), why.to_string()));
+    if first {
+        eprintln!("warning: {} isn't in the area list: {why}", path.display());
+    }
+    first
+}
+
+/// The areas there are: saved by the editor, exported, or both; newest first. With `unlisted`, the `.json` files of the areas
+/// folder left out of the list ({ file, why }), for the editor's Open to show: a file copied in by hand with a name the editor
+/// can't open used to vanish without a word.
 fn list_areas() -> serde_json::Value {
     let secs = |t: std::time::SystemTime| t.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let mut by_name: std::collections::BTreeMap<String, serde_json::Value> = Default::default();
+    let mut unlisted = Vec::new();
     for e in std::fs::read_dir(areas_dir()).into_iter().flatten().flatten() {
         let p = e.path();
         if p.extension().and_then(|x| x.to_str()) != Some("json") {
             continue;
         }
-        let Some(h) = Header::read(&p) else { continue };
-        let Some(name) = h.name.as_str().filter(|n| area_name_ok(n)) else { continue };
-        let mut row = h.row(name);
+        let file = e.file_name().to_string_lossy().into_owned();
+        let (name, h) = match working_copy(&p, &file) {
+            Ok(a) => a,
+            Err(why) => {
+                let _ = warn_unlisted(&p, &why);
+                unlisted.push(serde_json::json!({ "file": file, "why": why }));
+                continue;
+            }
+        };
+        let mut row = h.row(&name);
         row["saved"] = e.metadata().and_then(|m| m.modified()).map_or(0, secs).into();
-        by_name.insert(name.to_string(), row);
+        by_name.insert(name, row);
     }
+    unlisted.sort_by(|a, b| a["file"].as_str().cmp(&b["file"].as_str()));
     let mut out: Vec<(std::time::SystemTime, serde_json::Value)> = Vec::new();
     if let Ok(dir) = std::fs::read_dir(exports_dir()) {
         for e in dir.flatten() {
@@ -539,7 +585,7 @@ fn list_areas() -> serde_json::Value {
         (std::time::UNIX_EPOCH + std::time::Duration::from_secs(latest), a)
     }));
     out.sort_by_key(|a| std::cmp::Reverse(a.0));
-    serde_json::json!({ "areas": out.into_iter().map(|(_, v)| v).collect::<Vec<_>>() })
+    serde_json::json!({ "areas": out.into_iter().map(|(_, v)| v).collect::<Vec<_>>(), "unlisted": unlisted })
 }
 
 /// An area as the editor keeps one (Area.toJSON), as JSON: its saved working copy as it was saved, else its last export (header,
@@ -635,5 +681,52 @@ mod tests {
         for bad in ["", ".x", "a b", "a/b", "a;b", &"x".repeat(65)] {
             assert!(!resref_ok(bad), "{bad}");
         }
+    }
+
+    /// Why the working copy `file`, holding `body`, isn't listed (`None`: it is).
+    fn unlisted(dir: &std::path::Path, file: &str, body: &str) -> Option<String> {
+        let path = dir.join(file);
+        std::fs::write(&path, body).unwrap();
+        working_copy(&path, file).err()
+    }
+
+    #[test]
+    fn a_working_copy_the_list_leaves_out_says_why() {
+        let dir = std::env::temp_dir().join(format!("landscaper-unlisted-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let area = |name: &str| format!(r#"{{"name":"{name}","tiles":3,"heights":"AAAA"}}"#);
+        assert_eq!(unlisted(&dir, "bay.json", &area("bay")), None);
+        let (name, h) = working_copy(&dir.join("bay.json"), "bay.json").unwrap();
+        assert_eq!((name.as_str(), h.tiles.as_u64()), ("bay", Some(3)));
+        // A bad name: too long, or other characters.
+        assert_eq!(
+            unlisted(&dir, "showcanyon.json", &area("showcanyon")).unwrap(),
+            r#"its name "showcanyon" is longer than 9 characters (1-9 lower case letters, digits or _)"#
+        );
+        assert!(unlisted(&dir, "Bay-1.json", &area("Bay-1")).unwrap().contains("characters other than"));
+        // Not JSON, or JSON that isn't an area.
+        let why = unlisted(&dir, "broken.json", r#"{"name":"broken","tiles":"#).unwrap();
+        assert!(why.starts_with("it isn't valid JSON (") && why.contains("line 1"), "{why}");
+        assert_eq!(unlisted(&dir, "empty.json", "").unwrap().split(' ').take(4).collect::<Vec<_>>(), ["it", "isn't", "valid", "JSON"]);
+        assert!(unlisted(&dir, "list.json", "7").unwrap().starts_with("it isn't an area: "));
+        // No name, or one that isn't text.
+        assert_eq!(unlisted(&dir, "noname.json", r#"{"tiles":3}"#).unwrap(), r#"it has no "name""#);
+        assert_eq!(unlisted(&dir, "num.json", r#"{"name":5}"#).unwrap(), r#"its "name" isn't text"#);
+        // A name the file doesn't have: opening it would ask for another file.
+        assert_eq!(
+            unlisted(&dir, "copy.json", &area("bay")).unwrap(),
+            r#"its name is "bay" but the file is copy.json: an area is opened by its file's name, so rename it bay.json"#
+        );
+        assert!(unlisted(&dir, "showcanyon2.json", &area("showcan")).unwrap().contains("rename it showcan.json"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unlisted_file_is_logged_once_and_again_when_its_reason_changes() {
+        let path = std::path::Path::new("/nowhere/areas/once.json");
+        assert!(warn_unlisted(path, "its name is bad"));
+        assert!(!warn_unlisted(path, "its name is bad"));
+        assert!(warn_unlisted(path, "it isn't valid JSON"));
+        assert!(warn_unlisted(std::path::Path::new("/nowhere/areas/other.json"), "its name is bad"));
     }
 }

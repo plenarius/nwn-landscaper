@@ -102,6 +102,23 @@ pub(super) fn area_name_ok(name: &str) -> bool {
     !name.is_empty() && name.len() <= 9 && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
+/// What is wrong with an area's name, as a builder reads it ("is longer than 9 characters (…)"); `None` when
+/// [`area_name_ok`].
+pub(super) fn area_name_why(name: &str) -> Option<String> {
+    const RULE: &str = "1-9 lower case letters, digits or _";
+    if name.is_empty() {
+        return Some(format!("is empty ({RULE})"));
+    }
+    let mut why = Vec::new();
+    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        why.push("has characters other than lower case letters, digits or _");
+    }
+    if name.chars().count() > 9 {
+        why.push("is longer than 9 characters");
+    }
+    (!why.is_empty()).then(|| format!("{} ({RULE})", why.join(" and ")))
+}
+
 /// An area's name from a request, refused unless [`area_name_ok`]: every route that makes file names from it checks it
 /// first, before it touches the disk.
 pub(super) fn checked_area_name(name: &str) -> Result<String> {
@@ -133,6 +150,21 @@ mod tests {
             assert!(!resource_name_ok(bad), "{bad}");
         }
         assert!(!short_name_ok("des_cactus-01"));
+    }
+
+    #[test]
+    fn an_area_names_fault_is_said_exactly_when_it_isnt_ok() {
+        let rule = "(1-9 lower case letters, digits or _)";
+        assert_eq!(area_name_why("showcanyon").unwrap(), format!("is longer than 9 characters {rule}"));
+        assert_eq!(area_name_why("Bay-1").unwrap(), format!("has characters other than lower case letters, digits or _ {rule}"));
+        assert_eq!(
+            area_name_why("Show_Canyon").unwrap(),
+            format!("has characters other than lower case letters, digits or _ and is longer than 9 characters {rule}")
+        );
+        assert_eq!(area_name_why("").unwrap(), format!("is empty {rule}"));
+        for n in ["showcanyon", "Bay-1", "", "bay_1", "a", "ninechars", "é", "ééééé", "../x"] {
+            assert_eq!(area_name_why(n).is_none(), area_name_ok(n), "{n}");
+        }
     }
 
     #[test]
