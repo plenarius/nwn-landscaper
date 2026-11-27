@@ -64,4 +64,5 @@ a team's history.
 | Undo, redo | | Ctrl+Z, Ctrl+Y |
 
 Each tool has a key, shown under its button. The status bar shows the position, height and tile under the cursor, and whether
-creatures can walk there. **Walkable** (`W`) tints ground too steep to walk in red, by the rule the export uses.
+creatures can walk there. **Walkable** (`W`), in the top bar beside the path check, tints ground too steep to walk in red, by
+the rule the export uses.

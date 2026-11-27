@@ -8,7 +8,7 @@ module in the toolset or the game.
 1. Click **Export to NWN** in the toolbar.
 2. The export builds the tiles, the hak and the module, then checks paths: it sends the game's pathfinding along random routes
    over the area.
-3. Read the result on the map:
+3. Read the result in the report, and on the map with **Markers** (`M`) on: they start hidden.
    - **Red markers:** a route is blocked: it stops short, and shorter clicks don't get there either. Open up the ground between
      the two ends.
    - **Orange markers:** a tile whose walkable ground is too winding for the game's search within a tile. Straighten or widen the
@@ -34,7 +34,7 @@ not blocked and has no marker; the report says how many there are and how many c
 - **Live** checks paths after each edit, and its button says how it went: **Paths OK** (green), every route gets there;
   **N spots** (orange), every route gets there but some tiles are too winding or a passage is closed; **N blocked** (red), routes
   that don't get there. Its tooltip counts the routes too long for one click. Click it to turn the live check off or on.
-- **Markers** (`M`) shows or hides the markers; the checks go on.
+- **Markers** (`M`) shows or hides the markers; the checks go on. They start hidden, and the browser remembers your choice.
 
 ## What stops an export
 
