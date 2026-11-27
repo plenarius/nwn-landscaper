@@ -226,7 +226,7 @@ type Corner = ([f32; 3], [f32; 2]);
 pub type Piece = ([[f32; 3]; 3], [[f32; 2]; 3]);
 
 /// Where edge a-b crosses the plane `p[axis] = at`, on the plane exactly. The edge is taken from its lower end whichever way it is
-/// walked, so the two pieces on either side of a cut get the very same point.
+/// walked, so the two pieces on either side of a cut get the same point, bit for bit.
 fn crossing(a: &Corner, b: &Corner, axis: usize, at: f32) -> Corner {
     let (a, b) = if a.0 <= b.0 { (a, b) } else { (b, a) };
     let t = (at - a.0[axis]) / (b.0[axis] - a.0[axis]);
