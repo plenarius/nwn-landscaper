@@ -13,8 +13,6 @@
 //! same [`SHARPNESS`] and projections). The tiles' own texture coordinates, for viewers without the game's shaders (Moonglow,
 //! nwn-bake), give each face one side alone ([`box_projection`]): no blend, so a seam where two sides meet, but no streaks.
 
-use crate::paint::TEXTURE_METRES;
-
 /// How sharply the three projections blend: each weighs as the normal's part along its axis to this power. With 4, ground at 45
 /// degrees takes the top and the side projection evenly, and ground 30 degrees from flat takes 90% from the top: the blend is
 /// narrow enough not to blur the texture and wide enough to hide where one projection gives way to another.
@@ -73,10 +71,11 @@ pub fn box_projection(n: [f32; 3]) -> usize {
 }
 
 /// The texture coordinates of area point `p` (metres: x east, y north, z up) in projection `axis` ([`weights`]' order, then the
-/// diagonals of [`box_projection`]), in repeats of [`TEXTURE_METRES`]: from above (x, y), as flat ground always had them; along x
-/// (y, z); along y (x, z); along a diagonal, across it and up. Up is the texture's v, so a cliff's texture stands upright.
-pub fn uv(axis: usize, p: [f32; 3]) -> [f32; 2] {
-    let [x, y, z] = p.map(|c| c / TEXTURE_METRES);
+/// diagonals of [`box_projection`]), in repeats of `metres` (the texture's [`crate::paint::Texture::metres`]): from above (x, y), as
+/// flat ground always had them; along x (y, z); along y (x, z); along a diagonal, across it and up. Up is the texture's v, so a
+/// cliff's texture stands upright.
+pub fn uv(axis: usize, p: [f32; 3], metres: f32) -> [f32; 2] {
+    let [x, y, z] = p.map(|c| c / metres);
     match axis {
         0 => [y, z],
         1 => [x, z],
@@ -89,6 +88,7 @@ pub fn uv(axis: usize, p: [f32; 3]) -> [f32; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paint::TEXTURE_METRES;
 
     fn close(a: f32, b: f32) -> bool {
         (a - b).abs() < 1e-5
@@ -132,9 +132,11 @@ mod tests {
     #[test]
     fn each_projection_keeps_the_texture_s_size_on_the_ground_it_faces() {
         // One texture repeat across 4 m of ground, whichever way it faces: a wall facing east runs on along y and up.
-        assert_eq!(uv(2, [4.0, 8.0, 3.0]), [1.0, 2.0]);
-        assert_eq!(uv(0, [4.0, 8.0, 2.0]), [2.0, 0.5]);
-        assert_eq!(uv(1, [4.0, 8.0, 2.0]), [1.0, 0.5]);
+        assert_eq!(uv(2, [4.0, 8.0, 3.0], TEXTURE_METRES), [1.0, 2.0]);
+        assert_eq!(uv(0, [4.0, 8.0, 2.0], TEXTURE_METRES), [2.0, 0.5]);
+        assert_eq!(uv(1, [4.0, 8.0, 2.0], TEXTURE_METRES), [1.0, 0.5]);
+        // A texture that covers 8 m (cliff rock): half the repeats.
+        assert_eq!(uv(0, [4.0, 8.0, 2.0], 8.0), [1.0, 0.25]);
     }
 
     #[test]
@@ -165,7 +167,7 @@ mod tests {
         }
         // One metre across a wall facing north-east (along (-1, 1)) is a quarter repeat, as on flat ground; so is one up.
         let across = |axis, a: [f32; 3], b: [f32; 3]| {
-            let (p, q) = (uv(axis, a), uv(axis, b));
+            let (p, q) = (uv(axis, a, TEXTURE_METRES), uv(axis, b, TEXTURE_METRES));
             ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt()
         };
         let s = std::f32::consts::FRAC_1_SQRT_2;

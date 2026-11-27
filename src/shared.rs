@@ -319,10 +319,15 @@ fn patch_fslit(stock: &str) -> Result<String> {
 /// from it, comes out of the same texture and differs only where the two readings do.)
 fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
     use crate::triplanar::SHARPNESS;
-    let metres = paint::TEXTURE_METRES;
-    let pos = format!("highp vec3 lsP = (m_view_inv * vec4(vPosView, 1.0)).xyz / {metres:.1};");
+    // (Metres a repeat: the material's lsMetres, the texture's own; paint::TEXTURE_METRES unless its catalog entry says more.)
+    let pos = "highp vec3 lsP = (m_view_inv * vec4(vPosView, 1.0)).xyz / lsMetres;";
     let weights = format!("vec3 lsW = pow(abs(lsN), vec3({:.1}));", f64::from(SHARPNESS));
-    let s = replace_line(ls_lm_fs, "fslit", "varying vec2 vShadowUV;", &["varying vec2 vShadowUV;", "varying vec2 vLsBlend;"])?;
+    let s = replace_line(
+        ls_lm_fs,
+        "fslit",
+        "varying vec2 vShadowUV;",
+        &["varying vec2 vShadowUV;", "varying vec2 vLsBlend;", "uniform float lsMetres;"],
+    )?;
     let s = replace_line(
         &s,
         "fslit",
@@ -505,8 +510,9 @@ mod tests {
         let read = at("SetupStandardShaderInputs();");
         let replaced = at("FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);");
         assert!(read < replaced && replaced < at("lsAreaShade = lsShade;") && replaced < at("ApplyStandardShader();"));
-        // The projections and weights triplanar.rs has: 4 m repeats, along x (y, z), along y (x, z), from above (x, y), power 4.
-        assert!(tp.contains("/ 4.0;") && tp.contains("vec3(4.0)"), "{tp}");
+        // The projections and weights triplanar.rs has: a repeat every lsMetres (the material's, the texture's own metres), along
+        // x (y, z), along y (x, z), from above (x, y), power 4.
+        assert!(tp.contains("uniform float lsMetres;") && tp.contains(".xyz / lsMetres;") && tp.contains("vec3(4.0)"), "{tp}");
         assert!(tp.contains("texUnit0, lsP.yz) * lsW.x") && tp.contains("texUnit0, lsP.xz) * lsW.y") && tp.contains("lsP.xy) * lsW.z"));
         // Blended by the mesh's tverts2 where it has them, else by the vertex normal.
         assert!(lines.contains(&"varying vec2 vLsBlend;".to_string()) && tp.contains("if (vLsBlend.x > 0.5)"), "{tp}");

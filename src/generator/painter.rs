@@ -121,6 +121,11 @@ impl Painter {
         (TILE / self.hm.spacing).round() as i64
     }
 
+    /// Metres one repeat of palette entry `m`'s texture covers ([`paint::Texture::metres`]).
+    pub(super) fn metres(&self, m: u8) -> f32 {
+        self.textures[m as usize].metres
+    }
+
     /// Whether palette entry `m` is an import's pictures.
     pub(super) fn imported(&self, m: u8) -> bool {
         self.textures[m as usize].tiles.is_some()
@@ -244,7 +249,8 @@ impl Painter {
                 h.update([m]);
                 h.update(d);
             }
-            // (Its id seeds its edge's noise.)
+            // (Its size a repeat; its id seeds its edge's noise.)
+            h.update(t.metres.to_le_bytes());
             h.update([self.looks[m as usize].edge as u8]);
             h.update(self.hm.palette[m as usize].as_bytes());
             h.update([0]);
@@ -763,16 +769,20 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
 }
 
 /// The material of a tile's mesh: our shaders and its texture, with `texture7` (the tile's baked shadow map, or a chasm wall's fade)
-/// over it when given. `triplanar`: a library texture, drawn from three sides by the ground's slope ([`crate::triplanar`], shader
-/// `ls_tp_fs`); else at the mesh's own texture coordinates (`ls_lm_fs`, a picture over the tile's square).
-pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: bool) -> String {
-    let (fs, what) = if triplanar { ("ls_tp_fs", "drawn from three sides by the slope, ") } else { ("ls_lm_fs", "") };
+/// over it when given. `triplanar`: a library texture covering that many metres a repeat, drawn from three sides by the ground's
+/// slope ([`crate::triplanar`], shader `ls_tp_fs`, its `lsMetres`); else at the mesh's own texture coordinates (`ls_lm_fs`, a
+/// picture over the tile's square).
+pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: Option<f32>) -> String {
+    let (fs, what) = if triplanar.is_some() { ("ls_tp_fs", "drawn from three sides by the slope, ") } else { ("ls_lm_fs", "") };
     let mut s = format!(
         "// NWN Landscaper: {what}lit as usual, the baked shadow map shading the area's sun or moon\ncustomshadervs ls_lm_vs\ncustomshaderfs {fs}\n\
          texture0 {bitmap}\n"
     );
     if let Some(t) = texture7 {
         s += &format!("texture7 {t}\n");
+    }
+    if let Some(metres) = triplanar {
+        s += &format!("parameter float lsMetres {metres:.2}\n");
     }
     s
 }
@@ -797,10 +807,11 @@ mod tests {
 
     #[test]
     fn a_library_texture_s_material_draws_it_triplanar_and_a_picture_s_does_not() {
-        let tp = tile_mtr("ls_grass", Some("a_0102s"), true);
+        let tp = tile_mtr("ls_grass", Some("a_0102s"), Some(4.0));
         assert!(tp.contains("customshaderfs ls_tp_fs\n") && tp.contains("texture0 ls_grass\n") && tp.contains("texture7 a_0102s\n"));
-        let lm = tile_mtr("a_0102t", None, false);
-        assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7"), "{lm}");
+        assert!(tp.contains("parameter float lsMetres 4.00\n"), "the shader's repeat size: {tp}");
+        let lm = tile_mtr("a_0102t", None, None);
+        assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7") && !lm.contains("lsMetres"), "{lm}");
     }
 
     #[test]

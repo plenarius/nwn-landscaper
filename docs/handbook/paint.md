@@ -60,6 +60,10 @@ Every texture repeats every 4 m of ground. The starter set's close-ups of small 
 the stones come out a believable size from the game's camera and at eye level: pebbles and cobbles twice each way, and so are
 brick and plank floors, fieldstone walls and rippled sand. Drawn once across 4 m, a pebble was a foot wide.
 
+The cliff rock, swamp rock and canyon rock repeat every 8 m instead: their fine layers, repeated every 4 m up a 20 m wall,
+blurred into streaks like fur from the game's camera. A texture's `metres` in the library's `catalog.json` sets how much ground
+one repeat covers (4 when it doesn't say).
+
 A library made before this gets the new pictures the next time the Landscaper starts, unless you changed one; it is then
 yours and left alone. For a texture of your own, make its picture cover 4 m of ground.
 

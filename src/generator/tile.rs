@@ -89,8 +89,11 @@ pub(super) fn tile_model(
         if faces.is_empty() {
             return;
         }
-        let triplanar = matches!(mapping, Mapping::Boxed);
-        let props = if shadow || triplanar {
+        let triplanar = match mapping {
+            Mapping::Boxed(metres) => Some(metres),
+            Mapping::Vertex(_) => None,
+        };
+        let props = if shadow || triplanar.is_some() {
             let mat = mtr_name(name, mtrs.len());
             mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), triplanar)));
             format!("  materialname {mat}\n")
@@ -102,14 +105,17 @@ pub(super) fn tile_model(
     match painter {
         None => {
             lit(&mut s, format!("{name}_gnd"), "ttr01_grass02", &ground, Mapping::Vertex(&|v| [(v[0] + ox) / 5.0, (v[1] + oy) / 5.0]));
-            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed);
+            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed(paint::TEXTURE_METRES));
         }
         Some(p) => {
             match p.tile_materials(tx, ty).as_slice() {
                 // An import's picture: baked like several textures.
                 _ if p.baked(tx, ty) => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
                 // One texture: the library's, repeating, drawn from three sides.
-                [m] => lit(&mut s, format!("{name}_gnd"), &paint::resref(&p.hm.palette[*m as usize]), &ground, Mapping::Boxed),
+                [m] => {
+                    let bitmap = paint::resref(&p.hm.palette[*m as usize]);
+                    lit(&mut s, format!("{name}_gnd"), &bitmap, &ground, Mapping::Boxed(p.metres(*m)));
+                }
                 // Several: the tile's own baked texture over its square (baked from three sides, as the one-texture tiles draw it).
                 _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
             }
@@ -128,11 +134,11 @@ pub(super) fn tile_model(
                     // front: the grid's slope fills what they don't cover.)
                     let Some(tiles) = p.textures[*m as usize].tiles.as_ref() else { continue };
                     match tiles.cliffs.get(ty * tiles.width + tx).cloned().flatten() {
-                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed),
+                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed(paint::TEXTURE_METRES)),
                         None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&on_picture)),
                     }
                 } else {
-                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed);
+                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed(p.metres(*m)));
                 }
             }
         }
@@ -165,8 +171,9 @@ pub(super) fn tile_model(
         // (a tile's own picture lies over its square; a texture, from three sides like the steep faces)
         let picture = bitmap == baked_name(tx, ty);
         let mat = mtr_name(name, mtrs.len());
-        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), !picture)));
-        let mapping = if picture { Mapping::Vertex(&on_picture) } else { Mapping::Boxed };
+        let metres = painter.filter(|p| !p.imported(m)).map_or(paint::TEXTURE_METRES, |p| p.metres(m));
+        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), (!picture).then_some(metres))));
+        let mapping = if picture { Mapping::Vertex(&on_picture) } else { Mapping::Boxed(metres) };
         terrain_mesh(
             &mut s,
             &format!("{name}_cw"),
@@ -189,24 +196,25 @@ pub(super) fn tile_model(
                 verts: tris.iter().flatten().map(|v| [v[0] - ox, v[1] - oy, v[2] - base]).collect(),
                 tris: (0..tris.len() as u32).map(|t| [3 * t, 3 * t + 1, 3 * t + 2]).collect(),
             };
-            let flat = |v: [f32; 3]| [(v[0] + ox) / paint::TEXTURE_METRES, (v[1] + oy) / paint::TEXTURE_METRES];
+            // (each texture at its own size a repeat, as the ground round it draws it)
+            let (hill, rock, hill_m, rock_m) = match painter {
+                Some(p) => {
+                    let (bx, by) = e.at(e.depth + 2.0, 0.0);
+                    let h = p.nearest(bx, by);
+                    let r = e
+                        .rock
+                        .as_deref()
+                        .and_then(|r| p.hm.palette.iter().position(|id| id == r))
+                        .map_or_else(|| entrance_rock(p), |i| i as u8);
+                    (paint::resref(&p.hm.palette[h as usize]), paint::resref(&p.hm.palette[r as usize]), p.metres(h), p.metres(r))
+                }
+                None => ("ttr01_grass02".to_string(), "ttr01_rock00".to_string(), paint::TEXTURE_METRES, paint::TEXTURE_METRES),
+            };
+            let flat = |v: [f32; 3]| [(v[0] + ox) / hill_m, (v[1] + oy) / hill_m];
             // Tilted with height, so the underside and the upright lip both take the texture unstretched enough.
             let tilted = |v: [f32; 3]| {
                 let (x, y, z) = (v[0] + ox, v[1] + oy, v[2] + base);
-                [(x + 0.6 * z) / paint::TEXTURE_METRES, (y - 0.4 * z) / paint::TEXTURE_METRES]
-            };
-            let (hill, rock) = match painter {
-                Some(p) => {
-                    let (bx, by) = e.at(e.depth + 2.0, 0.0);
-                    let hill = paint::resref(&p.hm.palette[p.nearest(bx, by) as usize]);
-                    let rock = e
-                        .rock
-                        .as_deref()
-                        .filter(|r| p.hm.palette.iter().any(|id| id == r))
-                        .map_or_else(|| paint::resref(&p.hm.palette[entrance_rock(p) as usize]), paint::resref);
-                    (hill, rock)
-                }
-                None => ("ttr01_grass02".to_string(), "ttr01_rock00".to_string()),
+                [(x + 0.6 * z) / rock_m, (y - 0.4 * z) / rock_m]
             };
             let top = grid(&sc.top);
             // In a cave the roof's top is in the void: black like it.
@@ -215,7 +223,7 @@ pub(super) fn tile_model(
             let rk = grid(&sc.rock);
             if shadow {
                 let mat = mtr_name(name, mtrs.len());
-                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), false)));
+                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), None)));
                 trimesh_full(
                     &mut s,
                     &format!("{name}_e{k}rock"),

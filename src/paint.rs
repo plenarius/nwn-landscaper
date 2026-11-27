@@ -5,8 +5,8 @@
 //! DDS, sampled the way the editor shows them.
 //!
 //! Pictures are kept as [`mg_image::Rgba`], rows bottom first as the game stores them, so texture coordinate v = 0 is the first stored
-//! row; the library PNGs (top row first) are flipped on load. A texture repeats every [`TEXTURE_METRES`] on the ground, north being
-//! the picture's up.
+//! row; the library PNGs (top row first) are flipped on load. A texture repeats every [`TEXTURE_METRES`] on the ground (or its
+//! catalog entry's `metres`: [`Texture::metres`]), north being the picture's up.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -17,8 +17,13 @@ use mg_image::Rgba;
 pub use crate::dds::{dds, half};
 use crate::triplanar;
 
-/// Metres one texture repeat covers on the ground (the editor's too).
+/// Metres one texture repeat covers on the ground (the editor's too), unless its catalog entry says otherwise ([`Texture::metres`]).
 pub const TEXTURE_METRES: f32 = 4.0;
+
+/// The metres a catalog entry's picture covers: its `metres` (1 to 64), else [`TEXTURE_METRES`].
+pub fn metres_of(entry: &serde_json::Value) -> f32 {
+    entry["metres"].as_f64().filter(|m| (1.0..=64.0).contains(m)).map_or(TEXTURE_METRES, |m| m as f32)
+}
 
 /// The Landscaper's data folder: `landscaper` under `XDG_DATA_HOME` (default ~/.local/share; on Windows, which has no `HOME`
 /// unless a shell such as Git Bash sets one, `%LOCALAPPDATA%`, whichever way it is started).
@@ -60,6 +65,9 @@ pub struct Texture {
     pub edge: Edge,
     /// An imported area's ground (`@import:<name>`): a picture per tile, drawn over its square instead of repeating.
     pub tiles: Option<std::sync::Arc<TilePictures>>,
+    /// Metres one repeat of the picture covers ([`metres_of`]): [`TEXTURE_METRES`], or more for a cliff's rock, whose fine layers
+    /// at 4 m blurred into streaks on a tall wall seen from afar.
+    pub metres: f32,
 }
 
 /// How a texture's edge meets another's in a baked tile ([`crate::generator`]'s soft paint): where two meet, broken wins.
@@ -188,12 +196,12 @@ impl Texture {
             return self.ground(p[0], p[1]);
         }
         // (Whole halvings only, rounded down: points at least as close as the picture's own pixels read the picture itself.)
-        let texels = spacing * self.image.width as f32 / TEXTURE_METRES;
+        let texels = spacing * self.image.width as f32 / self.metres;
         let level = if texels >= 2.0 { texels.log2().floor() as usize } else { 0 };
         let w = triplanar::weights(n);
         let mut c = [0.0; 3];
         for (axis, w) in w.into_iter().enumerate().filter(|(_, w)| *w > 0.0) {
-            let [u, v] = triplanar::uv(axis, p);
+            let [u, v] = triplanar::uv(axis, p, self.metres);
             let s = self.sample_level(u, v, level);
             for k in 0..3 {
                 c[k] += s[k] * w;
@@ -204,7 +212,7 @@ impl Texture {
 
     /// Colour at area point (x, y) on level ground.
     pub fn ground(&self, x: f32, y: f32) -> [f32; 3] {
-        let Some((p, tx, ty)) = self.picture_at(x, y) else { return self.sample(x / TEXTURE_METRES, y / TEXTURE_METRES) };
+        let Some((p, tx, ty)) = self.picture_at(x, y) else { return self.sample(x / self.metres, y / self.metres) };
         let (w, h) = (p.width as usize, p.height as usize);
         let fx = ((x - tx as f32 * 10.0) / 10.0 * w as f32 - 0.5).clamp(0.0, w as f32 - 1.0);
         let fy = ((y - ty as f32 * 10.0) / 10.0 * h as f32 - 0.5).clamp(0.0, h as f32 - 1.0);
@@ -270,7 +278,10 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
         let mean = [(sum[0] / count) as f32, (sum[1] / count) as f32, (sum[2] / count) as f32];
         let surface = entry["surface"].as_u64().unwrap_or(3) as u32;
         let smaller = std::sync::Arc::new(halvings(&image));
-        out.insert(id.clone(), Texture { image, smaller, mean, surface, edge: Edge::from_entry(entry), tiles: None });
+        out.insert(
+            id.clone(),
+            Texture { image, smaller, mean, surface, edge: Edge::from_entry(entry), tiles: None, metres: metres_of(entry) },
+        );
     }
     Ok(out)
 }
@@ -339,6 +350,7 @@ fn load_import(name: &str) -> Result<Texture> {
         surface: 3,
         edge: Edge::Crisp,
         tiles: Some(std::sync::Arc::new(TilePictures { width, pictures, cliffs })),
+        metres: TEXTURE_METRES,
     })
 }
 
@@ -466,8 +478,15 @@ mod tests {
     fn points_far_apart_read_a_texture_halved_so_fine_detail_blends() {
         // Black and white stripes a pixel wide: any point of the picture itself is near black or near white.
         let image = picture(512, 512, |x, _| if x % 2 == 0 { [0.0; 3] } else { [1.0; 3] });
-        let t =
-            Texture { smaller: std::sync::Arc::new(halvings(&image)), image, mean: [0.5; 3], surface: 3, edge: Edge::Broken, tiles: None };
+        let t = Texture {
+            smaller: std::sync::Arc::new(halvings(&image)),
+            image,
+            mean: [0.5; 3],
+            surface: 3,
+            edge: Edge::Broken,
+            tiles: None,
+            metres: TEXTURE_METRES,
+        };
         assert_eq!(t.smaller.len(), 9);
         let up = [0.0, 0.0, 1.0];
         // (A quarter of a pixel in: bilinear between two stripes, still mostly one of them.)
