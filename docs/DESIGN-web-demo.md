@@ -157,6 +157,9 @@ other file. Step 6 runs it in the docs workflow. The page holds no file of the g
 - **The texture library:** the first visit builds it from the demo pack's pictures (decoded to PNG in the Worker, then
   `textures init --pictures`) and keeps it in OPFS with the pack's SHA-256; a later visit reads it back, and a new pack builds
   it again.
+- **Links:** `?area=<address>` opens an area file of the site's own (the showcase's Open in Landscaper; `AREA_ORIGINS` in the
+  editor's `js/webdemo.js` lists the origins allowed, for a library of shared areas later). An area of that name already here
+  is kept: the visitor opens theirs, or the link's under a free name. `try/site.json`'s `areaLinks` says the page can.
 - **File:** Download area (the area's JSON) and Open area from a file (asks before replacing an area of its name). Export
   downloads `<area>.zip`: `modules/<module>.mod`, the haks of `hak/`, and a README on where they go and why the area draws
   wrong in the game until it is exported with the game's shaders. The files are stored, not compressed: compressing 15 MB took

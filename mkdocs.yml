@@ -46,6 +46,9 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/showcase.js
+
 plugins:
   - search
   - glightbox:
