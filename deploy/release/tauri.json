@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "resources": {
+      "../bundle-extras/web/": "web/",
+      "../bundle-extras/THIRD-PARTY-LICENSES.html": "THIRD-PARTY-LICENSES.html",
+      "../LICENSE": "LICENSE",
+      "../LICENSES/": "LICENSES/"
+    }
+  }
+}

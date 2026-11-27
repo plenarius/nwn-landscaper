@@ -1,16 +1,19 @@
 name: Release
 
-# Downloads to unzip and start: on a version tag (v0.1.1), builds the Landscaper for Linux (x86-64, in a Debian 12 container, so it
-# runs on glibc 2.36 and newer), Windows (x86-64, signed with Azure Artifact Signing) and macOS (one universal binary for Apple
-# silicon and Intel, signed with a Developer ID and notarized by Apple), packs each with the editor (nwn-landscaper-web at the same
-# tag) in web/ beside the program, starts each package on its own system to check that it serves the editor
-# (scripts/release-smoke.sh), and makes a DRAFT GitHub release with the archives, the engine for the browser (landscaper-wasm.zip,
-# wasm.yml), SHA256SUMS and the complete source with every dependency vendored, as the GPL asks. The release is published by hand.
+# Downloads to install, and to unzip and start: on a version tag (v0.1.1), builds the Landscaper for Linux (x86-64, in a Debian 12
+# container, so it runs on glibc 2.36 and newer), Windows (x86-64, signed with Azure Artifact Signing) and macOS (universal, for
+# Apple silicon and Intel, signed with a Developer ID and notarized by Apple). Each system gets the desktop app's installers
+# (docs/DESIGN-desktop-app.md: NSIS on Windows, a .dmg on macOS, an AppImage and a .deb on Linux), built and signed by Tauri with
+# the engine inside and the editor (nwn-landscaper-web at the same tag) in its web/, and the archive with the program alone and
+# the editor in web/ beside it. Each installer is installed and started, and each archive unpacked and started, on its own system
+# to check that it serves the editor (scripts/app-smoke.sh, scripts/release-smoke.sh). Then it makes a DRAFT GitHub release with
+# the installers, the archives, the engine for the browser (landscaper-wasm.zip, wasm.yml), SHA256SUMS and the complete source
+# with every dependency vendored, as the GPL asks. The release is published by hand.
 #
 # Run by hand (workflow_dispatch), or on a pull request that changes how the releases are made, it builds, packs and checks the
-# same way, with the editor's branch or tag given (default main), and keeps the archives as the run's artifacts; it makes no
-# release, its Windows build is unsigned and its macOS build has only an ad-hoc signature. (GitHub offers workflow_dispatch only
-# for a workflow already on the default branch: the pull request runs test it before then.)
+# same way, with the editor's branch or tag given (default main), and keeps the installers and archives as the run's artifacts; it
+# makes no release, its Windows builds are unsigned and its macOS builds have only an ad-hoc signature. (GitHub offers
+# workflow_dispatch only for a workflow already on the default branch: the pull request runs test it before then.)
 #
 # GitHub's own runners only: this repository is public, and a public repository must never run on a self-hosted runner.
 on:
@@ -26,7 +29,9 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "scripts/release-smoke.sh"
+      - "scripts/app-smoke.sh"
       - "deploy/release/**"
+      - "app/tauri.conf.json"
 
 permissions:
   contents: read
@@ -40,192 +45,12 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    container: rust:1-bookworm
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Tools (glslang, which nwn-bake builds with, needs cmake and a C++ compiler)
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends cmake clang libclang-dev pkg-config git ca-certificates >/dev/null
-      - name: Build
-        run: cargo build --release --locked
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: bin-linux-x86_64
-          path: target/release/landscaper
-
-  windows:
-    runs-on: windows-latest
-    timeout-minutes: 60
-    # The signing identity lives in the release environment, which only v* tags may use; other runs get no environment.
-    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
-    permissions:
-      contents: read
-      id-token: write # the signing step signs in to Azure with GitHub's OIDC token
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Rust (stable)
-        run: rustup toolchain install stable --profile minimal && rustup default stable
-      - name: Build
-        run: cargo build --release --locked
-      - name: Sign with Azure Artifact Signing (version tags)
-        # An Authenticode signature, so SmartScreen and antivirus see a verified publisher. GitHub's OIDC token signs in to
-        # Azure; no signing secret is stored.
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        env:
-          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-        run: |
-          set -euo pipefail
-          JSIGN="$RUNNER_TEMP/jsign-7.6.jar"
-          curl -fsSL -o "$JSIGN" https://github.com/ebourg/jsign/releases/download/7.6/jsign-7.6.jar
-          echo "6cf58aa080e7ff82656f320cff8d4a3bff30408df8766806dcba3740dd839fa5  $JSIGN" | sha256sum -c -
-          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r .value)"
-          echo "::add-mask::${OIDC}"
-          az login --service-principal -u "$AZURE_CLIENT_ID" -t "$AZURE_TENANT_ID" \
-            --federated-token "$OIDC" --allow-no-subscriptions >/dev/null
-          TOKEN="$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)"
-          echo "::add-mask::${TOKEN}"
-          java -jar "$JSIGN" --storetype TRUSTEDSIGNING --keystore eus.codesigning.azure.net \
-            --storepass "$TOKEN" --alias orthartifacts/orthca-public \
-            --tsaurl http://timestamp.acs.microsoft.com --tsmode RFC3161 \
-            target/release/landscaper.exe
-          az logout
-          rm -f "$JSIGN"
-          # Windows' own check: the signature and its chain must be valid before the binary ships.
-          status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature target/release/landscaper.exe).Status")
-          echo "Authenticode: $status"
-          [ "$(echo "$status" | tr -d '\r')" = Valid ]
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: bin-windows-x86_64
-          path: target/release/landscaper.exe
-
-  macos:
-    runs-on: macos-latest
-    # Apple's notary service can take a while, the first submissions of an account most of all.
-    timeout-minutes: 150
-    # The signing secrets live in the release environment, which only v* tags may use; other runs get no environment.
-    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Rust (stable, both targets)
-        run: |
-          rustup toolchain install stable --profile minimal --target aarch64-apple-darwin --target x86_64-apple-darwin
-          rustup default stable
-      - name: Build
-        run: |
-          cargo build --release --locked --target aarch64-apple-darwin
-          cargo build --release --locked --target x86_64-apple-darwin
-          mkdir -p universal
-          lipo -create -output universal/landscaper target/aarch64-apple-darwin/release/landscaper target/x86_64-apple-darwin/release/landscaper
-          # Apple silicon runs nothing unsigned: test builds keep this ad-hoc signature, a version tag replaces it below.
-          codesign --force --sign - universal/landscaper
-          lipo -info universal/landscaper
-      - name: Sign with the Developer ID and notarize (version tags)
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
-          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
-          NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
-          TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          keychain_password=$(openssl rand -hex 24)
-          security create-keychain -p "$keychain_password" "$keychain"
-          # No auto-lock while the notary service is waited for.
-          security set-keychain-settings "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
-          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
-          rm -f "$RUNNER_TEMP/developer-id.p12"
-          # Lets codesign use the key without a prompt no one is there to answer.
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
-          # codesign finds the G2 intermediate only in a keychain on the search list.
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          identity=$(security find-identity -v -p codesigning "$keychain" | awk -v team="($TEAM_ID)\"" '/"Developer ID Application: / && index($0, team) { print $2; exit }')
-          [ -n "$identity" ] || { echo "no Developer ID Application identity for team $TEAM_ID in the certificate" >&2; exit 1; }
-          # Hardened runtime and a secure timestamp: notarization refuses a binary without them.
-          codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$identity" universal/landscaper
-          codesign --verify --strict --verbose=2 universal/landscaper
-          codesign --display --verbose=2 universal/landscaper 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
-
-          # A bare binary can't be stapled: Gatekeeper asks Apple for the ticket online at the first start.
-          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary-key.p8"
-          ditto -c -k --keepParent universal/landscaper "$RUNNER_TEMP/landscaper-notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/landscaper-notarize.zip" \
-            --key "$RUNNER_TEMP/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
-            --wait --timeout 1h --output-format json > "$RUNNER_TEMP/notary.json" || true
-          cat "$RUNNER_TEMP/notary.json"; echo
-          # notarytool's exit code doesn't always tell a refusal; the status does.
-          status=$(plutil -extract status raw -o - "$RUNNER_TEMP/notary.json" 2>/dev/null || echo none)
-          if [ "$status" != Accepted ]; then
-            id=$(plutil -extract id raw -o - "$RUNNER_TEMP/notary.json" 2>/dev/null || true)
-            [ -z "$id" ] || xcrun notarytool log "$id" --key "$RUNNER_TEMP/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" || true
-            echo "notarization: $status" >&2
-            exit 1
-          fi
-      - name: Remove the signing keychain and keys
-        if: always() && startsWith(github.ref, 'refs/tags/v')
-        run: |
-          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8" "$RUNNER_TEMP/landscaper-notarize.zip"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: bin-macos-universal
-          path: universal/landscaper
-
-  source:
+  # What every installer and archive ships beside the program: the editor (web/) and the third-party licences.
+  prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Rust (stable)
-        run: rustup toolchain install stable --profile minimal && rustup default stable
-      - name: Third-party licences
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl -fsSL -o cargo-about.tgz https://github.com/EmbarkStudios/cargo-about/releases/download/0.9.3/cargo-about-0.9.3-x86_64-unknown-linux-musl.tar.gz
-          echo "3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4  cargo-about.tgz" | sha256sum -c
-          mkdir x && tar -xzf cargo-about.tgz -C x
-          install -m 755 "$(find x -type f -name cargo-about | head -n 1)" "$HOME/.cargo/bin/cargo-about"
-          cd "$GITHUB_WORKSPACE"
-          # --fail: a crate whose licence cannot be shipped, or a clarification whose files changed (about.toml), stops the release.
-          cargo about generate --workspace --all-features --fail --locked -o THIRD-PARTY-LICENSES.html about.hbs
-      - name: Source with every dependency
-        run: |
-          set -eu
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          name=nwn-landscaper-$version-source
-          mkdir -p "dist/$name/.cargo"
-          git archive HEAD | tar -x -C "dist/$name"
-          cp THIRD-PARTY-LICENSES.html "dist/$name/"
-          (cd "dist/$name" && cargo vendor --locked vendor-crates > .cargo/config.toml)
-          tar -C dist -czf "$name.tar.gz" "$name"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: source
-          path: |
-            nwn-landscaper-*-source.tar.gz
-            THIRD-PARTY-LICENSES.html
-
-  # The engine for the browser: wasm.yml's build, kept as landscaper-wasm.zip.
-  wasm:
-    uses: ./.github/workflows/wasm.yml
-
-  package:
-    needs: [linux, windows, macos, source, wasm]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.web.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Which editor
@@ -249,24 +74,344 @@ jobs:
           repository: plenarius/nwn-landscaper-web
           ref: ${{ steps.web.outputs.ref }}
           path: nwn-landscaper-web
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          path: artifacts
-      - name: Archives and SHA256SUMS
-        env:
-          VERSION: ${{ steps.web.outputs.version }}
+          persist-credentials: false
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Third-party licences (the engine's and the app's)
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o cargo-about.tgz https://github.com/EmbarkStudios/cargo-about/releases/download/0.9.3/cargo-about-0.9.3-x86_64-unknown-linux-musl.tar.gz
+          echo "3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4  cargo-about.tgz" | sha256sum -c
+          mkdir x && tar -xzf cargo-about.tgz -C x
+          install -m 755 "$(find x -type f -name cargo-about | head -n 1)" "$HOME/.cargo/bin/cargo-about"
+          cd "$GITHUB_WORKSPACE"
+          # --fail: a crate whose licence cannot be shipped, or a clarification whose files changed (about.toml), stops the release.
+          cargo about generate --workspace --all-features --fail --locked -o THIRD-PARTY-LICENSES.html about.hbs
+      - name: The editor
         run: |
           set -eu
           # The editor needs no build step: the page, its styles, scripts and vendored libraries, with its licences.
-          mkdir web
-          (cd nwn-landscaper-web && cp -r index.html css js vendor LICENSE LICENSES README.md CHANGELOG.md REUSE.toml ../web/)
+          mkdir -p bundle-extras/web
+          (cd nwn-landscaper-web && cp -r index.html css js vendor LICENSE LICENSES README.md CHANGELOG.md REUSE.toml ../bundle-extras/web/)
+          cp THIRD-PARTY-LICENSES.html bundle-extras/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extras
+          path: bundle-extras/
+
+  linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    container: rust:1-bookworm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tools (glslang, which nwn-bake builds with, needs cmake and a C++ compiler; the app needs WebKitGTK)
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends cmake clang libclang-dev pkg-config git ca-certificates \
+            libwebkit2gtk-4.1-dev libxdo-dev file >/dev/null
+      - name: Build
+        run: cargo build --release --locked
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extras
+          path: bundle-extras
+      - name: The app (an AppImage and a .deb)
+        shell: bash
+        env:
+          # No FUSE in the container: Tauri's AppImage tools unpack themselves and run from there.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          deploy/release/tauri-cli.sh
+          cargo tauri build --ci --bundles appimage,deb --config deploy/release/tauri.json
+          # Named as the archives are (Tauri names them after the app, with a space); the .deb as Debian names packages.
+          mkdir app-out
+          cp target/release/bundle/appimage/*.AppImage "app-out/nwn-landscaper-$VERSION-linux-x86_64.AppImage"
+          cp target/release/bundle/deb/*.deb "app-out/nwn-landscaper_${VERSION}_amd64.deb"
+          ls -l app-out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-linux-x86_64
+          path: target/release/landscaper
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-linux-x86_64
+          path: app-out/
+
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # The signing identity lives in the release environment, which only v* tags may use; other runs get no environment.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    permissions:
+      contents: read
+      id-token: write # the signing step signs in to Azure with GitHub's OIDC token
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Build
+        run: cargo build --release --locked
+      - name: Sign in to Azure Artifact Signing (version tags)
+        # An Authenticode signature, so SmartScreen and antivirus see a verified publisher. GitHub's OIDC token signs in to
+        # Azure; no signing secret is stored. The access token (about an hour) signs the program here and, through Tauri, the
+        # app's program, installer and uninstaller below; jsign reads it from a file, so no command line carries it.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          JSIGN="$RUNNER_TEMP/jsign-7.6.jar"
+          curl -fsSL -o "$JSIGN" https://github.com/ebourg/jsign/releases/download/7.6/jsign-7.6.jar
+          echo "6cf58aa080e7ff82656f320cff8d4a3bff30408df8766806dcba3740dd839fa5  $JSIGN" | sha256sum -c -
+          OIDC="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r .value)"
+          echo "::add-mask::${OIDC}"
+          az login --service-principal -u "$AZURE_CLIENT_ID" -t "$AZURE_TENANT_ID" \
+            --federated-token "$OIDC" --allow-no-subscriptions >/dev/null
+          TOKEN="$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)"
+          echo "::add-mask::${TOKEN}"
+          az logout
+          printf '%s' "$TOKEN" > "$RUNNER_TEMP/azure-token"
+          # Tauri's sign command (bundle.windows.signCommand): today's jsign line, %1 being each file Tauri signs.
+          jq -n --arg java "$(cygpath -w "$(command -v java)")" --arg jsign "$(cygpath -w "$JSIGN")" \
+            --arg token "file:$(cygpath -w "$RUNNER_TEMP/azure-token")" \
+            '{bundle: {windows: {signCommand: {cmd: $java, args: ["-jar", $jsign, "--storetype", "TRUSTEDSIGNING",
+              "--keystore", "eus.codesigning.azure.net", "--storepass", $token, "--alias", "orthartifacts/orthca-public",
+              "--tsaurl", "http://timestamp.acs.microsoft.com", "--tsmode", "RFC3161", "%1"]}}}}' > "$RUNNER_TEMP/tauri-sign.json"
+      - name: Sign the program (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -jar "$RUNNER_TEMP/jsign-7.6.jar" --storetype TRUSTEDSIGNING --keystore eus.codesigning.azure.net \
+            --storepass "file:$RUNNER_TEMP/azure-token" --alias orthartifacts/orthca-public \
+            --tsaurl http://timestamp.acs.microsoft.com --tsmode RFC3161 \
+            target/release/landscaper.exe
+          # Windows' own check: the signature and its chain must be valid before the binary ships.
+          status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature target/release/landscaper.exe).Status")
+          echo "Authenticode: $status"
+          [ "$(echo "$status" | tr -d '\r')" = Valid ]
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extras
+          path: bundle-extras
+      - name: The app (an NSIS installer, per user; Tauri signs it on version tags)
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          deploy/release/tauri-cli.sh
+          sign=()
+          [ ! -f "$RUNNER_TEMP/tauri-sign.json" ] || sign=(--config "$RUNNER_TEMP/tauri-sign.json")
+          cargo tauri build --ci --bundles nsis --config deploy/release/tauri.json "${sign[@]}"
+          mkdir app-out
+          cp target/release/bundle/nsis/*-setup.exe "app-out/nwn-landscaper-$VERSION-windows-x86_64-setup.exe"
+          ls -l app-out
+          if [ "${#sign[@]}" -gt 0 ]; then
+            for f in app-out/*-setup.exe target/release/nwn-landscaper.exe; do
+              status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature '$f').Status" | tr -d '\r')
+              echo "Authenticode, $f: $status"
+              [ "$status" = Valid ]
+            done
+          fi
+      - name: Remove the signing token (version tags)
+        if: always() && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/azure-token" "$RUNNER_TEMP/tauri-sign.json" "$RUNNER_TEMP/jsign-7.6.jar"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-windows-x86_64
+          path: target/release/landscaper.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-windows-x86_64
+          path: app-out/
+
+  macos:
+    needs: prepare
+    runs-on: macos-latest
+    # Apple's notary service can take a while, the first submissions of an account most of all.
+    timeout-minutes: 150
+    # The signing secrets live in the release environment, which only v* tags may use; other runs get no environment.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust (stable, both targets)
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-apple-darwin --target x86_64-apple-darwin
+          rustup default stable
+      - name: Build
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          mkdir -p universal
+          lipo -create -output universal/landscaper target/aarch64-apple-darwin/release/landscaper target/x86_64-apple-darwin/release/landscaper
+          # Apple silicon runs nothing unsigned: test builds keep this ad-hoc signature, a version tag replaces it below.
+          codesign --force --sign - universal/landscaper
+          lipo -info universal/landscaper
+      - name: The signing keychain (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          security create-keychain -p "$keychain_password" "$keychain"
+          # No auto-lock while the notary service is waited for.
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          # Lets codesign use the key without a prompt no one is there to answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          # codesign finds the G2 intermediate only in a keychain on the search list.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk -v team="($TEAM_ID)\"" '/"Developer ID Application: / && index($0, team) { print $2; exit }')
+          [ -n "$identity" ] || { echo "no Developer ID Application identity for team $TEAM_ID in the certificate" >&2; exit 1; }
+          # (The certificate's SHA-1, for the steps below: not a secret.)
+          echo "SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary-key.p8"
+      - name: Sign the program with the Developer ID and notarize it (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NOTARY_KEY_PATH: ${{ runner.temp }}/notary-key.p8
+          NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # Hardened runtime and a secure timestamp: notarization refuses a binary without them.
+          codesign --force --options runtime --timestamp --keychain "$RUNNER_TEMP/signing.keychain-db" --sign "$SIGNING_IDENTITY" universal/landscaper
+          codesign --verify --strict --verbose=2 universal/landscaper
+          codesign --display --verbose=2 universal/landscaper 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
+          # A bare binary can't be stapled: Gatekeeper asks Apple for the ticket online at the first start.
+          ditto -c -k --keepParent universal/landscaper "$RUNNER_TEMP/landscaper-notarize.zip"
+          deploy/release/notarize.sh "$RUNNER_TEMP/landscaper-notarize.zip"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extras
+          path: bundle-extras
+      - name: The app (universal, in a .dmg; Tauri signs, notarizes and staples it on version tags)
+        env:
+          # Tauri notarizes with the same App Store Connect key, and staples the ticket to the app.
+          APPLE_API_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && vars.APPLE_NOTARY_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ startsWith(github.ref, 'refs/tags/v') && vars.APPLE_NOTARY_ISSUER_ID || '' }}
+          APPLE_API_KEY_PATH: ${{ startsWith(github.ref, 'refs/tags/v') && format('{0}/notary-key.p8', runner.temp) || '' }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          deploy/release/tauri-cli.sh
+          # The Developer ID on version tags (with the hardened runtime, Tauri's default), else an ad-hoc signature: Apple
+          # silicon runs nothing unsigned.
+          identity=${SIGNING_IDENTITY:--}
+          [ -n "$APPLE_API_KEY" ] || unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+          cargo tauri build --ci --target universal-apple-darwin --bundles app,dmg --config deploy/release/tauri.json \
+            --config "{\"bundle\": {\"macOS\": {\"signingIdentity\": \"$identity\"}}}"
+          mkdir app-out
+          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "app-out/nwn-landscaper-$VERSION-macos-universal.dmg"
+          ls -l app-out
+      - name: Notarize and staple the .dmg (version tags)
+        # The app inside has its ticket already; the .dmg gets its own, so Gatekeeper checks the download offline too.
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NOTARY_KEY_PATH: ${{ runner.temp }}/notary-key.p8
+          NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          dmg=$(ls app-out/*.dmg)
+          codesign --verify --strict --verbose=2 "$dmg"
+          deploy/release/notarize.sh "$dmg"
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+      - name: Remove the signing keychain and keys
+        if: always() && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8" "$RUNNER_TEMP/landscaper-notarize.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bin-macos-universal
+          path: universal/landscaper
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: app-macos-universal
+          path: app-out/
+
+  # The engine's and the app's source (app/ is in the workspace, so the vendored crates hold Tauri's too).
+  source:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extras
+          path: bundle-extras
+      - name: Source with every dependency
+        run: |
+          set -eu
+          cp bundle-extras/THIRD-PARTY-LICENSES.html .
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          name=nwn-landscaper-$version-source
+          mkdir -p "dist/$name/.cargo"
+          git archive HEAD | tar -x -C "dist/$name"
+          cp THIRD-PARTY-LICENSES.html "dist/$name/"
+          (cd "dist/$name" && cargo vendor --locked vendor-crates > .cargo/config.toml)
+          # The app's crates are in it, so the app builds from it offline as the engine does.
+          for crate in tauri tauri-build wry; do ls -d "dist/$name/vendor-crates/$crate" >/dev/null; done
+          grep -qx 'members = \["app"\]' "dist/$name/Cargo.toml"
+          tar -C dist -czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source
+          path: nwn-landscaper-*-source.tar.gz
+
+  # The engine for the browser: wasm.yml's build, kept as landscaper-wasm.zip.
+  wasm:
+    uses: ./.github/workflows/wasm.yml
+
+  package:
+    needs: [prepare, linux, windows, macos, source, wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+      - name: Installers, archives and SHA256SUMS
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -eu
+          cp -r artifacts/extras/web web
           mkdir dist
+          # The app's installers.
+          cp artifacts/app-windows-x86_64/* artifacts/app-macos-universal/* artifacts/app-linux-x86_64/* dist/
           pack() { # <platform> <binary> <zip|tar>
             dir="nwn-landscaper-$VERSION-$1"
             mkdir "$dir"
             cp "$2" "$dir/"
             chmod +x "$dir/$(basename "$2")"
-            cp -r web LICENSE LICENSES README.md CHANGELOG.md artifacts/source/THIRD-PARTY-LICENSES.html "$dir/"
+            cp -r web LICENSE LICENSES README.md CHANGELOG.md artifacts/extras/THIRD-PARTY-LICENSES.html "$dir/"
             cp deploy/release/QUICKSTART.md "$dir/QUICKSTART.txt"
             if [ "$3" = zip ]; then zip -qr "dist/$dir.zip" "$dir"; else tar -czf "dist/$dir.tar.gz" "$dir"; fi
           }
@@ -290,11 +435,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, platform: linux-x86_64, ext: tar.gz }
-          - { os: windows-latest, platform: windows-x86_64, ext: zip }
-          - { os: macos-latest, platform: macos-universal, ext: tar.gz }
+          - { os: ubuntu-latest, platform: linux-x86_64, ext: tar.gz, installers: "amd64.deb linux-x86_64.AppImage" }
+          - { os: windows-latest, platform: windows-x86_64, ext: zip, installers: "windows-x86_64-setup.exe" }
+          - { os: macos-latest, platform: macos-universal, ext: tar.gz, installers: "macos-universal.dmg" }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -311,6 +456,25 @@ jobs:
           mkdir unpacked
           if [ "${{ matrix.ext }}" = zip ]; then 7z x -y -ounpacked "$archive" >/dev/null; else tar -xzf "$archive" -C unpacked; fi
           scripts/release-smoke.sh "$(ls -d unpacked/nwn-landscaper-*)"
+      - name: The display and screenshot tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends xvfb xauth dbus-x11 imagemagick >/dev/null
+      - name: Install the app and start it (a stand-in game folder, so it starts its engine)
+        env:
+          # A version tag's installers must be signed (and on macOS notarized and stapled) as well.
+          APP_SMOKE_SIGNED: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+        run: |
+          set -eu
+          mkdir -p screens
+          for kind in ${{ matrix.installers }}; do
+            scripts/app-smoke.sh "$(ls dist/nwn-landscaper*$kind)" 180 "screens/$kind.png"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: screens-${{ matrix.platform }}
+          path: screens/
+          if-no-files-found: ignore
 
   release:
     needs: [package, smoke]

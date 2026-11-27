@@ -4,3 +4,5 @@ nwn-landscaper-web/
 site/
 __pycache__/
 docs/assets/showcase/clips/
+bundle-extras/
+app-out/
