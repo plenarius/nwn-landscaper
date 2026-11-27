@@ -138,7 +138,8 @@ impl Library {
         paint::write_png(&self.dir.join(&small), &swatch)?;
         let entry = json!({
             "id": spec.id, "name": spec.name, "category": spec.category, "source": source, "file": file, "render": file, "swatch": small,
-            "surface": spec.surface, "size": [render.width, render.height], "original": original,
+            "surface": spec.surface, "edge": paint::edge_for(&spec.category).name(), "size": [render.width, render.height],
+            "original": original,
         });
         match self.entries.iter().position(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(&spec.id))) {
             Some(at) => self.entries[at] = entry,
