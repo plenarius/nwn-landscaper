@@ -85,6 +85,7 @@ nav:
   - Handbook:
       - handbook/index.md
       - Getting started: handbook/getting-started.md
+      - Try it in your browser: handbook/try.md
       - Terrain: handbook/terrain.md
       - Paint and the mix brush: handbook/paint.md
       - Caves and interiors: handbook/caves.md

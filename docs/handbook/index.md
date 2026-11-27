@@ -18,4 +18,5 @@ The order follows the work on an area:
 11. **[Export](export.md):** the area into the game, and the path check.
 12. **[Publish and teams](publish.md):** hand the area over, alone or on a team server.
 
-[The whole path](../BUILDER-WORKFLOW.md) is the same work on one page, with every rule and limit.
+[The whole path](../BUILDER-WORKFLOW.md) is the same work on one page, with every rule and limit. To try the editor without
+installing anything, [try it in your browser](try.md).
