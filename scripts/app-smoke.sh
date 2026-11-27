@@ -66,11 +66,12 @@ answers && { echo "app-smoke: something already answers on $port" >&2; exit 1; }
 
 case "$installer" in
     *.exe)
-        # Per user, with no administrator: %LOCALAPPDATA%\NWN Landscaper.
-        "$installer" /S
+        # Per user, with no administrator: %LOCALAPPDATA%\NWN Landscaper. (//S: Git's bash would turn /S into a path, and the
+        # installer would wait for clicks.)
+        timeout 300 "$installer" //S
         dir="$(cygpath -u "$LOCALAPPDATA")/NWN Landscaper"
         for f in "$dir"/*.exe; do case "$f" in *uninstall.exe) ;; *) exe=$f ;; esac; done
-        uninstall() { "$dir/uninstall.exe" /S; }
+        uninstall() { timeout 120 "$dir/uninstall.exe" //S; }
         uninstall=uninstall
         [ -f "$dir/web/index.html" ] || { echo "app-smoke: no web/ beside the program" >&2; exit 1; }
         for f in "$installer" "$exe" "$dir/uninstall.exe"; do
