@@ -83,6 +83,8 @@ pub(super) fn tile_model(
     // The shadow map's coordinates (tverts1): the tile's square, as the colour's. Checked in game 2026-10-20 with
     // LS_SHADOW_DEBUG=half: each tile's dark south half lay south of a pillar standing on a tile corner.
     let shadow_uv = square;
+    // A baked picture's: the square inside its margin (painter.rs, `BAKE_MARGIN`).
+    let on_picture = |v: [f32; 3]| super::painter::picture_uv(square(v));
     let mut lit = |s: &mut String, node: String, bitmap: &str, faces: &[[u32; 3]], mapping: Mapping<'_>| {
         if faces.is_empty() {
             return;
@@ -105,11 +107,11 @@ pub(super) fn tile_model(
         Some(p) => {
             match p.tile_materials(tx, ty).as_slice() {
                 // An import's picture: baked like several textures.
-                _ if p.baked(tx, ty) => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&square)),
+                _ if p.baked(tx, ty) => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
                 // One texture: the library's, repeating, drawn from three sides.
                 [m] => lit(&mut s, format!("{name}_gnd"), &paint::resref(&p.hm.palette[*m as usize]), &ground, Mapping::Boxed),
                 // Several: the tile's own baked texture over its square (baked from three sides, as the one-texture tiles draw it).
-                _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&square)),
+                _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
             }
             // Steep faces: each one's texture from split.rs, else the texture painted nearest the face's middle.
             let mut by_material: std::collections::BTreeMap<u8, Vec<[u32; 3]>> = Default::default();
@@ -127,7 +129,7 @@ pub(super) fn tile_model(
                     let Some(tiles) = p.textures[*m as usize].tiles.as_ref() else { continue };
                     match tiles.cliffs.get(ty * tiles.width + tx).cloned().flatten() {
                         Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed),
-                        None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&square)),
+                        None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&on_picture)),
                     }
                 } else {
                     lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed);
@@ -164,7 +166,7 @@ pub(super) fn tile_model(
         let picture = bitmap == baked_name(tx, ty);
         let mat = mtr_name(name, mtrs.len());
         mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), !picture)));
-        let mapping = if picture { Mapping::Vertex(&square) } else { Mapping::Boxed };
+        let mapping = if picture { Mapping::Vertex(&on_picture) } else { Mapping::Boxed };
         terrain_mesh(
             &mut s,
             &format!("{name}_cw"),
