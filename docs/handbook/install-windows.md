@@ -6,8 +6,7 @@ The Windows installer puts the Landscaper in for you alone: no administrator, no
 
 1. Download `nwn-landscaper-0.7.0-windows-x86_64-setup.exe` from the
    [releases](https://github.com/plenarius/nwn-landscaper/releases).
-2. Run it. The installer and the program in it are signed, so Windows names a verified publisher. If SmartScreen still says it
-   protected your PC, click **More info**, then **Run anyway**.
+2. Run it. If SmartScreen says it protected your PC, click **More info**, then **Run anyway**.
 3. It installs into `%LOCALAPPDATA%\NWN Landscaper` and adds **NWN Landscaper** to the Start menu.
 
 The window draws with WebView2, Microsoft Edge's engine, which Windows 10 and 11 have. When it is missing, the installer downloads

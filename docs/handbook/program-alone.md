@@ -18,8 +18,7 @@ editor in your own browser. To build areas on your own computer, [the app](getti
 3. Your browser opens the editor at `http://127.0.0.1:8765/` (or the next free port, which the window names). Keep the window
    open while you work; close it, or press Ctrl+C in it, to stop the Landscaper.
 
-The Windows program is signed, so SmartScreen sees a verified publisher. The macOS program is signed and notarized: the first
-start asks whether to open a program downloaded from the internet, and needs to reach Apple's server once.
+On macOS the first start asks whether to open a program downloaded from the internet, and needs to reach Apple's server once.
 
 When it can't find the game, the window says what to set: `NWN_ROOT` for the game's folder and `NWN_HOME` for your user folder.
 It also reads the folders [the app](first-start.md) saved, if you used it. `QUICKSTART.txt` in the archive has the details.

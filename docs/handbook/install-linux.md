@@ -36,7 +36,7 @@ A window opens on *Starting the Landscaper…*, then shows the editor. The first
 folder if it can't find it: [The first start](first-start.md). Only one copy runs: starting it again brings its window forward.
 Close the window to stop it, engine and all.
 
-The Linux downloads aren't signed: check them against `SHA256SUMS` on the release page (`sha256sum -c SHA256SUMS
+Check the downloads against `SHA256SUMS` on the release page (`sha256sum -c SHA256SUMS
 --ignore-missing` in the download folder).
 
 ## If the window stays blank

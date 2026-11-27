@@ -9,9 +9,6 @@ The Landscaper for macOS is one app for Apple silicon and Intel Macs, on macOS 1
 2. Open it and drag **NWN Landscaper** onto **Applications**.
 3. Eject the disk image.
 
-The app and the `.dmg` are signed with a Developer ID and notarized by Apple, with Apple's ticket attached, so macOS checks them
-without going online.
-
 ## Start it
 
 Start **NWN Landscaper** from Applications or Launchpad. The first time, macOS asks whether to open an app downloaded from the
