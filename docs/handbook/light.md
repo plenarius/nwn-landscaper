@@ -25,6 +25,10 @@ panels: picking a tool closes it, and `L` opens it again.
   scattered). It shades only the sun's or the moon's light: a tile light, a torch or a glowing mesh in a tree's shade keeps its
   full light.
 
+**The sun's side.** The game's sun and moon always shine from the north-east, high up, whatever the hour: a cliff facing south
+or west is never in the sun. Such ground takes the area's **Shade** light and some of the sun's or the moon's bounced off the
+ground below it, so it reads as rock in shade rather than black. For a sunlit cliff face, face it north or east.
+
 ## Paint the tiles' lights
 
 ![The Light tool: Torchlight on every tile of a cave](../assets/handbook/light-tool.webp)

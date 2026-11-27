@@ -114,7 +114,8 @@ fn stamp() -> Result<String> {
 /// other. Where nothing else lights the ground, this is the stock colour times the shadow map, as before.
 ///
 /// - `ls_lighting`: inc_lighting with the area's ambient and diffuse colours multiplied by `lsAreaShade` (1 unless a shader sets
-///   it). Included before `inc_standard`, it takes stock's place (same include guard).
+///   it), and steep ground given some of the sun or moon bounced off the ground ([`BOUNCE`]). Included before `inc_standard`, it
+///   takes stock's place (same include guard).
 /// - `ls_lm_vs`: vslit, passing the second texture coordinates (MDL tverts1) on to the fragment shader. Lit per vertex (the game's
 ///   "Minimal" shader setting), it lights each vertex a second time without the area's light, for the fragment shader to blend.
 /// - `ls_lm_fs`: fslit, its area light shaded by the shadow map at those coordinates: lit per fragment, through `lsAreaShade`;
@@ -196,7 +197,19 @@ fn patch_lighting(stock: &str) -> Result<String> {
             "highp vec3 lsAreaShade = vec3(1.0);",
         ],
     )?;
-    let s = replace_line(&s, name, "AmbientLight = lightAreaAmbient;", &["AmbientLight = lightAreaAmbient * lsAreaShade;"])?;
+    let bounce = format!(
+        "AmbientLight = (lightAreaAmbient + lightAreaDiffuse * ({:.2} * (1.0 - normalize(mat3(m_view_inv) * vNormalThis).z))) * lsAreaShade;",
+        BOUNCE / 2.0
+    );
+    let s = replace_line(
+        &s,
+        name,
+        "AmbientLight = lightAreaAmbient;",
+        &[
+            "// The area's ambient light, and the sun's or moon's bounced off the ground onto steep ground (the Landscaper's shared.rs).",
+            &bounce,
+        ],
+    )?;
     let s = replace_line(
         &s,
         name,
@@ -205,6 +218,11 @@ fn patch_lighting(stock: &str) -> Result<String> {
     )?;
     Ok(made_from(name) + &s)
 }
+
+/// How much of the area's sun or moon a vertical face takes back from the ground (half of it; none on flat ground). The game
+/// lights ground turned from its fixed sun with the ambient light alone, a dim blue by day, so a cliff on that side came out near
+/// black; real ones are lit by the sunlit ground below them.
+pub const BOUNCE: f32 = 0.5;
 
 /// Includes [`LIGHTING`] in place of the stock lighting, which `inc_standard` then skips.
 fn include_lighting(text: &str, name: &str) -> Result<String> {
@@ -411,7 +429,7 @@ mod tests {
             "highp vec3 lsAreaShade = vec3(1.0);",
             "void ComputeLighting(inout vec4 ColorIO, vec3 vNormalThis)",
             "{",
-            "AmbientLight = lightAreaAmbient * lsAreaShade;",
+            "AmbientLight = (lightAreaAmbient + lightAreaDiffuse * (0.25 * (1.0 - normalize(mat3(m_view_inv) * vNormalThis).z))) * lsAreaShade;",
             "ComputeDiffuseLighting(lightAreaDiffuse * lsAreaShade, lightAreaDiffuseDirection, vNormalThis, 1.0, false);",
             "for (int i = 0; i < numLights; i++) {}",
             "}",

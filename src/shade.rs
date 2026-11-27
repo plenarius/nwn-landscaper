@@ -45,6 +45,18 @@ fn cast_shadow(x: f32, y: f32, z: f32, height: &dyn Fn(f32, f32) -> f32) -> f32 
     dark
 }
 
+/// How far the ground at (x, y) turns towards the sun, against flat ground: 1 flat or turned to it, 0 turned away. The game lights
+/// ground turned away with the area's ambient light alone, so a cast shadow has nothing more to take from it: shading it again
+/// left a cliff on the side away from the sun near black.
+fn facing(x: f32, y: f32, height: &dyn Fn(f32, f32) -> f32) -> f32 {
+    const D: f32 = 0.5;
+    let gx = (height(x + D, y) - height(x - D, y)) / (2.0 * D);
+    let gy = (height(x, y + D) - height(x, y - D)) / (2.0 * D);
+    let s = sun();
+    let n_dot_l = (s[2] - gx * s[0] - gy * s[1]) / (gx * gx + gy * gy + 1.0).sqrt();
+    (n_dot_l / s[2]).clamp(0.0, 1.0)
+}
+
 /// How much of the sky the terrain around (x, y) hides: 0 open, 1 closed.
 fn occlusion(x: f32, y: f32, z: f32, height: &dyn Fn(f32, f32) -> f32) -> f32 {
     const STEPS: [f32; 8] = [0.5, 1.0, 1.75, 2.75, 4.0, 6.0, 9.0, 13.0];
@@ -150,11 +162,11 @@ pub fn sky_through(occ: &crate::occluders::Occluders, x: f32, y: f32, texel: f32
         / SKY_RAYS as f32
 }
 
-/// What the terrain does to (x, y): how much of the sun it hides ([`cast_shadow`], 0 with `sun` false: underground) and of the sky
-/// ([`occlusion`]). Smooth: fine to interpolate.
+/// What the terrain does to (x, y): how much of the sun it hides ([`cast_shadow`], as far as the ground faces the sun:
+/// [`facing`]; 0 with `sun` false: underground) and of the sky ([`occlusion`]). Smooth: fine to interpolate.
 pub fn terrain(x: f32, y: f32, sun: bool, height: &dyn Fn(f32, f32) -> f32) -> [f32; 2] {
     let z = height(x, y);
-    [if sun { cast_shadow(x, y, z, height) } else { 0.0 }, occlusion(x, y, z, height)]
+    [if sun { cast_shadow(x, y, z, height) * facing(x, y, height) } else { 0.0 }, occlusion(x, y, z, height)]
 }
 
 /// The shadow-map value from [`terrain`]'s two and what objects let through: 1 unshaded, darker in shadow; `strength` 0 (none) to 1.
@@ -190,5 +202,19 @@ mod tests {
         // Flat open ground is untouched; strength 0 leaves everything.
         assert_eq!(shade_lit(60.0, 10.0, 1.0, true, &|_, _| 0.0), 1.0);
         assert_eq!(shade_lit(18.0, 10.0, 0.0, true, &h), 1.0);
+    }
+
+    #[test]
+    fn a_face_turned_from_the_sun_is_shaded_only_by_the_sky_it_loses() {
+        // A 70 degree face rising to the north (facing south, away from the sun): the game gives it ambient light only, so its
+        // shadow map darkens that by its occlusion, not by the shadow it casts on itself as well.
+        let h = |_x: f32, y: f32| ((y - 10.0) * 2.75).clamp(0.0, 7.0);
+        let on_face = 10.0 + 3.5 / 2.75;
+        let [cast, hidden] = terrain(20.0, on_face, true, &h);
+        assert_eq!(cast, 0.0, "{cast}");
+        assert!(shade_lit(20.0, on_face, 1.0, true, &h) > 0.6, "{hidden}");
+        // A face rising to the south (facing north, towards the sun) still takes nearly all of a cast shadow.
+        let f = facing(20.0, 10.0 + 3.5 / 2.75, &|_x, y| ((10.0 + 7.0 / 2.75 - y) * 2.75).clamp(0.0, 7.0));
+        assert!(f > 0.9, "{f}");
     }
 }
