@@ -30,6 +30,12 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-docs.txt
       - run: pip install -r requirements-docs.txt
+      # The showcase clips: files on the "showcase" release, copied into the site so Pages serves them as video (a release
+      # serves them as downloads). Not in the repository; a missing release leaves the cards with their stills.
+      - name: Showcase clips
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download showcase --repo "$GITHUB_REPOSITORY" --pattern '*.mp4' --dir docs/assets/showcase/clips || echo "no showcase release"
       - run: mkdocs build --strict
         env:
           NO_MKDOCS_2_WARNING: "1"

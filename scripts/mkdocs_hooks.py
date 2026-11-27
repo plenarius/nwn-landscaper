@@ -47,6 +47,8 @@ def gallery(entries, up):
         title = html.escape(e["title"])
         still = html.escape(up + e["still"]) if e.get("still") else ""
         clip = e.get("clip", "")
+        if clip and not re.match(r"[a-z]+:", clip):
+            clip = up + clip
         text = html.escape(e.get("text", ""))
         if clip.lower().endswith(VIDEO):
             media = (
