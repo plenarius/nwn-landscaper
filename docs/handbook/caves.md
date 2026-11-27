@@ -23,6 +23,9 @@ In an interior the walls stand upright on the room's edge, in the game and in th
 room's edge and turn it into the wall's line: it sits flush from the floor to its top. A door pushed a little into a wall goes
 onto the wall's line; any other thing pushed into a wall stands on the floor at its foot.
 
+A wall takes the paint of the rock above it from the floor to the top, and the floor keeps its own paint up to the wall. A drop
+between two floors takes the upper floor's paint the same way.
+
 ## Ramps and stairs
 
 **Ramp** (`p`): drag from one level to another. The brush size sets the width (6 m at least). It rises to where you let go, or by
