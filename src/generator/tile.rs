@@ -95,7 +95,8 @@ pub(super) fn tile_model(
         };
         let props = if shadow || look != Look::Plain {
             let mat = mtr_name(name, mtrs.len());
-            mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), look)));
+            let relief = painter.map_or(0.0, |p| p.relief(bitmap, tx, ty));
+            mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), look, relief)));
             format!("  materialname {mat}\n")
         } else {
             String::new()
@@ -168,7 +169,7 @@ pub(super) fn tile_model(
         // (a tile's own picture lies over its square; a texture, from three sides like the steep faces)
         let picture = bitmap == baked_name(tx, ty);
         let mat = mtr_name(name, mtrs.len());
-        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), if picture { Look::Plain } else { Look::Triplanar })));
+        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), if picture { Look::Plain } else { Look::Triplanar }, 0.0)));
         let mapping = if picture { Mapping::Vertex(&square) } else { Mapping::Boxed };
         terrain_mesh(
             &mut s,
@@ -218,7 +219,7 @@ pub(super) fn tile_model(
             let rk = grid(&sc.rock);
             if shadow {
                 let mat = mtr_name(name, mtrs.len());
-                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), Look::Plain)));
+                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), Look::Plain, 0.0)));
                 trimesh_full(
                     &mut s,
                     &format!("{name}_e{k}rock"),

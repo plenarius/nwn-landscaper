@@ -326,7 +326,7 @@ fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, Str
 /// model `model`; its `materialname` line.
 fn triplanar(model: &str, bitmap: &str, mtrs: &mut Vec<(String, String)>) -> String {
     let mat = mtr_name(model, mtrs.len());
-    mtrs.push((mat.clone(), tile_mtr(bitmap, None, Look::Triplanar)));
+    mtrs.push((mat.clone(), tile_mtr(bitmap, None, Look::Triplanar, 0.0)));
     format!("  materialname {mat}\n")
 }
 

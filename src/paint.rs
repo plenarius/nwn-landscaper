@@ -58,6 +58,9 @@ pub struct Texture {
     pub surface: u32,
     /// How its edge meets another texture's in a baked tile (the catalog's `edge`).
     pub edge: Edge,
+    /// How high its lightest parts stand over its darkest in the game's light (m): the catalog's `relief`, else the starter
+    /// texture's it was made from ([`crate::textures::starter_relief`]).
+    pub relief: f32,
     /// An imported area's ground (`@import:<name>`): a picture per tile, drawn over its square instead of repeating.
     pub tiles: Option<std::sync::Arc<TilePictures>>,
 }
@@ -270,7 +273,11 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
         let mean = [(sum[0] / count) as f32, (sum[1] / count) as f32, (sum[2] / count) as f32];
         let surface = entry["surface"].as_u64().unwrap_or(3) as u32;
         let smaller = std::sync::Arc::new(halvings(&image));
-        out.insert(id.clone(), Texture { image, smaller, mean, surface, edge: Edge::from_entry(entry), tiles: None });
+        let relief = entry["relief"].as_f64().map_or_else(
+            || crate::textures::starter_relief(entry["original"].as_str().unwrap_or("")),
+            |r| (r as f32).clamp(0.0, crate::textures::MAX_RELIEF),
+        );
+        out.insert(id.clone(), Texture { image, smaller, mean, surface, edge: Edge::from_entry(entry), relief, tiles: None });
     }
     Ok(out)
 }
@@ -338,6 +345,7 @@ fn load_import(name: &str) -> Result<Texture> {
         mean,
         surface: 3,
         edge: Edge::Crisp,
+        relief: 0.0,
         tiles: Some(std::sync::Arc::new(TilePictures { width, pictures, cliffs })),
     })
 }
@@ -466,8 +474,15 @@ mod tests {
     fn points_far_apart_read_a_texture_halved_so_fine_detail_blends() {
         // Black and white stripes a pixel wide: any point of the picture itself is near black or near white.
         let image = picture(512, 512, |x, _| if x % 2 == 0 { [0.0; 3] } else { [1.0; 3] });
-        let t =
-            Texture { smaller: std::sync::Arc::new(halvings(&image)), image, mean: [0.5; 3], surface: 3, edge: Edge::Broken, tiles: None };
+        let t = Texture {
+            smaller: std::sync::Arc::new(halvings(&image)),
+            image,
+            mean: [0.5; 3],
+            surface: 3,
+            edge: Edge::Broken,
+            relief: 0.0,
+            tiles: None,
+        };
         assert_eq!(t.smaller.len(), 9);
         let up = [0.0, 0.0, 1.0];
         // (A quarter of a pixel in: bilinear between two stripes, still mostly one of them.)

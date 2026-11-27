@@ -121,6 +121,26 @@ impl Painter {
         (TILE / self.hm.spacing).round() as i64
     }
 
+    /// The relief ([`paint::Texture::relief`]) of a tile mesh drawn with `bitmap`: a library texture's own; for tile (tx, ty)'s
+    /// baked picture, the mean of its walkable ground's textures' (one value for the picture: it has no room for one a pixel).
+    pub(super) fn relief(&self, bitmap: &str, tx: usize, ty: usize) -> f32 {
+        if bitmap != super::baked_name(tx, ty) {
+            return self.hm.palette.iter().position(|id| paint::resref(id) == bitmap).map_or(0.0, |m| self.textures[m].relief);
+        }
+        let k = self.samples_per_tile();
+        let (mut sum, mut n) = (0.0, 0.0);
+        for j in ty as i64 * k..(ty as i64 + 1) * k {
+            for i in tx as i64 * k..(tx as i64 + 1) * k {
+                let (x, y) = ((i as f32 + 0.5) * self.hm.spacing, (j as f32 + 0.5) * self.hm.spacing);
+                if self.hm.normal(x, y)[2] >= WALKABLE_NZ {
+                    sum += self.textures[self.hm.material(i, j) as usize].relief;
+                    n += 1.0;
+                }
+            }
+        }
+        if n > 0.0 { sum / n } else { 0.0 }
+    }
+
     /// Whether palette entry `m` is an import's pictures.
     pub(super) fn imported(&self, m: u8) -> bool {
         self.textures[m as usize].tiles.is_some()
@@ -742,7 +762,7 @@ pub(super) enum Look {
 /// The material of a tile's mesh: our shaders and its texture, with `texture7` (the tile's baked shadow map, or a chasm wall's fade)
 /// over it when given. `triplanar`: a library texture, drawn from three sides by the ground's slope ([`crate::triplanar`], shader
 /// `ls_tp_fs`); else at the mesh's own texture coordinates (`ls_lm_fs`, a picture over the tile's square).
-pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, look: Look) -> String {
+pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, look: Look, relief: f32) -> String {
     let (fs, what) = match look {
         Look::Triplanar => ("ls_tp_fs", "drawn from three sides by the slope, "),
         Look::Baked => ("ls_bk_fs", "with the relief of its brightness, "),
@@ -754,6 +774,9 @@ pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, look: Look) -> Stri
     );
     if let Some(t) = texture7 {
         s += &format!("texture7 {t}\n");
+    }
+    if look != Look::Plain && relief > 0.0 {
+        s += &format!("parameter float lsRelief {relief:.3}\n");
     }
     s
 }
@@ -778,12 +801,14 @@ mod tests {
 
     #[test]
     fn a_library_texture_s_material_draws_it_triplanar_a_baked_picture_with_relief_and_another_as_it_is() {
-        let tp = tile_mtr("ls_grass", Some("a_0102s"), Look::Triplanar);
+        let tp = tile_mtr("ls_grass", Some("a_0102s"), Look::Triplanar, 0.0);
         assert!(tp.contains("customshaderfs ls_tp_fs\n") && tp.contains("texture0 ls_grass\n") && tp.contains("texture7 a_0102s\n"));
-        let lm = tile_mtr("a_0102t", None, Look::Plain);
+        let lm = tile_mtr("a_0102t", None, Look::Plain, 0.05);
         assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7"), "{lm}");
-        let bk = tile_mtr("a_0102t", Some("a_0102s"), Look::Baked);
+        let bk = tile_mtr("a_0102t", Some("a_0102s"), Look::Baked, 0.05);
         assert!(bk.contains("customshaderfs ls_bk_fs\n") && bk.contains("texture0 a_0102t\n"), "{bk}");
+        // The relief only where the shader reads it, and only when there is some.
+        assert!(bk.contains("parameter float lsRelief 0.050\n") && !lm.contains("lsRelief") && !tp.contains("lsRelief"), "{bk}");
     }
 
     #[test]

@@ -67,6 +67,23 @@ pub struct Spec {
     /// How many times its picture repeats each way across the [`paint::TEXTURE_METRES`] a library texture covers: 1, 2 or 4. A
     /// close-up of pebbles or cobbles shown once across 4 m makes every stone huge; repeated, they come out their real size.
     pub repeats: u32,
+    /// How high its lightest parts stand over its darkest in the game's light (m; 0, none, when not given): the relief the
+    /// tiles' shaders read off its brightness (shared.rs, `patch_relief`). Only for textures whose light parts are the high ones:
+    /// pebbles, cobbles, rock.
+    pub relief: f32,
+}
+
+/// The most relief a list may give a texture ([`Spec::relief`], m).
+pub const MAX_RELIEF: f32 = 0.2;
+
+/// The relief of the starter texture made from `original` (`game:<resref>`), for a library entry that doesn't give one: a library
+/// made before relief was added still gets it on its pebbles, cobbles and rock.
+pub fn starter_relief(original: &str) -> f32 {
+    let Some(resref) = original.strip_prefix("game:") else { return 0.0 };
+    parse_list(STARTER)
+        .ok()
+        .and_then(|(_, specs)| specs.into_iter().find(|s| s.resref.eq_ignore_ascii_case(resref)))
+        .map_or(0.0, |s| s.relief)
 }
 
 /// The repeats a list may give a texture ([`Spec::repeats`]): the picture still fits the library's size in whole halvings.
@@ -83,9 +100,12 @@ fn parse_list(text: &str) -> Result<(Vec<String>, Vec<Spec>)> {
         anyhow::ensure!(valid_id(&id), "'{id}' is not a texture id (1 to {MAX_LISTED_ID} letters and digits)");
         let resref = field("resref").with_context(|| format!("{id}: no resref"))?;
         let repeats = t["repeats"].as_u64().unwrap_or(1) as u32;
+        let relief = t["relief"].as_f64().unwrap_or(0.0) as f32;
+        anyhow::ensure!((0.0..=MAX_RELIEF).contains(&relief), "{id}: relief is 0 to {MAX_RELIEF} m, not {}", t["relief"]);
         anyhow::ensure!(REPEATS.contains(&repeats), "{id}: repeats is 1, 2 or 4, not {}", t["repeats"]);
         specs.push(Spec {
             repeats,
+            relief,
             name: field("name").unwrap_or_else(|| id.clone()),
             category: field("category").unwrap_or_else(|| "Custom".into()),
             surface: t["surface"].as_u64().unwrap_or(3) as u32,
@@ -153,6 +173,9 @@ impl Library {
         let mut entry = entry;
         if spec.repeats > 1 {
             entry["repeats"] = spec.repeats.into();
+        }
+        if spec.relief > 0.0 {
+            entry["relief"] = f64::from(spec.relief).into();
         }
         match self.entries.iter().position(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(&spec.id))) {
             Some(at) => self.entries[at] = entry,
@@ -451,7 +474,8 @@ pub fn add_picked(haks: &[String], resref: &str, surface: u32) -> Result<Picked>
     }
     let id = tileset_id(resref, &library);
     let surface = if surface == 0 { surface_for(&name) } else { surface };
-    let spec = Spec { id: id.clone(), name: name.clone(), category: "Tileset".into(), surface, resref: name.clone(), repeats: 1 };
+    let spec =
+        Spec { id: id.clone(), name: name.clone(), category: "Tileset".into(), surface, resref: name.clone(), repeats: 1, relief: 0.0 };
     let report = add_specs(&mut library, haks, &[spec], false)?;
     anyhow::ensure!(report.added == 1, "{}", report.problems.first().cloned().unwrap_or_else(|| format!("{resref} was not added")));
     library.save()?;
@@ -565,6 +589,7 @@ fn build_into(library_dir: &Path, folder: &Path, category: Option<&str>, surface
             category: cat,
             resref: String::new(),
             repeats: 1,
+            relief: 0.0,
             id,
         };
         match read_picture(&path) {
@@ -908,6 +933,7 @@ mod tests {
             surface: 3,
             resref: String::new(),
             repeats: 1,
+            relief: 0.0,
         };
         let mut lib = Library::open(&dir).unwrap();
         lib.put(&spec, "test", "x", picture(1024, 1024)).unwrap();
@@ -969,8 +995,15 @@ mod tests {
     fn two_ids_that_would_share_a_hak_name_are_refused() {
         let dir = scratch("hak-names");
         let mut library = Library::open(&dir).unwrap();
-        let spec =
-            |id: &str| Spec { id: id.into(), name: id.into(), category: "Walls".into(), surface: 4, resref: String::new(), repeats: 1 };
+        let spec = |id: &str| Spec {
+            id: id.into(),
+            name: id.into(),
+            category: "Walls".into(),
+            surface: 4,
+            resref: String::new(),
+            repeats: 1,
+            relief: 0.0,
+        };
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
         // The same id again replaces it; another that starts with the same 13 letters can't go in beside it.
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
@@ -1174,6 +1207,7 @@ mod tests {
             surface: 1,
             resref: "ttr01_dirt03".into(),
             repeats: 1,
+            relief: 0.0,
         };
         lib.put(&spec, "Neverwinter Nights", "game:ttr01_dirt03", old.clone()).unwrap();
         assert!(!has_retired(&lib));

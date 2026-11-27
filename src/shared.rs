@@ -337,63 +337,67 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
     Ok(s)
 }
 
-/// How much relief the ground's texture gives the light (m of height for each unit of brightness, 0 to 1): see [`patch_relief`].
-pub const RELIEF: f32 = 0.1;
+/// Where the relief fades out with distance from the camera (m): from, to. Further off a pixel spans many of the texture's, and
+/// its slope only blotched the ground.
+pub const RELIEF_FADE: [f32; 2] = [6.0, 16.0];
 
-/// The light read off a relief made from the texture's own brightness: lit per fragment, the normal the light reads is tilted by
-/// the slope of the texture's brightness, taken as height ([`RELIEF`]), so each stone of a gravel or cobble texture takes a lit
-/// side and a shaded one under a torch or the sun instead of lying flat. Two more texture reads a projection; nothing more in the
-/// hak. Lit per vertex (the game's "Minimal" shaders) it does nothing. `triplanar`: in `ls_tp_fs`, the brightness of each of the
-/// three projections over its own two axes, weighted as the colour is (one texel of a 512 px library picture over
-/// [`paint::TEXTURE_METRES`]); else over the tile's square, for its baked picture (`ls_bk_fs`: one texel of 512 over a tile).
-/// (Far off, the texture is read from a smaller halving and one texel's step barely changes it: the relief fades instead of
-/// glittering.)
+/// The light read off a relief made from the texture's own brightness, taken as height: lit per fragment, the normal the light
+/// reads is tilted by the brightness's slope, so the stones of pebbles, cobbles and rock take a lit side and a shaded one under a
+/// torch or the sun instead of lying flat. How high is the texture's (the material's `lsRelief`, from the library's `relief`: 0, none,
+/// for grass, snow or a cliff whose streaks aren't its shape). Only near flat ground (none on steep faces, where it glittered on
+/// dark cliffs) and near the camera ([`RELIEF_FADE`]). The slope is read over two texels (one's is noise) and kept under half
+/// a unit, and the tilted normal is not made unit length again: the diffuse light then changes by the tilt alone, as much
+/// up as down, so the ground keeps its average brightness (normalised, every tilt darkened it). Four more texture reads; nothing
+/// more in the hak. Lit per vertex (the game's "Minimal" shaders) it does nothing. `triplanar`: in `ls_tp_fs`, over the projection
+/// from above (the only one near flat ground), one texel of a 512 px library picture over [`paint::TEXTURE_METRES`]; else over
+/// the tile's square, for its baked picture (`ls_bk_fs`).
 fn patch_relief(fs: &str, triplanar: bool) -> Result<String> {
     let s = replace_line(
         fs,
         "fslit",
         "void main ()",
-        &["float lsHeight(vec2 uv) { return dot(texture2D(texUnit0, uv).rgb, vec3(0.299, 0.587, 0.114)); }", "", "void main ()"],
+        &[
+            "uniform float lsRelief;",
+            "float lsHeight(vec2 uv) { return dot(texture2D(texUnit0, uv).rgb, vec3(0.299, 0.587, 0.114)); }",
+            "",
+            "void main ()",
+        ],
     )?;
-    let tilt = [
+    let [near, far] = RELIEF_FADE;
+    let (uv, metres) = if triplanar { ("lsP.xy", paint::TEXTURE_METRES) } else { ("vTexCoords", crate::generator::TILE) };
+    let k =
+        format!("    float lsK = lsRelief * smoothstep(0.8, 0.95, lsNw.z) * (1.0 - smoothstep({near:.1}, {far:.1}, length(vPosView)));");
+    let g = format!(
+        "        vec3 lsG = vec3(lsHeight({uv} + vec2(lsE, 0.0)) - lsHeight({uv} - vec2(lsE, 0.0)), lsHeight({uv} + vec2(0.0, lsE)) - lsHeight({uv} - vec2(0.0, lsE)), 0.0) * (lsK / (2.0 * lsE * {metres:.1}));"
+    );
+    let mut with = vec![
+        "// The relief from the texture's brightness (shared.rs, patch_relief).",
         "#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || FRAGMENT_NORMAL == 1)",
+        "{",
         "    vec3 lsNw = normalize(mat3(m_view_inv) * vFragmentNormal);",
-        "    lsNw = normalize(lsNw - (lsG - dot(lsG, lsNw) * lsNw));",
-        "    vFragmentNormal = normalize(lsNw * mat3(m_view_inv));",
+        &k,
+        "    if (lsK > 0.0)",
+        "    {",
+        "        float lsE = 2.0 / 512.0;",
+        &g,
+        "        float lsL = length(lsG);",
+        "        if (lsL > 0.5) lsG *= 0.5 / lsL;",
+        "        vFragmentNormal = (lsNw - (lsG - dot(lsG, lsNw) * lsNw)) * mat3(m_view_inv);",
+        "    }",
+        "}",
         "#endif",
     ];
     if triplanar {
-        let k = format!("    float lsK = {RELIEF:.3} / (lsE * {:.1});", paint::TEXTURE_METRES);
-        let mut with = vec![
-            "    FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);",
-            "    // The relief from the texture's brightness (shared.rs, patch_relief): its slope along each projection's axes.",
-            "    float lsE = 1.0 / 512.0;",
-            &k,
-            "    float lsHx = lsHeight(lsP.yz), lsHy = lsHeight(lsP.xz), lsHz = lsHeight(lsP.xy);",
-            "    vec3 lsG = lsW.x * vec3(0.0, lsHeight(lsP.yz + vec2(lsE, 0.0)) - lsHx, lsHeight(lsP.yz + vec2(0.0, lsE)) - lsHx)",
-            "        + lsW.y * vec3(lsHeight(lsP.xz + vec2(lsE, 0.0)) - lsHy, 0.0, lsHeight(lsP.xz + vec2(0.0, lsE)) - lsHy)",
-            "        + lsW.z * vec3(lsHeight(lsP.xy + vec2(lsE, 0.0)) - lsHz, lsHeight(lsP.xy + vec2(0.0, lsE)) - lsHz, 0.0);",
-            "    lsG *= lsK;",
-        ];
-        with.extend(tilt);
-        // (Inside the triplanar block, where lsP and lsW are: its line's indent is the block's.)
-        let with: Vec<String> = with.iter().map(|l| l.strip_prefix("    ").unwrap_or(l).to_string()).collect();
-        let with: Vec<&str> = with.iter().map(String::as_str).collect();
-        return replace_line(&s, "ls_tp_fs", "FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);", &with);
+        // (Inside the triplanar block, after its colour, where lsP is: its line's indent is the block's.)
+        let mut lines = vec!["    FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);".to_string()];
+        lines.extend(with.iter().map(|l| if l.starts_with('#') { (*l).to_string() } else { format!("    {l}") }));
+        let lines: Vec<String> = lines.iter().map(|l| l.strip_prefix("    ").unwrap_or(l).to_string()).collect();
+        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+        return replace_line(&s, "ls_tp_fs", "FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);", &lines);
     }
-    let k = format!("    float lsK = {RELIEF:.3} / (lsE * {:.1});", crate::generator::TILE);
-    let mut with = vec![
-        "SetupStandardShaderInputs();",
-        "// The relief from the baked picture's brightness (shared.rs, patch_relief), over the tile's square: u east, v north.",
-        "if (texture0Bound != 0)",
-        "{",
-        "    float lsE = 1.0 / 512.0;",
-        &k,
-        "    float lsH0 = lsHeight(vTexCoords);",
-        "    vec3 lsG = vec3(lsHeight(vTexCoords + vec2(lsE, 0.0)) - lsH0, lsHeight(vTexCoords + vec2(0.0, lsE)) - lsH0, 0.0) * lsK;",
-    ];
-    with.extend(tilt);
-    with.push("}");
+    with.insert(0, "SetupStandardShaderInputs();");
+    let with: Vec<&str> =
+        with.into_iter().map(|l| if l == "    if (lsK > 0.0)" { "    if (lsK > 0.0 && texture0Bound != 0)" } else { l }).collect();
     replace_line(&s, "fslit", "SetupStandardShaderInputs();", &with)
 }
 
@@ -561,21 +565,23 @@ mod tests {
 
     #[test]
     fn the_relief_tilts_the_fragment_normal_after_the_texture_is_read_and_before_the_light() {
+        let tilt = "vFragmentNormal = (lsNw - (lsG - dot(lsG, lsNw) * lsNw)) * mat3(m_view_inv);";
         let tp = patch_relief(&patch_triplanar(&patch_fslit(FSLIT).unwrap()).unwrap(), true).unwrap();
         let lines = code(&tp);
         let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{tp}"));
         let colour = at("FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);");
-        let tilt = at("vFragmentNormal = normalize(lsNw * mat3(m_view_inv));");
-        assert!(at("SetupStandardShaderInputs();") < colour && colour < tilt && tilt < at("ApplyStandardShader();"));
-        assert!(at("#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || FRAGMENT_NORMAL == 1)") < tilt, "lit per fragment only");
-        assert!(at("float lsHeight(vec2 uv) { return dot(texture2D(texUnit0, uv).rgb, vec3(0.299, 0.587, 0.114)); }") < at("void main ()"));
-        // Each projection's slope over its own axes, a texel of 512 over the 4 m a library texture covers, weighted as the colour.
-        assert!(tp.contains("float lsK = 0.100 / (lsE * 4.0);") && tp.contains("lsW.x * vec3(0.0, lsHeight(lsP.yz + vec2(lsE, 0.0))"));
+        assert!(at("SetupStandardShaderInputs();") < colour && colour < at(tilt) && at(tilt) < at("ApplyStandardShader();"));
+        assert!(at("#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || FRAGMENT_NORMAL == 1)") < at(tilt), "lit per fragment only");
+        assert!(at("uniform float lsRelief;") < at("void main ()"));
+        // From above only, over two texels of 512 across the 4 m a library texture covers; none on steep ground or far off.
+        assert!(tp.contains("lsHeight(lsP.xy + vec2(lsE, 0.0)) - lsHeight(lsP.xy - vec2(lsE, 0.0))") && tp.contains("(2.0 * lsE * 4.0)"));
+        assert!(tp.contains("smoothstep(0.8, 0.95, lsNw.z) * (1.0 - smoothstep(6.0, 16.0, length(vPosView)))"), "{tp}");
         let bk = patch_relief(&patch_fslit(FSLIT).unwrap(), false).unwrap();
         let lines = code(&bk);
         let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{bk}"));
-        assert!(at("SetupStandardShaderInputs();") < at("vFragmentNormal = normalize(lsNw * mat3(m_view_inv));"));
-        assert!(bk.contains("float lsK = 0.100 / (lsE * 10.0);") && bk.contains("lsHeight(vTexCoords + vec2(lsE, 0.0))"), "{bk}");
+        assert!(at("SetupStandardShaderInputs();") < at(tilt) && at(tilt) < at("ApplyStandardShader();"));
+        assert!(at("if (lsK > 0.0 && texture0Bound != 0)") < at(tilt));
+        assert!(bk.contains("(2.0 * lsE * 10.0)") && bk.contains("lsHeight(vTexCoords + vec2(lsE, 0.0))"), "{bk}");
     }
 
     #[test]
