@@ -9,10 +9,10 @@ use mg_mdl::{Face, Mesh};
 
 use super::overhang;
 use super::{
-    ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
-    WALKABLE_NZ, WATER_METRES, WATER_TEXTURE, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name,
-    mtr_name, normal_z, num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
-    trimesh_full, trimesh_listed, trimesh_with,
+    ENTRANCE_DARK, Grid, Look, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION,
+    VOID_BELOW, WALKABLE_NZ, WATER_METRES, WATER_TEXTURE, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height,
+    minimap_name, mtr_name, normal_z, num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y,
+    tileset_name, trimesh, trimesh_full, trimesh_listed, trimesh_with,
 };
 use crate::{ambience, heightmap, objects, paint, shared};
 
@@ -87,10 +87,15 @@ pub(super) fn tile_model(
         if faces.is_empty() {
             return;
         }
-        let triplanar = matches!(mapping, Mapping::Boxed);
-        let props = if shadow || triplanar {
+        // (A library texture from three sides; the tile's baked picture with its relief; else as it is.)
+        let look = match mapping {
+            Mapping::Boxed => Look::Triplanar,
+            Mapping::Vertex(_) if bitmap == baked_name(tx, ty) => Look::Baked,
+            Mapping::Vertex(_) => Look::Plain,
+        };
+        let props = if shadow || look != Look::Plain {
             let mat = mtr_name(name, mtrs.len());
-            mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), triplanar)));
+            mtrs.push((mat.clone(), tile_mtr(bitmap, shadow.then_some(shadow_map.as_str()), look)));
             format!("  materialname {mat}\n")
         } else {
             String::new()
@@ -163,7 +168,7 @@ pub(super) fn tile_model(
         // (a tile's own picture lies over its square; a texture, from three sides like the steep faces)
         let picture = bitmap == baked_name(tx, ty);
         let mat = mtr_name(name, mtrs.len());
-        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), !picture)));
+        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), if picture { Look::Plain } else { Look::Triplanar })));
         let mapping = if picture { Mapping::Vertex(&square) } else { Mapping::Boxed };
         terrain_mesh(
             &mut s,
@@ -213,7 +218,7 @@ pub(super) fn tile_model(
             let rk = grid(&sc.rock);
             if shadow {
                 let mat = mtr_name(name, mtrs.len());
-                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), false)));
+                mtrs.push((mat.clone(), tile_mtr(&rock, Some(&shadow_map), Look::Plain)));
                 trimesh_full(
                     &mut s,
                     &format!("{name}_e{k}rock"),

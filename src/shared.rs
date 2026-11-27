@@ -121,17 +121,21 @@ fn stamp() -> Result<String> {
 ///   lit per vertex, by blending the vertex shader's two lights. Without a texture7 the surface is drawn as fslit draws it.
 /// - `ls_tp_fs`: `ls_lm_fs` with its texture drawn from three sides by the slope ([`crate::triplanar`]), for library textures:
 ///   see [`patch_triplanar`].
+/// - `ls_bk_fs`: `ls_lm_fs` with the relief of its picture's brightness, for a tile's baked picture: see [`patch_relief`]. The
+///   triplanar `ls_tp_fs` has it too.
 /// - `ls_fd_fs`: `ls_lm_fs` fading to the fog colour past the area's edge, for the edge scenery over a halo; `ls_fdt_fs` the same
 ///   for the top of a tree's cards, which also fades out when seen edge-on: see [`patch_fade`].
 ///
 /// An install without them (the dedicated server's download has no shaders) or with a different shape of them is an error that
 /// says so: without them the area would draw wrong, not only without shadows.
-pub fn shaders() -> Result<[(&'static str, String); 6]> {
+pub fn shaders() -> Result<[(&'static str, String); 7]> {
     let game = crate::models::game()?;
     // The browser build with no game folder given: placeholders, so the rest of the export still downloads. It draws wrong in the
     // game until exported again with the folder (docs/DESIGN-web-demo.md, question 5).
     if cfg!(feature = "web") && game.resman.get_named("fslit", ResType::SHD).is_err() {
-        return Ok([LIGHTING, "ls_lm_vs", "ls_tp_fs", "ls_lm_fs", "ls_fd_fs", "ls_fdt_fs"].map(|n| (n, STUB_SHADER.to_string())));
+        return Ok(
+            [LIGHTING, "ls_lm_vs", "ls_tp_fs", "ls_lm_fs", "ls_bk_fs", "ls_fd_fs", "ls_fdt_fs"].map(|n| (n, STUB_SHADER.to_string()))
+        );
     }
     let stock = |name: &str| -> Result<String> {
         let data = game.resman.get_named(name, ResType::SHD).map_err(|e| {
@@ -146,7 +150,8 @@ pub fn shaders() -> Result<[(&'static str, String); 6]> {
     Ok([
         (LIGHTING, patch_lighting(&stock("inc_lighting")?)?),
         ("ls_lm_vs", patch_vslit(&stock("vslit")?)?),
-        ("ls_tp_fs", patch_triplanar(&fs)?),
+        ("ls_tp_fs", patch_relief(&patch_triplanar(&fs)?, true)?),
+        ("ls_bk_fs", patch_relief(&fs, false)?),
         ("ls_fd_fs", patch_fade(&fs, false)?),
         ("ls_fdt_fs", patch_fade(&fs, true)?),
         ("ls_lm_fs", fs),
@@ -332,6 +337,66 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
     Ok(s)
 }
 
+/// How much relief the ground's texture gives the light (m of height for each unit of brightness, 0 to 1): see [`patch_relief`].
+pub const RELIEF: f32 = 0.1;
+
+/// The light read off a relief made from the texture's own brightness: lit per fragment, the normal the light reads is tilted by
+/// the slope of the texture's brightness, taken as height ([`RELIEF`]), so each stone of a gravel or cobble texture takes a lit
+/// side and a shaded one under a torch or the sun instead of lying flat. Two more texture reads a projection; nothing more in the
+/// hak. Lit per vertex (the game's "Minimal" shaders) it does nothing. `triplanar`: in `ls_tp_fs`, the brightness of each of the
+/// three projections over its own two axes, weighted as the colour is (one texel of a 512 px library picture over
+/// [`paint::TEXTURE_METRES`]); else over the tile's square, for its baked picture (`ls_bk_fs`: one texel of 512 over a tile).
+/// (Far off, the texture is read from a smaller halving and one texel's step barely changes it: the relief fades instead of
+/// glittering.)
+fn patch_relief(fs: &str, triplanar: bool) -> Result<String> {
+    let s = replace_line(
+        fs,
+        "fslit",
+        "void main ()",
+        &["float lsHeight(vec2 uv) { return dot(texture2D(texUnit0, uv).rgb, vec3(0.299, 0.587, 0.114)); }", "", "void main ()"],
+    )?;
+    let tilt = [
+        "#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || FRAGMENT_NORMAL == 1)",
+        "    vec3 lsNw = normalize(mat3(m_view_inv) * vFragmentNormal);",
+        "    lsNw = normalize(lsNw - (lsG - dot(lsG, lsNw) * lsNw));",
+        "    vFragmentNormal = normalize(lsNw * mat3(m_view_inv));",
+        "#endif",
+    ];
+    if triplanar {
+        let k = format!("    float lsK = {RELIEF:.3} / (lsE * {:.1});", paint::TEXTURE_METRES);
+        let mut with = vec![
+            "    FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);",
+            "    // The relief from the texture's brightness (shared.rs, patch_relief): its slope along each projection's axes.",
+            "    float lsE = 1.0 / 512.0;",
+            &k,
+            "    float lsHx = lsHeight(lsP.yz), lsHy = lsHeight(lsP.xz), lsHz = lsHeight(lsP.xy);",
+            "    vec3 lsG = lsW.x * vec3(0.0, lsHeight(lsP.yz + vec2(lsE, 0.0)) - lsHx, lsHeight(lsP.yz + vec2(0.0, lsE)) - lsHx)",
+            "        + lsW.y * vec3(lsHeight(lsP.xz + vec2(lsE, 0.0)) - lsHy, 0.0, lsHeight(lsP.xz + vec2(0.0, lsE)) - lsHy)",
+            "        + lsW.z * vec3(lsHeight(lsP.xy + vec2(lsE, 0.0)) - lsHz, lsHeight(lsP.xy + vec2(0.0, lsE)) - lsHz, 0.0);",
+            "    lsG *= lsK;",
+        ];
+        with.extend(tilt);
+        // (Inside the triplanar block, where lsP and lsW are: its line's indent is the block's.)
+        let with: Vec<String> = with.iter().map(|l| l.strip_prefix("    ").unwrap_or(l).to_string()).collect();
+        let with: Vec<&str> = with.iter().map(String::as_str).collect();
+        return replace_line(&s, "ls_tp_fs", "FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);", &with);
+    }
+    let k = format!("    float lsK = {RELIEF:.3} / (lsE * {:.1});", crate::generator::TILE);
+    let mut with = vec![
+        "SetupStandardShaderInputs();",
+        "// The relief from the baked picture's brightness (shared.rs, patch_relief), over the tile's square: u east, v north.",
+        "if (texture0Bound != 0)",
+        "{",
+        "    float lsE = 1.0 / 512.0;",
+        &k,
+        "    float lsH0 = lsHeight(vTexCoords);",
+        "    vec3 lsG = vec3(lsHeight(vTexCoords + vec2(lsE, 0.0)) - lsH0, lsHeight(vTexCoords + vec2(0.0, lsE)) - lsH0, 0.0) * lsK;",
+    ];
+    with.extend(tilt);
+    with.push("}");
+    replace_line(&s, "fslit", "SetupStandardShaderInputs();", &with)
+}
+
 /// The fade past the area's edge (m): from, to. The edge scenery reaches 50 m, as far as the client's scene covers.
 pub const FADE: [f32; 2] = [25.0, 50.0];
 
@@ -492,6 +557,25 @@ mod tests {
         assert!(tp.contains("texUnit0, lsP.yz) * lsW.x") && tp.contains("texUnit0, lsP.xz) * lsW.y") && tp.contains("lsP.xy) * lsW.z"));
         // Blended by the mesh's tverts2 where it has them, else by the vertex normal.
         assert!(lines.contains(&"varying vec2 vLsBlend;".to_string()) && tp.contains("if (vLsBlend.x > 0.5)"), "{tp}");
+    }
+
+    #[test]
+    fn the_relief_tilts_the_fragment_normal_after_the_texture_is_read_and_before_the_light() {
+        let tp = patch_relief(&patch_triplanar(&patch_fslit(FSLIT).unwrap()).unwrap(), true).unwrap();
+        let lines = code(&tp);
+        let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{tp}"));
+        let colour = at("FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);");
+        let tilt = at("vFragmentNormal = normalize(lsNw * mat3(m_view_inv));");
+        assert!(at("SetupStandardShaderInputs();") < colour && colour < tilt && tilt < at("ApplyStandardShader();"));
+        assert!(at("#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || FRAGMENT_NORMAL == 1)") < tilt, "lit per fragment only");
+        assert!(at("float lsHeight(vec2 uv) { return dot(texture2D(texUnit0, uv).rgb, vec3(0.299, 0.587, 0.114)); }") < at("void main ()"));
+        // Each projection's slope over its own axes, a texel of 512 over the 4 m a library texture covers, weighted as the colour.
+        assert!(tp.contains("float lsK = 0.100 / (lsE * 4.0);") && tp.contains("lsW.x * vec3(0.0, lsHeight(lsP.yz + vec2(lsE, 0.0))"));
+        let bk = patch_relief(&patch_fslit(FSLIT).unwrap(), false).unwrap();
+        let lines = code(&bk);
+        let at = |l: &str| lines.iter().position(|x| x == l).unwrap_or_else(|| panic!("no `{l}` in\n{bk}"));
+        assert!(at("SetupStandardShaderInputs();") < at("vFragmentNormal = normalize(lsNw * mat3(m_view_inv));"));
+        assert!(bk.contains("float lsK = 0.100 / (lsE * 10.0);") && bk.contains("lsHeight(vTexCoords + vec2(lsE, 0.0))"), "{bk}");
     }
 
     #[test]

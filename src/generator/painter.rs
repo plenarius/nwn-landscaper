@@ -728,11 +728,26 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
     })
 }
 
+/// How a tile's mesh draws its texture ([`tile_mtr`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Look {
+    /// A library texture, repeating, drawn from three sides by the slope (`ls_tp_fs`), with the relief of its brightness.
+    Triplanar,
+    /// The tile's baked picture over its square, with the relief of its brightness (`ls_bk_fs`).
+    Baked,
+    /// A picture at the mesh's own texture coordinates, as it is (`ls_lm_fs`).
+    Plain,
+}
+
 /// The material of a tile's mesh: our shaders and its texture, with `texture7` (the tile's baked shadow map, or a chasm wall's fade)
 /// over it when given. `triplanar`: a library texture, drawn from three sides by the ground's slope ([`crate::triplanar`], shader
 /// `ls_tp_fs`); else at the mesh's own texture coordinates (`ls_lm_fs`, a picture over the tile's square).
-pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: bool) -> String {
-    let (fs, what) = if triplanar { ("ls_tp_fs", "drawn from three sides by the slope, ") } else { ("ls_lm_fs", "") };
+pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, look: Look) -> String {
+    let (fs, what) = match look {
+        Look::Triplanar => ("ls_tp_fs", "drawn from three sides by the slope, "),
+        Look::Baked => ("ls_bk_fs", "with the relief of its brightness, "),
+        Look::Plain => ("ls_lm_fs", ""),
+    };
     let mut s = format!(
         "// NWN Landscaper: {what}lit as usual, the baked shadow map shading the area's sun or moon\ncustomshadervs ls_lm_vs\ncustomshaderfs {fs}\n\
          texture0 {bitmap}\n"
@@ -762,11 +777,13 @@ mod tests {
     }
 
     #[test]
-    fn a_library_texture_s_material_draws_it_triplanar_and_a_picture_s_does_not() {
-        let tp = tile_mtr("ls_grass", Some("a_0102s"), true);
+    fn a_library_texture_s_material_draws_it_triplanar_a_baked_picture_with_relief_and_another_as_it_is() {
+        let tp = tile_mtr("ls_grass", Some("a_0102s"), Look::Triplanar);
         assert!(tp.contains("customshaderfs ls_tp_fs\n") && tp.contains("texture0 ls_grass\n") && tp.contains("texture7 a_0102s\n"));
-        let lm = tile_mtr("a_0102t", None, false);
+        let lm = tile_mtr("a_0102t", None, Look::Plain);
         assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7"), "{lm}");
+        let bk = tile_mtr("a_0102t", Some("a_0102s"), Look::Baked);
+        assert!(bk.contains("customshaderfs ls_bk_fs\n") && bk.contains("texture0 a_0102t\n"), "{bk}");
     }
 
     #[test]

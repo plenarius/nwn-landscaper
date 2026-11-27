@@ -15,7 +15,7 @@
 use std::fmt::Write as _;
 
 use super::{
-    Grid, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, mtr_name, normal_z, paint, shared,
+    Grid, Look, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, mtr_name, normal_z, paint, shared,
     tile_level, tile_mtr, tiles_x, tiles_y, tileset_name, trimesh, trimesh_with,
 };
 
@@ -326,7 +326,7 @@ fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, Str
 /// model `model`; its `materialname` line.
 fn triplanar(model: &str, bitmap: &str, mtrs: &mut Vec<(String, String)>) -> String {
     let mat = mtr_name(model, mtrs.len());
-    mtrs.push((mat.clone(), tile_mtr(bitmap, None, true)));
+    mtrs.push((mat.clone(), tile_mtr(bitmap, None, Look::Triplanar)));
     format!("  materialname {mat}\n")
 }
 

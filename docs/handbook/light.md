@@ -25,6 +25,12 @@ panels: picking a tool closes it, and `L` opens it again.
   scattered). It shades only the sun's or the moon's light: a tile light, a torch or a glowing mesh in a tree's shade keeps its
   full light.
 
+## Relief on the ground
+
+The game's light falls on the ground's texture as if it had relief: the texture's lighter parts stand a little higher, so the
+stones of gravel, cobbles and rock catch a torch or the sun on one side and fall into shade on the other. It costs nothing in
+the hak. It needs the game's shaders set above **Minimal**; at Minimal the ground is lit flat, as before.
+
 ## Paint the tiles' lights
 
 ![The Light tool: Torchlight on every tile of a cave](../assets/handbook/light-tool.webp)
