@@ -42,7 +42,7 @@ cobbles, flagstones, floors and planks get a sharp one. Where a laid surface mee
 
 - A line of paint one point wide, or a patch of up to about two points by two (the mix brush's soft edge makes them), is
   smoothed away. Paint lines at least two points wide.
-- The edge can move by up to half a point (about 30 cm) from where the editor shows the paint's squares change.
+- The editor draws the same edges, so what you paint is what the game shows.
 
 ## More textures
 
