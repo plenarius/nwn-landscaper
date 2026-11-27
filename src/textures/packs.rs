@@ -666,6 +666,7 @@ mod tests {
             surface: 4,
             resref: String::new(),
             repeats: 1,
+            foot: 0.0,
         };
         lib.put(&spec, "test", "x", picture(8, 8, 0)).unwrap();
         lib.save().unwrap();

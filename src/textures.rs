@@ -67,10 +67,15 @@ pub struct Spec {
     /// How many times its picture repeats each way across the [`paint::TEXTURE_METRES`] a library texture covers: 1, 2 or 4. A
     /// close-up of pebbles or cobbles shown once across 4 m makes every stone huge; repeated, they come out their real size.
     pub repeats: u32,
+    /// How much of its picture's height, from the bottom, is a band along a cliff's foot (moss, grass, sand): 0 for none. The
+    /// band is replaced by rock from higher up ([`without_foot`]); repeated up a tall face, it drew a stripe every 4 m.
+    pub foot: f64,
 }
 
 /// The repeats a list may give a texture ([`Spec::repeats`]): the picture still fits the library's size in whole halvings.
 const REPEATS: [u32; 3] = [1, 2, 4];
+/// The largest [`Spec::foot`]: the rock that replaces the band comes from half the picture's height above it.
+const MAX_FOOT: f64 = 0.4;
 
 /// `{ "haks": [...], "textures": [{ id, name, category, surface, resref }] }`: the haks (optional) are added to the game's files first.
 fn parse_list(text: &str) -> Result<(Vec<String>, Vec<Spec>)> {
@@ -84,8 +89,11 @@ fn parse_list(text: &str) -> Result<(Vec<String>, Vec<Spec>)> {
         let resref = field("resref").with_context(|| format!("{id}: no resref"))?;
         let repeats = t["repeats"].as_u64().unwrap_or(1) as u32;
         anyhow::ensure!(REPEATS.contains(&repeats), "{id}: repeats is 1, 2 or 4, not {}", t["repeats"]);
+        let foot = t["foot"].as_f64().unwrap_or(0.0);
+        anyhow::ensure!((0.0..=MAX_FOOT).contains(&foot), "{id}: foot is 0 to {MAX_FOOT}, not {}", t["foot"]);
         specs.push(Spec {
             repeats,
+            foot,
             name: field("name").unwrap_or_else(|| id.clone()),
             category: field("category").unwrap_or_else(|| "Custom".into()),
             surface: t["surface"].as_u64().unwrap_or(3) as u32,
@@ -154,6 +162,9 @@ impl Library {
         if spec.repeats > 1 {
             entry["repeats"] = spec.repeats.into();
         }
+        if spec.foot > 0.0 {
+            entry["foot"] = spec.foot.into();
+        }
         match self.entries.iter().position(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(&spec.id))) {
             Some(at) => self.entries[at] = entry,
             None => self.entries.push(entry),
@@ -186,6 +197,15 @@ impl Library {
             .find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id)))
             .and_then(|e| e["repeats"].as_u64())
             .map_or(1, |r| r as u32)
+    }
+
+    /// The band the entry `id`'s picture had taken off its foot ([`Spec::foot`]; 0 when the entry doesn't say).
+    fn foot_of(&self, id: &str) -> f64 {
+        self.entries
+            .iter()
+            .find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id)))
+            .and_then(|e| e["foot"].as_f64())
+            .unwrap_or(0.0)
     }
 
     /// The picture file of the entry `id`, if there is one.
@@ -234,6 +254,81 @@ fn repeated(img: Rgba, n: u32) -> Rgba {
         }
     }
     Rgba { width: img.width * n, height: img.height * n, data }
+}
+
+/// A game picture as the starter set makes it: its foot's band taken off ([`Spec::foot`]), then repeated ([`Spec::repeats`]).
+fn starter_picture(img: Rgba, repeats: u32, foot: f64) -> Rgba {
+    repeated(without_foot(img, foot), repeats)
+}
+
+/// `img` (rows from the bottom) with the band along its bottom `foot` of its height replaced by rock from higher up, and its
+/// brightness evened out from bottom to top, so it repeats up a tall face as one rock. A stock cliff's picture ends in moss,
+/// grass or sand where the cliff meets the ground: repeated every 4 m up a face, each repeat drew a stripe.
+///
+/// Over the band, the picture moved half its size each way stands in; it fades out above the band and in again towards the top,
+/// which meets the next repeat's foot. Both repeat side to side and the blend runs along whole rows, so the result still tiles
+/// both ways. Where they blend, the rock keeps its contrast (two textures averaged come out flat and would mark the join).
+fn without_foot(img: Rgba, foot: f64) -> Rgba {
+    if foot <= 0.0 || img.height < 20 {
+        return img;
+    }
+    let (w, h) = (img.width as usize, img.height as usize);
+    let band = (h as f64 * foot.min(MAX_FOOT)).round() as usize;
+    let fade = h / 10;
+    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
+    // How much of the moved picture row y takes.
+    let moved_part = |y: usize| {
+        smooth(if y < band {
+            1.0
+        } else if y < band + fade {
+            1.0 - (y - band) as f32 / fade as f32
+        } else if y >= h - fade {
+            (y + fade - h) as f32 / fade as f32
+        } else {
+            0.0
+        })
+    };
+    let px = |x: usize, y: usize, c: usize| f32::from(img.data[(y * w + x) * 4 + c]);
+    let row_mean: Vec<[f32; 3]> = (0..h).map(|y| std::array::from_fn(|c| (0..w).map(|x| px(x, y, c)).sum::<f32>() / w as f32)).collect();
+    let mut out = vec![[0f32; 3]; w * h];
+    for y in 0..h {
+        let b = moved_part(y);
+        let a = 1.0 - b;
+        let norm = (a * a + b * b).sqrt();
+        let ym = (y + h - h / 2) % h;
+        for x in 0..w {
+            let xm = (x + w - w / 2) % w;
+            for c in 0..3 {
+                let (ma, mb) = (row_mean[y][c], row_mean[ym][c]);
+                out[y * w + x][c] = a * ma + b * mb + (a * (px(x, y, c) - ma) + b * (px(xm, ym, c) - mb)) / norm;
+            }
+        }
+    }
+    // Each row's brightness, smoothed over about a twentieth of the picture (wrapping), brought to the whole picture's.
+    let means: Vec<[f32; 3]> =
+        (0..h).map(|y| std::array::from_fn(|c| out[y * w..(y + 1) * w].iter().map(|p| p[c]).sum::<f32>() / w as f32)).collect();
+    let all: [f32; 3] = std::array::from_fn(|c| means.iter().map(|m| m[c]).sum::<f32>() / h as f32);
+    let sigma = h as f32 / 20.0;
+    let reach = (3.0 * sigma).ceil() as isize;
+    let mut data = img.data.clone();
+    for y in 0..h {
+        let (mut sum, mut weight) = ([0f32; 3], 0f32);
+        for d in -reach..=reach {
+            let k = (-0.5 * (d as f32 / sigma).powi(2)).exp();
+            let m = means[(y as isize + d).rem_euclid(h as isize) as usize];
+            for c in 0..3 {
+                sum[c] += k * m[c];
+            }
+            weight += k;
+        }
+        for x in 0..w {
+            for c in 0..3 {
+                let v = out[y * w + x][c] * all[c] / (sum[c] / weight).max(1.0);
+                data[(y * w + x) * 4 + c] = v.round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    Rgba { width: img.width, height: img.height, data }
 }
 
 /// Library pictures have no transparency (the game's own can carry a specular mask in alpha).
@@ -290,7 +385,7 @@ fn add_specs(library: &mut Library, haks: &[String], specs: &[Spec], replace: bo
         }
         match game_picture(&game, &s.resref) {
             Some(img) => {
-                library.put(s, "Neverwinter Nights", &format!("game:{}", s.resref), repeated(img, s.repeats))?;
+                library.put(s, "Neverwinter Nights", &format!("game:{}", s.resref), starter_picture(img, s.repeats, s.foot))?;
                 report.added += 1;
             }
             None => report.problems.push(format!("{} ({}): the game has no such texture", s.id, s.resref)),
@@ -348,7 +443,7 @@ fn add_pictures(library: &mut Library, folder: &Path, specs: &[Spec]) -> Result<
             Ok(img) => {
                 let file = path.file_name().map_or_default(|n| n.to_string_lossy().into_owned());
                 // (A picture of the starter id is already the 4 m it covers, as the demo pack's are.)
-                library.put(&Spec { repeats: 1, ..s.clone() }, "Your pictures", &file, img)?;
+                library.put(&Spec { repeats: 1, foot: 0.0, ..s.clone() }, "Your pictures", &file, img)?;
                 report.added += 1;
             }
             Err(e) => report.problems.push(format!("{e:#}")),
@@ -451,7 +546,8 @@ pub fn add_picked(haks: &[String], resref: &str, surface: u32) -> Result<Picked>
     }
     let id = tileset_id(resref, &library);
     let surface = if surface == 0 { surface_for(&name) } else { surface };
-    let spec = Spec { id: id.clone(), name: name.clone(), category: "Tileset".into(), surface, resref: name.clone(), repeats: 1 };
+    let spec =
+        Spec { id: id.clone(), name: name.clone(), category: "Tileset".into(), surface, resref: name.clone(), repeats: 1, foot: 0.0 };
     let report = add_specs(&mut library, haks, &[spec], false)?;
     anyhow::ensure!(report.added == 1, "{}", report.problems.first().cloned().unwrap_or_else(|| format!("{resref} was not added")));
     library.save()?;
@@ -565,6 +661,7 @@ fn build_into(library_dir: &Path, folder: &Path, category: Option<&str>, surface
             category: cat,
             resref: String::new(),
             repeats: 1,
+            foot: 0.0,
             id,
         };
         match read_picture(&path) {
@@ -584,20 +681,21 @@ fn has_retired(library: &Library) -> bool {
     RETIRED.iter().any(|(id, old)| library.pack_of(id).is_none() && library.original_of(id) == Some(&format!("game:{old}")))
 }
 
-/// Whether `library` holds a starter texture made from the game at another [`Spec::repeats`] than the starter set's now.
+/// Whether `library` holds a starter texture made from the game at another [`Spec::repeats`] or [`Spec::foot`] than the starter
+/// set's now.
 fn has_rescaled(library: &Library) -> bool {
     parse_list(STARTER).map_or_default(|(_, specs)| {
         specs.iter().any(|s| {
             library.pack_of(&s.id).is_none()
                 && library.original_of(&s.id) == Some(&format!("game:{}", s.resref))
-                && library.repeats_of(&s.id) != s.repeats
+                && (library.repeats_of(&s.id), library.foot_of(&s.id)) != (s.repeats, s.foot)
         })
     })
 }
 
 /// Replaces each [`RETIRED`] starter texture `library` still holds, untouched (its entry names the old game texture and its
 /// picture is the one that texture makes), with the starter set's texture for that id, and each starter texture made at another
-/// scale (untouched, likewise) at the starter set's. `picture` reads a game texture by resref.
+/// scale or with another foot (untouched, likewise) as the starter set makes it now. `picture` reads a game texture by resref.
 /// Returns the ids replaced; running it again replaces nothing.
 fn refresh_retired(library: &mut Library, picture: impl Fn(&str) -> Option<Rgba>) -> Result<Vec<String>> {
     let (_, specs) = parse_list(STARTER)?;
@@ -615,26 +713,26 @@ fn refresh_retired(library: &mut Library, picture: impl Fn(&str) -> Option<Rgba>
             continue;
         }
         let Some(new) = picture(&spec.resref) else { continue };
-        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), repeated(new, spec.repeats))?;
+        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), starter_picture(new, spec.repeats, spec.foot))?;
         replaced.push(id.to_string());
     }
-    // Starter textures made at another scale ([`has_rescaled`]), untouched: made again at the starter set's.
+    // Starter textures made at another scale or foot ([`has_rescaled`]), untouched: made again as the starter set makes them.
     for spec in &specs {
         let id = spec.id.as_str();
         if library.pack_of(id).is_some() || library.original_of(id) != Some(&format!("game:{}", spec.resref)) {
             continue;
         }
-        let had = library.repeats_of(id);
-        if had == spec.repeats {
+        let had = (library.repeats_of(id), library.foot_of(id));
+        if had == (spec.repeats, spec.foot) {
             continue;
         }
         let Some(file) = library.render_of(id) else { continue };
         let (Some(source), Ok(now)) = (picture(&spec.resref), paint::read_png(&library.dir.join(file))) else { continue };
-        let was = library_pictures(repeated(source.clone(), had)).0;
+        let was = library_pictures(starter_picture(source.clone(), had.0, had.1)).0;
         if (was.width, was.height, &was.data) != (now.width, now.height, &now.data) {
             continue;
         }
-        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), repeated(source, spec.repeats))?;
+        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), starter_picture(source, spec.repeats, spec.foot))?;
         replaced.push(id.to_string());
     }
     Ok(replaced)
@@ -908,6 +1006,7 @@ mod tests {
             surface: 3,
             resref: String::new(),
             repeats: 1,
+            foot: 0.0,
         };
         let mut lib = Library::open(&dir).unwrap();
         lib.put(&spec, "test", "x", picture(1024, 1024)).unwrap();
@@ -969,8 +1068,15 @@ mod tests {
     fn two_ids_that_would_share_a_hak_name_are_refused() {
         let dir = scratch("hak-names");
         let mut library = Library::open(&dir).unwrap();
-        let spec =
-            |id: &str| Spec { id: id.into(), name: id.into(), category: "Walls".into(), surface: 4, resref: String::new(), repeats: 1 };
+        let spec = |id: &str| Spec {
+            id: id.into(),
+            name: id.into(),
+            category: "Walls".into(),
+            surface: 4,
+            resref: String::new(),
+            repeats: 1,
+            foot: 0.0,
+        };
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
         // The same id again replaces it; another that starts with the same 13 letters can't go in beside it.
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
@@ -1151,6 +1257,93 @@ mod tests {
         }
     }
 
+    /// A 64 x 64 rock of noise whose bottom quarter (rows from the bottom) is green moss.
+    fn mossy_cliff() -> Rgba {
+        let mut img = Rgba::new(64, 64);
+        let mut seed = 7u32;
+        for (i, px) in img.data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let n = (seed >> 24) as u8 / 4;
+            *px = if i / 64 < 16 { [20 + n / 2, 90 + n, 10, 255] } else { [100 + n, 85 + n, 78 + n, 255] };
+        }
+        img
+    }
+
+    fn row_means(img: &Rgba) -> Vec<[f32; 3]> {
+        let w = img.width as usize;
+        (0..img.height as usize)
+            .map(|y| std::array::from_fn(|c| (0..w).map(|x| f32::from(img.data[(y * w + x) * 4 + c])).sum::<f32>() / w as f32))
+            .collect()
+    }
+
+    #[test]
+    fn a_cliff_s_foot_band_is_rock_like_the_rest_and_the_picture_still_tiles() {
+        let img = mossy_cliff();
+        assert_eq!(without_foot(img.clone(), 0.0).data, img.data, "no foot: as it was");
+        let out = without_foot(img, 0.3);
+        assert_eq!((out.width, out.height), (64, 64));
+        // Every row as green and as bright as the picture on the whole, the band's too: no stripe where it repeats.
+        let rows = row_means(&out);
+        for (y, m) in rows.iter().enumerate() {
+            assert!((m[1] - m[0]).abs() < 25.0 && m[0] > 90.0, "row {y}: {m:?}");
+        }
+        // Top meets bottom (the next repeat up) as one row meets the next.
+        let w = out.width as usize;
+        let step = |a: usize, b: usize| {
+            (0..w * 4).map(|i| (f32::from(out.data[a * w * 4 + i]) - f32::from(out.data[b * w * 4 + i])).abs()).sum::<f32>()
+        };
+        let inside = (1..63).map(|y| step(y, y + 1)).fold(0f32, f32::max);
+        assert!(step(63, 0) <= inside, "the wrap: {} against {inside} inside", step(63, 0));
+    }
+
+    #[test]
+    fn a_foot_is_at_most_the_largest_the_rock_above_can_fill() {
+        let list = |foot: &str| {
+            parse_list(&format!(r#"{{"textures":[{{"id":"r","resref":"ttf01_cliff01","foot":{foot}}}]}}"#)).map(|(_, s)| s[0].foot)
+        };
+        assert_eq!(list("0.33").unwrap(), 0.33);
+        assert!(list("0.5").is_err());
+        assert!(list("-0.1").is_err());
+    }
+
+    #[test]
+    fn a_cliff_made_before_its_foot_was_left_out_is_made_again_once_and_an_edited_one_is_kept() {
+        let (_, specs) = parse_list(STARTER).unwrap();
+        let cliff = specs.iter().find(|s| s.id == "rockCliff").unwrap();
+        assert!(cliff.foot > 0.0, "the forest cliff's moss is left out");
+        let game = mossy_cliff();
+        let g = game.clone();
+        let read = move |resref: &str| (resref == "ttf01_cliff01").then(|| g.clone());
+        for edited in [false, true] {
+            let dir = scratch(if edited { "footed-edited" } else { "footed" });
+            let mut lib = Library::open(&dir).unwrap();
+            lib.put(&Spec { foot: 0.0, ..cliff.clone() }, "Neverwinter Nights", "game:ttf01_cliff01", game.clone()).unwrap();
+            lib.save().unwrap();
+            if edited {
+                paint::write_png(&dir.join("rockCliff.png"), &picture(64, 64)).unwrap();
+            }
+            let mut lib = Library::open(&dir).unwrap();
+            assert!(has_rescaled(&lib));
+            let replaced = refresh_retired(&mut lib, &read).unwrap();
+            if edited {
+                assert!(replaced.is_empty(), "the builder's picture is theirs");
+            } else {
+                assert_eq!(replaced, vec!["rockCliff".to_string()]);
+                lib.save().unwrap();
+                let lib = Library::open(&dir).unwrap();
+                assert_eq!(lib.foot_of("rockCliff"), cliff.foot);
+                assert_eq!(
+                    paint::read_png(&dir.join("rockCliff.png")).unwrap().data,
+                    library_pictures(without_foot(game.clone(), cliff.foot)).0.data
+                );
+                assert!(!has_rescaled(&lib));
+                let mut again = Library::open(&dir).unwrap();
+                assert!(refresh_retired(&mut again, &read).unwrap().is_empty());
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
     #[test]
     fn a_dirt_the_builder_changed_or_replaced_is_kept() {
         let (old, _, read) = two_dirts();
@@ -1174,6 +1367,7 @@ mod tests {
             surface: 1,
             resref: "ttr01_dirt03".into(),
             repeats: 1,
+            foot: 0.0,
         };
         lib.put(&spec, "Neverwinter Nights", "game:ttr01_dirt03", old.clone()).unwrap();
         assert!(!has_retired(&lib));

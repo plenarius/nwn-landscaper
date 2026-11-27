@@ -1,5 +1,5 @@
 {
-  "_": "The starter texture library: ground, rock, sand, snow, floors and walls read from the player's own copy of NWN:EE the first time the Landscaper runs with no library. Each `resref` is a texture of the base game; `id` is letters and digits, at most 16 (`ls_` and its first 13, lower case, are the texture's resref in the hak); the editor's defaults are among them (`textures.rs`, EDITOR_DEFAULTS); `surface` is the surfacemat.2da row for footsteps (1 dirt, 3 grass, 4 stone, 5 wood, 13 mud, 19 snow, 20 sand); `repeats` (1, 2 or 4; 1 when not given) how many times the game's picture repeats each way across the 4 m a library texture covers, so close-ups of pebbles, cobbles, bricks and planks come out their real size (stock tiles show these pictures over 3 to 5 m, made for a camera far above).",
+  "_": "The starter texture library: ground, rock, sand, snow, floors and walls read from the player's own copy of NWN:EE the first time the Landscaper runs with no library. Each `resref` is a texture of the base game; `id` is letters and digits, at most 16 (`ls_` and its first 13, lower case, are the texture's resref in the hak); the editor's defaults are among them (`textures.rs`, EDITOR_DEFAULTS); `surface` is the surfacemat.2da row for footsteps (1 dirt, 3 grass, 4 stone, 5 wood, 13 mud, 19 snow, 20 sand); `repeats` (1, 2 or 4; 1 when not given) how many times the game's picture repeats each way across the 4 m a library texture covers, so close-ups of pebbles, cobbles, bricks and planks come out their real size (stock tiles show these pictures over 3 to 5 m, made for a camera far above); `foot` (0 to 0.4; 0 when not given) how much of a cliff picture's height, from the bottom, is a band of moss, grass or sand where the cliff meets the ground: it is replaced by rock from higher up, as the picture repeats every 4 m up a tall face and the band drew a stripe at each.",
   "textures": [
     { "id": "grassMedium", "name": "Medium grass", "category": "Grass", "surface": 3, "resref": "tcm02_grass01" },
     { "id": "grassBright", "name": "Bright grass", "category": "Grass", "surface": 3, "resref": "ttz01_grass02" },
@@ -26,9 +26,9 @@
     { "id": "sandSilt", "name": "Silt", "category": "Sand", "surface": 20, "resref": "trm02_sand01" },
 
     { "id": "rock", "name": "Rock", "category": "Rock", "surface": 4, "resref": "tdm01_rock01" },
-    { "id": "rockCliff", "name": "Cliff rock", "category": "Rock", "surface": 4, "resref": "ttf01_cliff01" },
-    { "id": "swampRock", "name": "Swamp rock", "category": "Rock", "surface": 4, "resref": "trm02_cliff01" },
-    { "id": "canyonRock", "name": "Canyon rock", "category": "Rock", "surface": 4, "resref": "ttd01_cliff01" },
+    { "id": "rockCliff", "name": "Cliff rock", "category": "Rock", "surface": 4, "resref": "ttf01_cliff01", "foot": 0.33 },
+    { "id": "swampRock", "name": "Swamp rock", "category": "Rock", "surface": 4, "resref": "trm02_cliff01", "foot": 0.2 },
+    { "id": "canyonRock", "name": "Canyon rock", "category": "Rock", "surface": 4, "resref": "ttd01_cliff01", "foot": 0.1 },
     { "id": "winterRock", "name": "Winter rock", "category": "Rock", "surface": 4, "resref": "tts01_rock00" },
     { "id": "rockGrey", "name": "Grey rock", "category": "Rock", "surface": 4, "resref": "tts01_stone18" },
     { "id": "rockRed", "name": "Red rock", "category": "Rock", "surface": 4, "resref": "ttd01_rock00" },

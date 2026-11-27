@@ -25,6 +25,10 @@ The ground's texture is drawn from above on level ground and from the side on wa
 slope. Where a wall meets the floor, the floor is drawn from above right up to the wall and the wall from the side right down
 to the floor, so the two meet at a clean edge, in the editor and in the game.
 
+The starter set's cliff rock, swamp rock and canyon rock repeat up a tall face as one rock: the moss, grass or sand along the
+foot of the game's pictures is left out, so a 20 m cliff has no stripe every 4 m. For moss at a cliff's foot, paint the ground
+there.
+
 ## Paint a mix
 
 The mix brush paints a blend of textures in patches: grass with dry patches and dirt, sand with pebbles.
