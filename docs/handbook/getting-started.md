@@ -13,6 +13,9 @@ it. Take the download for your system from the [releases](https://github.com/ple
 | macOS 11 and newer | `nwn-landscaper-0.7.0-macos-universal.dmg` | [macOS](install-macos.md) |
 | Linux | `nwn-landscaper-0.7.0-linux-x86_64.AppImage`, or `nwn-landscaper_0.7.0_amd64.deb` | [Linux](install-linux.md) |
 
+On Windows, `winget install Plenarius.NWNLandscaper` installs it too, and on macOS
+`brew install --cask plenarius/tap/nwn-landscaper`.
+
 You need the game itself, Neverwinter Nights: Enhanced Edition. The Landscaper reads its files and ships none of them. The first
 start looks for the game, asks for its folder when it can't find it, and builds the texture library from it:
 [The first start](first-start.md).
