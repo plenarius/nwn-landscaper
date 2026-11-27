@@ -22,13 +22,18 @@ what the game shows beyond the area's edge, so the hills, the valley or the shor
 
 ![A 12 by 12 tile area (the grid) with its band sculpted: hills beyond its north and west edges, and a valley with a dirt path running out across its south edge](../assets/handbook/band.webp)
 
-- **Raise, Lower, Smooth, Flatten and Paint** work in it: drag past the edge and the brush shapes the band as it shapes the
-  area, across the edge in one stroke. Undo takes it back.
-- **A new area's band carries its edge straight out**, as the game's edge scenery showed it before. An area made before the band
-  gets the same band when you open it. Shape it from there.
+- **Raise, Lower, Smooth, Flatten, Paint and the [mix brush](paint.md#paint-a-mix)** work in it: drag past the edge and the
+  brush shapes the band as it shapes the area, across the edge in one stroke. A mix's patches run on across the edge. Undo takes
+  it back.
+- **Scenery stands in it too:** [Scatter, Place and *Carry the scenery outward*](scatter.md#past-the-edge) put trees, rocks and
+  bushes on the band, drawn past the edge in the game and never in the way. Placeables, things, entrances and particles stay
+  inside the area: the game has none past its edge.
+- **A new area's band carries its edge out**, eased: the strip by the edge is the edge, and further out the bumps along the edge
+  spread into gentle slopes, so a hilly edge doesn't run out as long ridges. An area made before the band gets the same band when
+  you open it, and so does one whose band is still as the first fill left it. A band you shaped is kept. Shape it from there.
 - **The area's water runs on into the band** where the band's ground is lower than the water.
-- **Not in the band yet:** the texture mix, chasms, Dig and objects. A chasm along the edge stops at the edge: lower the band
-  past it to keep the drop going.
+- **Not in the band yet:** chasms and Dig. A chasm along the edge stops at the edge: lower the band past it to keep the drop
+  going.
 - The status bar says *the band round the area* when the cursor is over it.
 - Caves and interiors have no band: the game shows nothing past their edge.
 
