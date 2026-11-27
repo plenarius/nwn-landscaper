@@ -93,7 +93,26 @@ pub(super) fn tile_model(
     let shadow_uv = square;
     // A baked picture's: the square inside its margin (painter.rs, `BAKE_MARGIN`).
     let on_picture = |v: [f32; 3]| super::painter::picture_uv(square(v));
-    let mut lit = |s: &mut String, node: String, bitmap: &str, faces: &[[u32; 3]], mapping: Mapping<'_>| {
+    // With the game's grass on, each walkable face's surface as its material: the client grows grass on the grass ones.
+    let grass = grass().is_some();
+    let surfaces = |faces: &[[u32; 3]]| -> Vec<u32> {
+        if !grass {
+            return Vec::new();
+        }
+        faces
+            .iter()
+            .map(|f| {
+                let c = f.map(|v| g.verts[v as usize]);
+                let (x, y) = ((c[0][0] + c[1][0] + c[2][0]) / 3.0 + ox, (c[0][1] + c[1][1] + c[2][1]) / 3.0 + oy);
+                if hm.as_ref().is_some_and(|h| h.water_at(x, y).is_some()) {
+                    MAT_WATER
+                } else {
+                    painter.map_or(MAT_GRASS, |p| p.textures[p.nearest(x, y) as usize].surface)
+                }
+            })
+            .collect()
+    };
+    let mut lit = |s: &mut String, node: String, bitmap: &str, faces: &[[u32; 3]], mapping: Mapping<'_>, ground: bool| {
         if faces.is_empty() {
             return;
         }
@@ -108,24 +127,34 @@ pub(super) fn tile_model(
         } else {
             String::new()
         };
-        terrain_mesh(s, &node, name, bitmap, &props, &g, faces, origin, mapping, shadow.then_some(&shadow_uv));
+        let surfaces = if ground { surfaces(faces) } else { Vec::new() };
+        terrain_mesh(s, &node, name, bitmap, &props, &g, faces, origin, mapping, shadow.then_some(&shadow_uv), &surfaces);
     };
     match painter {
         None => {
-            lit(&mut s, format!("{name}_gnd"), "ttr01_grass02", &ground, Mapping::Vertex(&|v| [(v[0] + ox) / 5.0, (v[1] + oy) / 5.0]));
-            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed(paint::Repeat::PLAIN));
+            lit(
+                &mut s,
+                format!("{name}_gnd"),
+                "ttr01_grass02",
+                &ground,
+                Mapping::Vertex(&|v| [(v[0] + ox) / 5.0, (v[1] + oy) / 5.0]),
+                true,
+            );
+            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed(paint::Repeat::PLAIN), false);
         }
         Some(p) => {
             match p.tile_materials(tx, ty).as_slice() {
                 // An import's picture: baked like several textures.
-                _ if p.baked(tx, ty) => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
+                _ if p.baked(tx, ty) => {
+                    lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture), true);
+                }
                 // One texture: the library's, repeating, drawn from three sides.
                 [m] => {
                     let bitmap = paint::resref(&p.hm.palette[*m as usize]);
-                    lit(&mut s, format!("{name}_gnd"), &bitmap, &ground, Mapping::Boxed(p.repeat(*m)));
+                    lit(&mut s, format!("{name}_gnd"), &bitmap, &ground, Mapping::Boxed(p.repeat(*m)), true);
                 }
                 // Several: the tile's own baked texture over its square (baked from three sides, as the one-texture tiles draw it).
-                _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
+                _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture), true),
             }
             // Steep faces: each one's texture from split.rs, else the texture painted nearest the face's middle.
             let mut by_material: std::collections::BTreeMap<u8, Vec<[u32; 3]>> = Default::default();
@@ -142,11 +171,18 @@ pub(super) fn tile_model(
                     // front: the grid's slope fills what they don't cover.)
                     let Some(tiles) = p.textures[*m as usize].tiles.as_ref() else { continue };
                     match tiles.cliffs.get(ty * tiles.width + tx).cloned().flatten() {
-                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed(paint::Repeat::PLAIN)),
-                        None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&on_picture)),
+                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed(paint::Repeat::PLAIN), false),
+                        None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&on_picture), false),
                     }
                 } else {
-                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed(p.repeat(*m)));
+                    lit(
+                        &mut s,
+                        format!("{name}_rck{k}"),
+                        &paint::resref(&p.hm.palette[*m as usize]),
+                        faces,
+                        Mapping::Boxed(p.repeat(*m)),
+                        false,
+                    );
                 }
             }
         }
@@ -193,6 +229,7 @@ pub(super) fn tile_model(
             origin,
             mapping,
             Some(&fade),
+            &[],
         );
     }
     // Entrances whose mouth is in this tile: the roof's top in the hill's paint, its rock (underside and lip; shadowed, so dark
@@ -423,13 +460,68 @@ pub(super) fn surfaced(w: &Walk, tx: usize, ty: usize, painter: Option<&Painter>
     out
 }
 
+/// The game's grass over the area's grass-surfaced ground: the `.set`'s [GRASS] numbers.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Grass {
+    /// The grass texture (the game's `grass`, a stock tileset's `trm02_grass3d`...).
+    texture: String,
+    /// How thick it grows (the rural tileset's 5).
+    density: f32,
+    /// How tall (m; the rural tileset's 1.2).
+    height: f32,
+    /// Its ambient and diffuse colours, 0 to 1.
+    ambient: [f32; 3],
+    diffuse: [f32; 3],
+}
+
+/// The area's grass: its `atmosphere`'s `grass` (`{ "on": true, "density": 5, "height": 1, "texture": "grass",
+/// "ambient": "#80994c", "diffuse": "#80994c" }`, all but `on` optional). Off unless turned on, so an area exported again keeps
+/// its look; never in a cave or an interior.
+pub(super) fn grass() -> Option<Grass> {
+    let hm = heightmap::current()?;
+    grass_of(hm.underground, hm.atmosphere.as_ref().map(|a| &a["grass"]))
+}
+
+fn grass_of(underground: bool, g: Option<&serde_json::Value>) -> Option<Grass> {
+    let g = g?;
+    if underground || g["on"].as_bool() != Some(true) {
+        return None;
+    }
+    let number = |k: &str, d: f32, max: f32| g[k].as_f64().map_or(d, |v| (v as f32).clamp(0.0, max));
+    let colour = |k: &str| {
+        let rgb = g[k].as_str().and_then(|h| u32::from_str_radix(h.trim_start_matches('#'), 16).ok()).unwrap_or(0x80_99_4c);
+        [(rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF].map(|c| c as f32 / 255.0)
+    };
+    let texture = g["texture"].as_str().filter(|t| !t.is_empty() && t.len() <= 16).unwrap_or("grass").to_ascii_lowercase();
+    Some(Grass {
+        texture,
+        density: number("density", 5.0, 20.0),
+        height: number("height", 1.0, 4.0),
+        ambient: colour("ambient"),
+        diffuse: colour("diffuse"),
+    })
+}
+
+/// The `.set`'s [GRASS] section for `g` (none: `Grass=0`).
+fn grass_section(g: Option<&Grass>) -> String {
+    let Some(g) = g else { return "[GRASS]\nGrass=0\n\n".to_string() };
+    let [ar, ag, ab] = g.ambient;
+    let [dr, dg, db] = g.diffuse;
+    format!(
+        "[GRASS]\nGrass=1\nGrassTextureName={}\nDensity={:.3}\nHeight={:.3}\nAmbientRed={ar:.3}\nAmbientGreen={ag:.3}\n\
+         AmbientBlue={ab:.3}\nDiffuseRed={dr:.3}\nDiffuseGreen={dg:.3}\nDiffuseBlue={db:.3}\n\n",
+        g.texture, g.density, g.height
+    )
+}
+
 /// The generated tileset's `.set`, each tile with its path node letter and orientation (`nodes`, in tile order).
 pub(super) fn set_file(nodes: &[(char, u8)]) -> String {
     let mut s = format!(
         "[GENERAL]\nName={}\nType=SET\nVersion=V1.0\nInterior=0\nHasHeightTransition=1\nEnvMap=ttr01__ref01\n\
          Transition=5\nDisplayName=-1\nUnlocalizedName=Landscaper\nBorder=Ground\nDefault=Ground\nFloor=Ground\n\n\
-         [GRASS]\nGrass=0\n\n",
+         {}",
         tileset_name().to_uppercase(),
+        grass_section(grass().as_ref()),
     );
     // Ground, and the area corners' own terrains and the boundary edges' own crossers, which only key the edge scenery (see edge.rs).
     let _ = write!(s, "[TERRAIN TYPES]\nCount={}\n\n[TERRAIN0]\nName=Ground\nStrRef=63635\n\n", 1 + edge::CORNERS.len());
@@ -473,6 +565,20 @@ pub(super) fn set_file(nodes: &[(char, u8)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grass_is_off_unless_the_area_turns_it_on() {
+        let on = serde_json::json!({ "on": true, "density": 3, "height": 0.7 });
+        assert_eq!(grass_of(false, None), None);
+        assert_eq!(grass_of(false, Some(&serde_json::json!({ "density": 3 }))), None);
+        assert_eq!(grass_of(false, Some(&serde_json::json!({ "on": false, "density": 3 }))), None);
+        assert_eq!(grass_of(true, Some(&on)), None, "never under ground");
+        let g = grass_of(false, Some(&on)).unwrap();
+        assert_eq!((g.texture.as_str(), g.density, g.height), ("grass", 3.0, 0.7));
+        let set = grass_section(Some(&g));
+        assert!(set.starts_with("[GRASS]\nGrass=1\nGrassTextureName=grass\nDensity=3.000\nHeight=0.700\n"), "{set}");
+        assert_eq!(grass_section(None), "[GRASS]\nGrass=0\n\n");
+    }
 
     #[test]
     fn the_water_runs_over_the_dry_shallows_up_to_the_bank() {

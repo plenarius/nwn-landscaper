@@ -316,6 +316,7 @@ impl Overhang {
                 None,
                 &faces,
                 &faces,
+                &[],
             );
             if let Some(water) = self.water(i, j) {
                 self.counts.water.fetch_add(water.len() / 3, Ordering::Relaxed);
@@ -454,6 +455,7 @@ impl Overhang {
                     None,
                     &faces,
                     &faces,
+                    &[],
                 );
             }
         }
