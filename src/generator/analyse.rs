@@ -197,8 +197,8 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
     // (Its import, if it was made by one, may be beside it rather than in the exports folder: `paint::import_dir`.)
     crate::paint::set_area_folder(json.parent().map(std::path::Path::to_path_buf));
     lap("load");
-    // Every baked object's model must be there (else say which).
-    objects::check()?;
+    // Models this install lacks (an area from another, or the web demo): those objects block nothing and aren't baked.
+    let missing_models = objects::missing();
     let out = json.parent().unwrap_or(std::path::Path::new(".")).join(format!("{}_nwn", hm.name));
     if build {
         std::fs::create_dir_all(&out)?;
@@ -376,6 +376,7 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         "start": start_point(),
         "warnings": warnings,
         "ambience": ambience.report(),
+        "missing_models": missing_models,
     });
     if !build {
         return Ok(report);

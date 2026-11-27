@@ -20,6 +20,7 @@ mod canvas;
 mod cli;
 mod config;
 mod dds;
+mod demostock;
 mod devpack;
 mod devtrial;
 mod dialog;
@@ -333,6 +334,7 @@ fn run(cli: cli::Cli) -> Result<()> {
             print!("{}", mg_mdl::decompile(&data)?);
         }
         C::Shaders { out } => shared::write_shaders(&out)?,
+        C::DemoStock { out } => demostock::write(&out)?,
         C::CheckTiles { limit } => research::check_tiles(limit.unwrap_or(200_000))?,
         C::ValidatePathnodes { tileset } => research::validate_pathnodes(tileset.as_deref().unwrap_or("ttr01"))?,
         C::WokStats { tilesets } => research::wok_stats(&tilesets)?,
