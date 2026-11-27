@@ -64,7 +64,13 @@ pub struct Spec {
     pub surface: u32,
     /// For a texture of the game or a hak: its resref. Empty for a picture from a folder.
     pub resref: String,
+    /// How many times its picture repeats each way across the [`paint::TEXTURE_METRES`] a library texture covers: 1, 2 or 4. A
+    /// close-up of pebbles or cobbles shown once across 4 m makes every stone huge; repeated, they come out their real size.
+    pub repeats: u32,
 }
+
+/// The repeats a list may give a texture ([`Spec::repeats`]): the picture still fits the library's size in whole halvings.
+const REPEATS: [u32; 3] = [1, 2, 4];
 
 /// `{ "haks": [...], "textures": [{ id, name, category, surface, resref }] }`: the haks (optional) are added to the game's files first.
 fn parse_list(text: &str) -> Result<(Vec<String>, Vec<Spec>)> {
@@ -76,7 +82,10 @@ fn parse_list(text: &str) -> Result<(Vec<String>, Vec<Spec>)> {
         let id = field("id").context("a texture without an id")?;
         anyhow::ensure!(valid_id(&id), "'{id}' is not a texture id (1 to {MAX_LISTED_ID} letters and digits)");
         let resref = field("resref").with_context(|| format!("{id}: no resref"))?;
+        let repeats = t["repeats"].as_u64().unwrap_or(1) as u32;
+        anyhow::ensure!(REPEATS.contains(&repeats), "{id}: repeats is 1, 2 or 4, not {}", t["repeats"]);
         specs.push(Spec {
+            repeats,
             name: field("name").unwrap_or_else(|| id.clone()),
             category: field("category").unwrap_or_else(|| "Custom".into()),
             surface: t["surface"].as_u64().unwrap_or(3) as u32,
@@ -141,6 +150,10 @@ impl Library {
             "surface": spec.surface, "edge": paint::edge_for(&spec.category).name(), "size": [render.width, render.height],
             "original": original,
         });
+        let mut entry = entry;
+        if spec.repeats > 1 {
+            entry["repeats"] = spec.repeats.into();
+        }
         match self.entries.iter().position(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(&spec.id))) {
             Some(at) => self.entries[at] = entry,
             None => self.entries.push(entry),
@@ -164,6 +177,15 @@ impl Library {
     /// Where the entry `id` came from (`game:<resref>`, a file name...), if there is one.
     fn original_of(&self, id: &str) -> Option<&str> {
         self.entries.iter().find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id))).and_then(|e| e["original"].as_str())
+    }
+
+    /// How many times the entry `id`'s picture repeats its source ([`Spec::repeats`]; 1 when the entry doesn't say).
+    fn repeats_of(&self, id: &str) -> u32 {
+        self.entries
+            .iter()
+            .find(|e| e["id"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(id)))
+            .and_then(|e| e["repeats"].as_u64())
+            .map_or(1, |r| r as u32)
     }
 
     /// The picture file of the entry `id`, if there is one.
@@ -194,6 +216,24 @@ fn library_pictures(picture: Rgba) -> (Rgba, Rgba) {
     let render = fit(opaque(picture), RENDER);
     let swatch = fit(render.clone(), SWATCH);
     (render, swatch)
+}
+
+/// `img` repeated `n` times each way (n x n copies side by side): a game picture as a library texture of [`Spec::repeats`] `n`.
+fn repeated(img: Rgba, n: u32) -> Rgba {
+    if n <= 1 {
+        return img;
+    }
+    let (w, h) = (img.width as usize, img.height as usize);
+    let mut data = vec![0u8; w * h * 4 * (n * n) as usize];
+    let row = w * 4;
+    for y in 0..h * n as usize {
+        let src = &img.data[(y % h) * row..(y % h + 1) * row];
+        for k in 0..n as usize {
+            let at = (y * w * n as usize + k * w) * 4;
+            data[at..at + row].copy_from_slice(src);
+        }
+    }
+    Rgba { width: img.width * n, height: img.height * n, data }
 }
 
 /// Library pictures have no transparency (the game's own can carry a specular mask in alpha).
@@ -250,7 +290,7 @@ fn add_specs(library: &mut Library, haks: &[String], specs: &[Spec], replace: bo
         }
         match game_picture(&game, &s.resref) {
             Some(img) => {
-                library.put(s, "Neverwinter Nights", &format!("game:{}", s.resref), img)?;
+                library.put(s, "Neverwinter Nights", &format!("game:{}", s.resref), repeated(img, s.repeats))?;
                 report.added += 1;
             }
             None => report.problems.push(format!("{} ({}): the game has no such texture", s.id, s.resref)),
@@ -307,7 +347,8 @@ fn add_pictures(library: &mut Library, folder: &Path, specs: &[Spec]) -> Result<
         match read_picture(&path) {
             Ok(img) => {
                 let file = path.file_name().map_or_default(|n| n.to_string_lossy().into_owned());
-                library.put(s, "Your pictures", &file, img)?;
+                // (A picture of the starter id is already the 4 m it covers, as the demo pack's are.)
+                library.put(&Spec { repeats: 1, ..s.clone() }, "Your pictures", &file, img)?;
                 report.added += 1;
             }
             Err(e) => report.problems.push(format!("{e:#}")),
@@ -373,7 +414,7 @@ pub fn add_picked(haks: &[String], resref: &str, surface: u32) -> Result<Picked>
     }
     let id = tileset_id(resref, &library);
     let surface = if surface == 0 { surface_for(&name) } else { surface };
-    let spec = Spec { id: id.clone(), name: name.clone(), category: "Tileset".into(), surface, resref: name.clone() };
+    let spec = Spec { id: id.clone(), name: name.clone(), category: "Tileset".into(), surface, resref: name.clone(), repeats: 1 };
     let report = add_specs(&mut library, haks, &[spec], false)?;
     anyhow::ensure!(report.added == 1, "{}", report.problems.first().cloned().unwrap_or_else(|| format!("{resref} was not added")));
     library.save()?;
@@ -486,6 +527,7 @@ fn build_into(library_dir: &Path, folder: &Path, category: Option<&str>, surface
             surface: surface.unwrap_or_else(|| surface_for(&cat)),
             category: cat,
             resref: String::new(),
+            repeats: 1,
             id,
         };
         match read_picture(&path) {
@@ -505,8 +547,20 @@ fn has_retired(library: &Library) -> bool {
     RETIRED.iter().any(|(id, old)| library.pack_of(id).is_none() && library.original_of(id) == Some(&format!("game:{old}")))
 }
 
+/// Whether `library` holds a starter texture made from the game at another [`Spec::repeats`] than the starter set's now.
+fn has_rescaled(library: &Library) -> bool {
+    parse_list(STARTER).map_or_default(|(_, specs)| {
+        specs.iter().any(|s| {
+            library.pack_of(&s.id).is_none()
+                && library.original_of(&s.id) == Some(&format!("game:{}", s.resref))
+                && library.repeats_of(&s.id) != s.repeats
+        })
+    })
+}
+
 /// Replaces each [`RETIRED`] starter texture `library` still holds, untouched (its entry names the old game texture and its
-/// picture is the one that texture makes), with the starter set's texture for that id. `picture` reads a game texture by resref.
+/// picture is the one that texture makes), with the starter set's texture for that id, and each starter texture made at another
+/// scale (untouched, likewise) at the starter set's. `picture` reads a game texture by resref.
 /// Returns the ids replaced; running it again replaces nothing.
 fn refresh_retired(library: &mut Library, picture: impl Fn(&str) -> Option<Rgba>) -> Result<Vec<String>> {
     let (_, specs) = parse_list(STARTER)?;
@@ -524,18 +578,37 @@ fn refresh_retired(library: &mut Library, picture: impl Fn(&str) -> Option<Rgba>
             continue;
         }
         let Some(new) = picture(&spec.resref) else { continue };
-        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), new)?;
+        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), repeated(new, spec.repeats))?;
+        replaced.push(id.to_string());
+    }
+    // Starter textures made at another scale ([`has_rescaled`]), untouched: made again at the starter set's.
+    for spec in &specs {
+        let id = spec.id.as_str();
+        if library.pack_of(id).is_some() || library.original_of(id) != Some(&format!("game:{}", spec.resref)) {
+            continue;
+        }
+        let had = library.repeats_of(id);
+        if had == spec.repeats {
+            continue;
+        }
+        let Some(file) = library.render_of(id) else { continue };
+        let (Some(source), Ok(now)) = (picture(&spec.resref), paint::read_png(&library.dir.join(file))) else { continue };
+        let was = library_pictures(repeated(source.clone(), had)).0;
+        if (was.width, was.height, &was.data) != (now.width, now.height, &now.data) {
+            continue;
+        }
+        library.put(spec, "Neverwinter Nights", &format!("game:{}", spec.resref), repeated(source, spec.repeats))?;
         replaced.push(id.to_string());
     }
     Ok(replaced)
 }
 
-/// [`refresh_retired`] on the library, reading the game only when it holds a retired texture. Its catalog is saved when one
+/// [`refresh_retired`] on the library, reading the game only when it holds a retired or rescaled texture. Its catalog is saved when one
 /// was replaced, so the shared hak and the next export of an area painted with it take the new picture.
 pub fn refresh_starter() -> Result<Vec<String>> {
     let _one = lock();
     let mut library = Library::open(&paint::texture_dir())?;
-    if !has_retired(&library) {
+    if !has_retired(&library) && !has_rescaled(&library) {
         return Ok(Vec::new());
     }
     let game = crate::models::open_game(nwn_bake::game::Haks::List(Vec::new()), nwn_bake::game::Tlk::None)
@@ -781,7 +854,14 @@ mod tests {
     #[test]
     fn a_picture_is_fitted_written_and_listed_the_way_the_loader_reads_it() {
         let dir = scratch("put");
-        let spec = Spec { id: "grassTest".into(), name: "Test grass".into(), category: "Grass".into(), surface: 3, resref: String::new() };
+        let spec = Spec {
+            id: "grassTest".into(),
+            name: "Test grass".into(),
+            category: "Grass".into(),
+            surface: 3,
+            resref: String::new(),
+            repeats: 1,
+        };
         let mut lib = Library::open(&dir).unwrap();
         lib.put(&spec, "test", "x", picture(1024, 1024)).unwrap();
         lib.save().unwrap();
@@ -842,7 +922,8 @@ mod tests {
     fn two_ids_that_would_share_a_hak_name_are_refused() {
         let dir = scratch("hak-names");
         let mut library = Library::open(&dir).unwrap();
-        let spec = |id: &str| Spec { id: id.into(), name: id.into(), category: "Walls".into(), surface: 4, resref: String::new() };
+        let spec =
+            |id: &str| Spec { id: id.into(), name: id.into(), category: "Walls".into(), surface: 4, resref: String::new(), repeats: 1 };
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
         // The same id again replaces it; another that starts with the same 13 letters can't go in beside it.
         library.put(&spec("wallFieldstone"), "test", "a", picture(8, 8)).unwrap();
@@ -973,6 +1054,57 @@ mod tests {
     }
 
     #[test]
+    fn a_picture_repeated_is_copies_side_by_side() {
+        let p = picture(3, 2);
+        let r = repeated(p.clone(), 2);
+        assert_eq!((r.width, r.height), (6, 4));
+        let px = |img: &Rgba, x: u32, y: u32| img.data[((y * img.width + x) * 4) as usize..][..4].to_vec();
+        for (x, y) in [(0, 0), (2, 1), (4, 3), (5, 2)] {
+            assert_eq!(px(&r, x, y), px(&p, x % 3, y % 2), "({x}, {y})");
+        }
+        assert_eq!(repeated(p.clone(), 1).data, p.data);
+    }
+
+    #[test]
+    fn a_starter_texture_made_at_the_old_scale_is_made_again_at_the_new_once_and_an_edited_one_is_kept() {
+        let (_, specs) = parse_list(STARTER).unwrap();
+        let pebbles = specs.iter().find(|s| s.id == "gravelPebbles").unwrap();
+        assert_eq!(pebbles.repeats, 2, "the pebbles' close-up repeats, so its stones come out a hand across, not a foot");
+        let game = picture(128, 128);
+        let g = game.clone();
+        let read = move |resref: &str| (resref == "ttf01_gravel01").then(|| g.clone());
+        for edited in [false, true] {
+            let dir = scratch(if edited { "rescaled-edited" } else { "rescaled" });
+            let mut lib = Library::open(&dir).unwrap();
+            // As a library made before `repeats`: the game's picture once, and no repeats in its entry.
+            lib.put(&Spec { repeats: 1, ..pebbles.clone() }, "Neverwinter Nights", "game:ttf01_gravel01", game.clone()).unwrap();
+            lib.save().unwrap();
+            if edited {
+                paint::write_png(&dir.join("gravelPebbles.png"), &picture(64, 64)).unwrap();
+            }
+            let mut lib = Library::open(&dir).unwrap();
+            assert!(has_rescaled(&lib));
+            let replaced = refresh_retired(&mut lib, &read).unwrap();
+            if edited {
+                assert!(replaced.is_empty(), "the builder's picture is theirs");
+            } else {
+                assert_eq!(replaced, vec!["gravelPebbles".to_string()]);
+                lib.save().unwrap();
+                let lib = Library::open(&dir).unwrap();
+                assert_eq!(lib.repeats_of("gravelPebbles"), 2);
+                assert_eq!(
+                    paint::read_png(&dir.join("gravelPebbles.png")).unwrap().data,
+                    library_pictures(repeated(game.clone(), 2)).0.data
+                );
+                assert!(!has_rescaled(&lib));
+                let mut again = Library::open(&dir).unwrap();
+                assert!(refresh_retired(&mut again, &read).unwrap().is_empty());
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
     fn a_dirt_the_builder_changed_or_replaced_is_kept() {
         let (old, _, read) = two_dirts();
         // The old entry with its picture painted over in place.
@@ -988,7 +1120,14 @@ mod tests {
         // Replaced with another game texture (`textures add`).
         let dir = scratch("retired-replaced");
         let mut lib = Library::open(&dir).unwrap();
-        let spec = Spec { id: "dirt".into(), name: "Dirt".into(), category: "Earth".into(), surface: 1, resref: "ttr01_dirt03".into() };
+        let spec = Spec {
+            id: "dirt".into(),
+            name: "Dirt".into(),
+            category: "Earth".into(),
+            surface: 1,
+            resref: "ttr01_dirt03".into(),
+            repeats: 1,
+        };
         lib.put(&spec, "Neverwinter Nights", "game:ttr01_dirt03", old.clone()).unwrap();
         assert!(!has_retired(&lib));
         assert!(refresh_retired(&mut lib, &read).unwrap().is_empty());

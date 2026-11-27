@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use super::{TILE, TRANSITION, Walk, ground_normal, height, tile_level};
+use super::{TILE, TRANSITION, WALKABLE_NZ, Walk, ground_normal, height, tile_level};
 use crate::triplanar;
 
 /// A grid of vertices over one tile, in the tile's own coordinates (centred: -5..5), and its triangles.
@@ -123,7 +123,7 @@ pub(super) fn trimesh_full(
     let (verts, local) = used(g, faces);
     let tverts: Vec<[f32; 2]> = verts.iter().map(|v| uv(*v)).collect();
     let tverts1 = uv1.map(|f| verts.iter().map(|v| f(*v)).collect::<Vec<_>>());
-    write_node(out, name, root, bitmap, props, &verts, None, &tverts, tverts1.as_deref(), &local, &local);
+    write_node(out, name, root, bitmap, props, &verts, None, &tverts, tverts1.as_deref(), None, &local, &local);
 }
 
 /// How a tile's ground mesh takes its texture coordinates ([`terrain_mesh`]).
@@ -184,7 +184,39 @@ pub(super) fn terrain_mesh(
         }
     };
     let tverts1 = uv1.map(|f| tvert_of.iter().map(|&v| f(verts[v as usize])).collect::<Vec<_>>());
-    write_node(out, name, root, bitmap, props, &verts, Some(&normals), &tverts, tverts1.as_deref(), &local, &tfaces);
+    // A library texture's blend normal ([`triplanar::blend_normal`]) in the third coordinates, for the shader: walkable ground
+    // takes the gentler slope at each vertex, a steep face the steeper, so neither takes the other's projection at the crease.
+    let tverts2 = matches!(mapping, Mapping::Boxed).then(|| {
+        let mut nz = vec![(0.0f32, 0u32); verts.len()];
+        for f in &local {
+            let n = face_normal(f.map(|v| verts[v as usize]));
+            let z = n[2].abs() / (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-12);
+            for &v in f {
+                nz[v as usize].0 += z;
+                nz[v as usize].1 += 1;
+            }
+        }
+        let blend: Vec<[f32; 2]> = verts
+            .iter()
+            .zip(&nz)
+            .map(|(v, (z, k))| {
+                let a = area(*v);
+                let n = triplanar::blend_normal(height, a[0], a[1], BLEND_STEP, z / ((*k).max(1) as f32) < WALKABLE_NZ);
+                blend_uv(n)
+            })
+            .collect();
+        tvert_of.iter().map(|&v| blend[v as usize]).collect::<Vec<_>>()
+    });
+    write_node(out, name, root, bitmap, props, &verts, Some(&normals), &tverts, tverts1.as_deref(), tverts2.as_deref(), &local, &tfaces);
+}
+
+/// How far each way the blend normal's slopes reach (m): a heightmap sample's spacing.
+const BLEND_STEP: f32 = 0.625;
+
+/// A blend normal as the third texture coordinates: its x and y, each plus 2, so a mesh without them (read as 0) is told apart
+/// and the shader falls back to the vertex normal there. Its z is the rest of the unit length (the blend weighs by size only).
+pub(super) fn blend_uv(n: [f32; 3]) -> [f32; 2] {
+    [n[0] + 2.0, n[1] + 2.0]
 }
 
 /// The vertices of `g` that `faces` use, and the faces renumbered to them.
@@ -212,8 +244,8 @@ fn face_normal([a, b, c]: [[f32; 3]; 3]) -> [f32; 3] {
     [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]
 }
 
-/// Writes a trimesh node: `faces` index `verts` (and `normals`, if given), `tfaces` the texture vertices (`tverts`, and `tverts1`
-/// alike, if given).
+/// Writes a trimesh node: `faces` index `verts` (and `normals`, if given), `tfaces` the texture vertices (`tverts`, and `tverts1` and
+/// `tverts2` alike, if given).
 pub(super) fn write_node(
     out: &mut String,
     name: &str,
@@ -224,6 +256,7 @@ pub(super) fn write_node(
     normals: Option<&[[f32; 3]]>,
     tverts: &[[f32; 2]],
     tverts1: Option<&[[f32; 2]]>,
+    tverts2: Option<&[[f32; 2]]>,
     faces: &[[u32; 3]],
     tfaces: &[[u32; 3]],
 ) {
@@ -246,10 +279,12 @@ pub(super) fn write_node(
     for t in tverts {
         let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
     }
-    if let Some(tverts1) = tverts1 {
-        let _ = writeln!(out, "  tverts1 {}", tverts1.len());
-        for t in tverts1 {
-            let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
+    for (key, list) in [("tverts1", tverts1), ("tverts2", tverts2)] {
+        if let Some(list) = list {
+            let _ = writeln!(out, "  {key} {}", list.len());
+            for t in list {
+                let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
+            }
         }
     }
     let _ = writeln!(out, "  faces {}", faces.len());

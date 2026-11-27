@@ -659,8 +659,14 @@ mod tests {
     fn library(name: &str) -> PathBuf {
         let dir = scratch(name);
         let mut lib = Library::open(&dir).unwrap();
-        let spec =
-            super::super::Spec { id: "wallOwn".into(), name: "Own".into(), category: "Walls".into(), surface: 4, resref: String::new() };
+        let spec = super::super::Spec {
+            id: "wallOwn".into(),
+            name: "Own".into(),
+            category: "Walls".into(),
+            surface: 4,
+            resref: String::new(),
+            repeats: 1,
+        };
         lib.put(&spec, "test", "x", picture(8, 8, 0)).unwrap();
         lib.save().unwrap();
         dir

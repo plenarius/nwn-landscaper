@@ -223,7 +223,7 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(
         let m = painter.map_or(0, |p| p.nearest(bx, by));
         by_material.entry(m).or_default().extend(quad);
         // Water carried out where the boundary is under it.
-        if let Some(level) = hm.as_ref().and_then(|h| h.water_at(bx, by)) {
+        if let Some(level) = hm.as_ref().and_then(|h| h.surface_at(bx, by)) {
             let z = level - base;
             let (y0, y1) = (-TILE / 2.0 + i as f32 * step, -TILE / 2.0 + (i + 1) as f32 * step);
             let at = water.verts.len() as u32;
@@ -312,7 +312,7 @@ fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, Str
         let props = triplanar(&name, &bitmap(painter, m), mtrs);
         trimesh_with(&mut s, &format!("{name}_g"), &name, &bitmap(painter, m), &props, &g, &g.tris, |v| [v[0] / 5.0, v[1] / 5.0]);
     }
-    if let Some(level) = heightmap::current().and_then(|hm| hm.water_at(x, y)) {
+    if let Some(level) = heightmap::current().and_then(|hm| hm.surface_at(x, y)) {
         let w = quad(level - base);
         trimesh_with(&mut s, &format!("{name}_wat"), &name, WATER_TEXTURE, "  transparencyhint 1\n", &w, &w.tris, |v| {
             [v[0] / 5.0, v[1] / 5.0]

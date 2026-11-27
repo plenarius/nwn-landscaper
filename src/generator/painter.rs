@@ -157,7 +157,10 @@ impl Painter {
     /// ones on its tile.
     /// `spacing`: how far apart the points drawn are (m; 0 for the textures' full detail), see [`paint::Texture::at`].
     fn ground(&self, x: f32, y: f32, spacing: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
-        let (p, n) = ([x, y, self.hm.at(x, y)], self.hm.normal(x, y));
+        // (Blended by the ground's own slope, not the light's smoothed normal: see triplanar::blend_normal. The bake draws
+        // walkable ground; the steep faces draw their own.)
+        let n = crate::triplanar::blend_normal(|x, y| self.hm.at(x, y), x, y, self.hm.spacing, false);
+        let p = [x, y, self.hm.at(x, y)];
         let mut c = soft::colour(&self.soft.mix(x, y), x, y, &self.looks, |m| self.textures[m as usize].at(p, n, spacing));
         // Imported things' patches of ground over it, where they stand.
         for d in decals {
@@ -286,8 +289,9 @@ impl Painter {
 
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
-/// (2: drawn from three sides by the slope. 3: small bakes read the textures halved. 4: soft paint.)
-const BAKE_VERSION: u32 = 4;
+/// (2: drawn from three sides by the slope. 3: small bakes read the textures halved. 4: blended by the ground's own slope.
+/// 5: soft paint.)
+const BAKE_VERSION: u32 = 5;
 
 /// What soft.rs needs of palette entry `id`'s texture.
 fn look(id: &str, t: &paint::Texture) -> soft::Look {

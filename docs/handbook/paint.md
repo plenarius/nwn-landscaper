@@ -19,6 +19,12 @@ Press `I` (or click **Pick from the ground**, or Alt-click) and click the ground
 On an imported area it picks the tileset's own texture under the click and adds it to the library, under **Tileset**, the first
 time. It then paints like any other texture and goes into your texture hak at export.
 
+## Walls and steep ground
+
+The ground's texture is drawn from above on level ground and from the side on walls and cliffs, so it keeps its size on every
+slope. Where a wall meets the floor, the floor is drawn from above right up to the wall and the wall from the side right down
+to the floor, so the two meet at a clean edge, in the editor and in the game.
+
 ## Paint a mix
 
 The mix brush paints a blend of textures in patches: grass with dry patches and dirt, sand with pebbles.
@@ -43,6 +49,15 @@ cobbles, flagstones, floors and planks get a sharp one. Where a laid surface mee
 - A line of paint one point wide, or a patch of up to about two points by two (the mix brush's soft edge makes them), is
   smoothed away. Paint lines at least two points wide.
 - The editor draws the same edges, so what you paint is what the game shows.
+
+## How large a texture is drawn
+
+Every texture repeats every 4 m of ground. The starter set's close-ups of small things repeat their picture inside those 4 m, so
+the stones come out a believable size from the game's camera and at eye level: pebbles and cobbles twice each way, and so are
+brick and plank floors, fieldstone walls and rippled sand. Drawn once across 4 m, a pebble was a foot wide.
+
+A library made before this gets the new pictures the next time the Landscaper starts, unless you changed one; it is then
+yours and left alone. For a texture of your own, make its picture cover 4 m of ground.
 
 ## More textures
 

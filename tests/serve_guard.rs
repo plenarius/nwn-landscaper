@@ -895,6 +895,38 @@ fn a_new_area_never_replaces_one_of_the_same_name_unless_asked() {
     assert_eq!(list.matches(r#""name":"alpha""#).count(), 1, "{list}");
 }
 
+#[test]
+fn the_area_list_says_which_files_it_leaves_out_and_why() {
+    let s = Server::start("unlisted", &[], false);
+    let areas = s.data().join("areas");
+    std::fs::create_dir_all(&areas).unwrap();
+    std::fs::write(areas.join("bay.json"), area_json("bay", 4, None)).unwrap();
+    std::fs::write(areas.join("showcanyon.json"), area_json("showcanyon", 4, None)).unwrap();
+    std::fs::write(areas.join("broken.json"), b"{\"name\":\"broken\",").unwrap();
+    std::fs::write(areas.join("copy.json"), area_json("bay", 4, None)).unwrap();
+    // (Not .json: neither listed nor said.)
+    for other in ["bay.json.bak", "notes.txt", "showcanyon.json.bak"] {
+        std::fs::write(areas.join(other), b"x").unwrap();
+    }
+    for _ in 0..2 {
+        let (st, list) = s.editor("GET", "/api/areas", &[], b"");
+        assert_eq!(st, 200, "{list}");
+        let v: serde_json::Value = serde_json::from_str(&list).unwrap();
+        let names: Vec<&str> = v["areas"].as_array().unwrap().iter().filter_map(|a| a["name"].as_str()).collect();
+        assert_eq!(names, ["bay"], "{list}");
+        let files: Vec<&str> = v["unlisted"].as_array().unwrap().iter().filter_map(|u| u["file"].as_str()).collect();
+        assert_eq!(files, ["broken.json", "copy.json", "showcanyon.json"], "{list}");
+        let why = |f: &str| v["unlisted"].as_array().unwrap().iter().find(|u| u["file"] == f).unwrap()["why"].as_str().unwrap().to_string();
+        assert!(why("showcanyon.json").contains(r#""showcanyon" is longer than 9 characters"#), "{list}");
+        assert!(why("broken.json").starts_with("it isn't valid JSON"), "{list}");
+        assert!(why("copy.json").contains("rename it bay.json"), "{list}");
+        // (Only file names: no folder of the server's.)
+        assert!(!list.contains(&*s.data().to_string_lossy()), "{list}");
+    }
+    // What the list leaves out can't be opened either.
+    assert_eq!(s.editor("GET", "/api/area?name=showcanyon", &[], b"").0, 404);
+}
+
 /// The most the server takes in a body that holds an area (serve.rs `body_max::AREA`).
 const AREA_MAX: usize = 8 << 20;
 
