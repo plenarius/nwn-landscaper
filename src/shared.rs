@@ -222,7 +222,15 @@ fn patch_vslit(stock: &str) -> Result<String> {
         &s,
         "vslit",
         "#include \"inc_standard\"",
-        &["#include \"inc_standard\"", "", "attribute vec2 vTcIn1;", "varying vec2 vShadowUV;", "varying vec3 vLsLocalLight;"],
+        &[
+            "#include \"inc_standard\"",
+            "",
+            "attribute vec2 vTcIn1;",
+            "attribute vec2 vTcIn2;",
+            "varying vec2 vShadowUV;",
+            "varying vec2 vLsBlend;",
+            "varying vec3 vLsLocalLight;",
+        ],
     )?;
     let s = replace_line(
         &s,
@@ -231,6 +239,7 @@ fn patch_vslit(stock: &str) -> Result<String> {
         &[
             "ApplyStandardShader();",
             "vShadowUV = vTcIn1;",
+            "vLsBlend = vTcIn2;",
             PER_VERTEX,
             "// The vertex lit again without the area's sun or moon: the fragment shader blends the two by the baked shade.",
             "vec4 lsLocal = COLOR_WHITE;",
@@ -294,9 +303,10 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
     use crate::triplanar::SHARPNESS;
     let metres = paint::TEXTURE_METRES;
     let pos = format!("highp vec3 lsP = (m_view_inv * vec4(vPosView, 1.0)).xyz / {metres:.1};");
-    let weights = format!("vec3 lsW = pow(abs(normalize(mat3(m_view_inv) * vVertexNormal)), vec3({:.1}));", f64::from(SHARPNESS));
+    let weights = format!("vec3 lsW = pow(abs(lsN), vec3({:.1}));", f64::from(SHARPNESS));
+    let s = replace_line(ls_lm_fs, "fslit", "varying vec2 vShadowUV;", &["varying vec2 vShadowUV;", "varying vec2 vLsBlend;"])?;
     let s = replace_line(
-        ls_lm_fs,
+        &s,
         "fslit",
         "SetupStandardShaderInputs();",
         &[
@@ -305,6 +315,13 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
             "if (texture0Bound != 0)",
             "{",
             &format!("    {pos}"),
+            "    // Blended by the ground's own slope from the mesh's tverts2 (each plus 2; triplanar::blend_normal), else the vertex normal.",
+            "    vec3 lsN = normalize(mat3(m_view_inv) * vVertexNormal);",
+            "    if (vLsBlend.x > 0.5)",
+            "    {",
+            "        vec2 lsB = vLsBlend - 2.0;",
+            "        lsN = vec3(lsB, sqrt(max(0.0, 1.0 - dot(lsB, lsB))));",
+            "    }",
             &format!("    {weights}"),
             "    lsW /= lsW.x + lsW.y + lsW.z;",
             "    vec4 lsTex = texture2D(texUnit0, lsP.yz) * lsW.x + texture2D(texUnit0, lsP.xz) * lsW.y + texture2D(texUnit0, lsP.xy) * lsW.z;",
@@ -410,13 +427,16 @@ mod tests {
             "#include \"ls_lighting\"",
             "#include \"inc_standard\"",
             "attribute vec2 vTcIn1;",
+            "attribute vec2 vTcIn2;",
             "varying vec2 vShadowUV;",
+            "varying vec2 vLsBlend;",
             "varying vec3 vLsLocalLight;",
             "void main ()",
             "{",
             "Before();",
             "ApplyStandardShader();",
             "vShadowUV = vTcIn1;",
+            "vLsBlend = vTcIn2;",
             PER_VERTEX,
             "vec4 lsLocal = COLOR_WHITE;",
             "lsAreaShade = vec3(0.0);",
@@ -470,6 +490,8 @@ mod tests {
         // The projections and weights triplanar.rs has: 4 m repeats, along x (y, z), along y (x, z), from above (x, y), power 4.
         assert!(tp.contains("/ 4.0;") && tp.contains("vec3(4.0)"), "{tp}");
         assert!(tp.contains("texUnit0, lsP.yz) * lsW.x") && tp.contains("texUnit0, lsP.xz) * lsW.y") && tp.contains("lsP.xy) * lsW.z"));
+        // Blended by the mesh's tverts2 where it has them, else by the vertex normal.
+        assert!(lines.contains(&"varying vec2 vLsBlend;".to_string()) && tp.contains("if (vLsBlend.x > 0.5)"), "{tp}");
     }
 
     #[test]

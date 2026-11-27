@@ -31,6 +31,30 @@ pub fn weights(n: [f32; 3]) -> [f32; 3] {
     w.map(|c| c / sum)
 }
 
+/// The normal the projections blend by at area point (x, y) of ground whose height `h` gives, from its slopes `step` metres each
+/// way: on each axis the gentler of the two one-sided slopes (none where they disagree in sign) on walkable ground, the steeper
+/// on a steep face. The light's normal is smoothed over several samples on steep ground ([`crate::heightmap::Heightmap::normal`]);
+/// blended by that, flat floor at a wall's foot took the projection from the side and smeared into stripes along it, and the
+/// wall's foot took the one from above and streaked up. With this, the floor ends flat at the wall and the wall stands upright.
+pub fn blend_normal(h: impl Fn(f32, f32) -> f32, x: f32, y: f32, step: f32, steep: bool) -> [f32; 3] {
+    let c = h(x, y);
+    let pick = |a: f32, b: f32| {
+        if steep {
+            if a.abs() >= b.abs() { a } else { b }
+        } else if a * b <= 0.0 {
+            0.0
+        } else if a.abs() <= b.abs() {
+            a
+        } else {
+            b
+        }
+    };
+    let gx = pick((h(x + step, y) - c) / step, (c - h(x - step, y)) / step);
+    let gy = pick((h(x, y + step) - c) / step, (c - h(x, y - step)) / step);
+    let len = (gx * gx + gy * gy + 1.0).sqrt();
+    [-gx / len, -gy / len, 1.0 / len]
+}
+
 /// The projection a face facing `n` takes in its own texture coordinates, for viewers without the game's shader (box mapping):
 /// from above (2) up to 45 degrees from flat; steeper, the side it faces most of eight, 45 degrees apart: along x (0), along y
 /// (1), or along a diagonal, x = y (3) or x = -y (4). The diagonals keep a flank facing north-east from flipping face by face
@@ -111,6 +135,23 @@ mod tests {
         assert_eq!(uv(2, [4.0, 8.0, 3.0]), [1.0, 2.0]);
         assert_eq!(uv(0, [4.0, 8.0, 2.0]), [2.0, 0.5]);
         assert_eq!(uv(1, [4.0, 8.0, 2.0]), [1.0, 0.5]);
+    }
+
+    #[test]
+    fn floor_at_a_wall_s_foot_blends_flat_and_the_wall_s_foot_upright() {
+        // A floor at 0 and an 11 m wall rising over 0.625 m from x = 10, as a cave's.
+        let h = |x: f32, _y: f32| ((x - 10.0) / 0.625).clamp(0.0, 1.0) * 11.0;
+        let floor = blend_normal(h, 10.0, 5.0, 0.625, false);
+        assert_eq!(weights(floor), [0.0, 0.0, 1.0], "the floor's last point takes the projection from above alone");
+        let wall = blend_normal(h, 10.0, 5.0, 0.625, true);
+        assert!(weights(wall)[0] > 0.99, "the wall's foot takes the one along x: {wall:?}");
+        // Even ground: either way, its own slope.
+        let slope = |x: f32, y: f32| 0.5 * x + 0.2 * y;
+        for steep in [false, true] {
+            let n = blend_normal(slope, 3.0, 4.0, 0.625, steep);
+            let len = (0.25f32 + 0.04 + 1.0).sqrt();
+            assert!(close(n[0], -0.5 / len) && close(n[1], -0.2 / len) && close(n[2], 1.0 / len), "{n:?}");
+        }
     }
 
     #[test]

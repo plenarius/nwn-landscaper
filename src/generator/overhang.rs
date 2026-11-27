@@ -313,6 +313,7 @@ impl Overhang {
                 Some(&normals),
                 &uvs,
                 None,
+                None,
                 &faces,
                 &faces,
             );
@@ -440,7 +441,20 @@ impl Overhang {
                 let faces: Vec<[u32; 3]> = (0..verts.len() as u32 / 3).map(|t| [3 * t, 3 * t + 1, 3 * t + 2]).collect();
                 let props = format!("  transparencyhint 1\n  materialname {}\n", self.card_mtr(n, top));
                 let node = format!("{name}_{}{n}", if top { "bt" } else { "bc" });
-                mdl::write_node(s, &node, name, &cards::atlas_name(model), &props, &verts, Some(&normals), &uvs, None, &faces, &faces);
+                mdl::write_node(
+                    s,
+                    &node,
+                    name,
+                    &cards::atlas_name(model),
+                    &props,
+                    &verts,
+                    Some(&normals),
+                    &uvs,
+                    None,
+                    None,
+                    &faces,
+                    &faces,
+                );
             }
         }
     }

@@ -163,7 +163,10 @@ impl Painter {
     /// tile.
     /// `spacing`: how far apart the points drawn are (m; 0 for the textures' full detail), see [`paint::Texture::at`].
     fn ground(&self, x: f32, y: f32, spacing: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
-        let (p, n) = ([x, y, self.hm.at(x, y)], self.hm.normal(x, y));
+        // (Blended by the ground's own slope, not the light's smoothed normal: see triplanar::blend_normal. The bake draws
+        // walkable ground; the steep faces draw their own.)
+        let n = crate::triplanar::blend_normal(|x, y| self.hm.at(x, y), x, y, self.hm.spacing, false);
+        let p = [x, y, self.hm.at(x, y)];
         let mut c = [0.0; 3];
         // (Corners of the same texture share its colour here: sampled once.)
         let mut last: Option<(u8, [f32; 3])> = None;
@@ -301,7 +304,7 @@ impl Painter {
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
 /// (2: drawn from three sides by the slope. 3: small bakes read the textures halved.)
-const BAKE_VERSION: u32 = 3;
+const BAKE_VERSION: u32 = 4;
 
 /// A picture's digest: its size and pixels.
 fn digest(img: &mg_image::Rgba) -> [u8; 20] {
