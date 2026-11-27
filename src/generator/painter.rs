@@ -28,6 +28,8 @@ pub(super) struct Painter {
     decals: HashMap<(usize, usize), Vec<std::sync::Arc<Decal>>>,
     /// Each library texture's digest (by palette index; worked out when first needed), for the bake cache.
     digests: Vec<std::sync::OnceLock<[u8; 20]>>,
+    /// Spike (soft paint): smoothed weight fields, when LS_SOFT asks for them.
+    soft: Option<super::soft::Soft>,
 }
 
 /// A ground patch laid where its object stands: its picture over `rect` (metres about the object's origin), turned and scaled with it.
@@ -65,7 +67,7 @@ impl Painter {
     pub(super) fn load() -> Result<Option<Painter>> {
         let Some(hm) = heightmap::current().filter(|h| h.painted()) else { return Ok(None) };
         let lib = paint::load_library(&hm.palette)?;
-        let textures = hm.palette.iter().map(|id| lib[id].clone()).collect();
+        let textures: Vec<paint::Texture> = hm.palette.iter().map(|id| lib[id].clone()).collect();
         // Imported things' ground patches, bucketed by the tiles they cover.
         let mut decals: HashMap<(usize, usize), Vec<std::sync::Arc<Decal>>> = HashMap::new();
         let mut images: HashMap<PathBuf, (std::sync::Arc<mg_image::Rgba>, [u8; 20])> = HashMap::new();
@@ -108,7 +110,11 @@ impl Painter {
             }
         }
         let digests = hm.palette.iter().map(|_| std::sync::OnceLock::new()).collect();
-        Ok(Some(Painter { hm, textures, decals, digests }))
+        let mut soft = super::soft::Soft::from_env(&hm);
+        if let Some(s) = &mut soft {
+            s.means = textures.iter().map(|t: &paint::Texture| 0.3 * t.mean[0] + 0.59 * t.mean[1] + 0.11 * t.mean[2]).collect();
+        }
+        Ok(Some(Painter { hm, textures, decals, digests, soft }))
     }
 
     fn samples_per_tile(&self) -> i64 {
@@ -129,9 +135,10 @@ impl Painter {
     /// Palette indices painted in tile (tx, ty), sorted.
     pub(super) fn tile_materials(&self, tx: usize, ty: usize) -> Vec<u8> {
         let k = self.samples_per_tile();
+        let e = self.soft.as_ref().map_or(0, super::soft::Soft::margin);
         let mut used: Vec<u8> = Vec::new();
-        for j in ty as i64 * k..=(ty as i64 + 1) * k {
-            for i in tx as i64 * k..=(tx as i64 + 1) * k {
+        for j in ty as i64 * k - e..=(ty as i64 + 1) * k + e {
+            for i in tx as i64 * k - e..=(tx as i64 + 1) * k + e {
                 used.push(self.hm.material(i, j));
             }
         }
@@ -165,6 +172,17 @@ impl Painter {
     fn ground(&self, x: f32, y: f32, spacing: f32, decals: &[std::sync::Arc<Decal>]) -> [f32; 3] {
         let (p, n) = ([x, y, self.hm.at(x, y)], self.hm.normal(x, y));
         let mut c = [0.0; 3];
+        if let Some(soft) = &self.soft {
+            c = soft.colour(x, y, |m| self.textures[m as usize].at(p, n, spacing));
+            for d in decals {
+                if let Some((dc, a)) = d.at(x, y) {
+                    for k in 0..3 {
+                        c[k] += (dc[k] - c[k]) * a;
+                    }
+                }
+            }
+            return c;
+        }
         // (Corners of the same texture share its colour here: sampled once.)
         let mut last: Option<(u8, [f32; 3])> = None;
         for (m, w) in self.corners(x, y) {
