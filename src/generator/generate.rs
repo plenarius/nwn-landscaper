@@ -198,6 +198,10 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
             );
         }
     }
+    // The edge scenery over the halo (LS_NO_EDGE: none; a cave has none).
+    let underground = heightmap::current().is_some_and(|h| h.underground);
+    let edges = std::env::var_os("LS_NO_EDGE").is_none() && !underground;
+    let overhang = if edges { super::overhang::Overhang::plan(dump.then_some(out_dir))? } else { None };
     lap("planned");
     let pre_loop = gen_start.elapsed().as_secs_f32();
     let no_surfaces = std::env::var_os("LS_NO_SURFACES").is_some();
@@ -226,7 +230,7 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         phase(0);
         let mut mtrs = Vec::new();
         let particles = pack.zip(ambience.tiles.get(&(tx, ty))).map(|(p, b)| (b.as_slice(), p));
-        let text = tile_model(&name, tx, ty, &w, painter.as_ref(), strength > 0.0, &mut mtrs, particles);
+        let text = tile_model(&name, tx, ty, &w, painter.as_ref(), strength > 0.0, &mut mtrs, particles, overhang.as_ref());
         phase(1);
         let mini = minimap(tx, ty, painter.as_ref());
         phase(4);
@@ -293,11 +297,37 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     if strength > 0.0 {
         paint::write_png(&out_dir.join("shadows.png"), &shadows)?;
     }
-    // The scenery the client draws beyond the edge (LS_NO_EDGE: none).
+    // The halo's pictures and materials, and the tree cards' atlases (named by their model: the same in every area).
+    if let Some(o) = &overhang {
+        for (name, dds, mtr) in o.textures(painter.as_ref()) {
+            owned.push((ResRef::from_str(&name)?, ResType::DDS, dds));
+            owned.push((ResRef::from_str(&name)?, ResType::TXI, b"clamp 3\r\n".to_vec()));
+            owned.push((ResRef::from_str(&name)?, ResType::MTR, mtr.into_bytes()));
+        }
+        let (mtrs, atlases) = o.materials();
+        for (name, mtr) in mtrs {
+            owned.push((ResRef::from_str(&name)?, ResType::MTR, mtr.into_bytes()));
+        }
+        for (name, dds) in atlases {
+            owned.push((ResRef::from_str(&name)?, ResType::DDS, dds));
+        }
+        let c = &o.counts;
+        let get = |a: &std::sync::atomic::AtomicUsize| a.load(std::sync::atomic::Ordering::Relaxed);
+        println!(
+            "edge scenery: {} triangles past the edge (ground {}, water {}, {} trees as models {}, {} as cards {})",
+            get(&c.ground) + get(&c.water) + get(&c.trees) + get(&c.cards),
+            get(&c.ground),
+            get(&c.water),
+            get(&c.model_trees),
+            get(&c.trees),
+            get(&c.card_trees),
+            get(&c.cards)
+        );
+    }
+    // The scenery the client draws beyond the edge (LS_NO_EDGE: none): with a halo, empty (the boundary tiles draw it).
     // (A cave has no edge scenery: its border is off, see generate's area.)
-    let underground = heightmap::current().is_some_and(|h| h.underground);
-    if std::env::var_os("LS_NO_EDGE").is_none() && !underground {
-        for (name, text, mtrs) in edge::models(painter.as_ref()) {
+    if edges {
+        for (name, text, mtrs) in edge::models(painter.as_ref(), overhang.is_some()) {
             let compiled = mg_mdl::compile::compile(text.as_bytes(), &Default::default()).with_context(|| format!("compiling {name}"))?;
             if dump {
                 std::fs::write(out_dir.join(format!("{name}.mdl.txt")), &text)?;

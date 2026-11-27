@@ -194,6 +194,10 @@ pub fn update_installed(
     changes: &Changes<'_>,
 ) -> Result<Updated> {
     let Changes { atmosphere, settings, originals, old_originals, things: things_sent } = *changes;
+    // (The engine's own tags start with the area's tag prefix: a canvas piece's is the canvas's name, not its tileset's.)
+    let prefix = crate::heightmap::current()
+        .filter(|h| h.name.eq_ignore_ascii_case(tileset) && !h.tag_prefix.is_empty())
+        .map_or_else(|| tileset.to_string(), |h| h.tag_prefix.clone());
     let mut m = Module::open(installed).with_context(|| format!("opening {}", installed.display()))?;
     let generated = Module::open(fresh).with_context(|| format!("opening {}", fresh.display()))?;
     let gen_area = *generated.areas()?.first().context("the generated module has no area")?;
@@ -206,13 +210,13 @@ pub fn update_installed(
         .and_then(|g| g.root.list("Door List").map(<[_]>::to_vec))
         .unwrap_or_default()
         .into_iter()
-        .filter(|d| d.string("Tag").is_some_and(|t| t.starts_with(format!("{tileset}_ent").as_bytes())))
+        .filter(|d| d.string("Tag").is_some_and(|t| t.starts_with(format!("{prefix}_ent").as_bytes())))
         .collect();
     // Object-mode placeables as generated (tags <area>_p<n>).
     let ours = |s: &Struct| {
         s.string("Tag").is_some_and(|t| {
             let t = String::from_utf8_lossy(t);
-            t.strip_prefix(&format!("{tileset}_p")).is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+            t.strip_prefix(&format!("{prefix}_p")).is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
         })
     };
     let our_placeables: Vec<Struct> = generated
@@ -300,7 +304,7 @@ pub fn update_installed(
             doors.retain(|o| {
                 let tag = o.string("Tag").map_or_default(|t| String::from_utf8_lossy(t).into_owned());
                 let gone = crate::generator::door_mark(o).is_some_and(|id| {
-                    tag == format!("{tileset}_ent{id}") && !entrance_doors.iter().any(|d| d.string("Tag") == o.string("Tag"))
+                    tag == format!("{prefix}_ent{id}") && !entrance_doors.iter().any(|d| d.string("Tag") == o.string("Tag"))
                 });
                 if gone {
                     out.doors_removed.push(tag);
@@ -496,6 +500,8 @@ mod tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            halo: None,
+            tag_prefix: "lsupdt".into(),
             normals: Default::default(),
         }
     }
@@ -752,6 +758,8 @@ mod entrance_door_tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            halo: None,
+            tag_prefix: "lsdoor".into(),
             normals: Default::default(),
         };
         let u = update_installed(&installed, &fresh, "lsdoor", "lsdoor", None, &ground, &Changes::default()).unwrap();

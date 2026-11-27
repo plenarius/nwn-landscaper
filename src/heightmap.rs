@@ -26,6 +26,16 @@
 //! Tile lights, optional: `"lights": [[1, 30], ...]`, each tile's two main light colours (rows of `lightcolor.2da`, 0 to
 //! [`MAX_LIGHT`], the game's `TILE_MAIN_LIGHT_COLOR_*`), a pair a tile, rows of tiles from the south, each west to east. They
 //! become the `.are`'s `Tile_MainLight1` and `Tile_MainLight2`; without them every tile's lights are 0, black (off).
+//!
+//! Halo, optional: `"halo": 80`, how many samples of ground the grids carry beyond each side of the area (whole tiles, at most
+//! [`MAX_HALO_TILES`]): a piece of a canvas carries its neighbours' ground, a single area the band sculpted around it. The height,
+//! paint and chasm grids are then `width + 2 * halo` by `height + 2 * halo` samples, the area in their middle, and the chasm runs and
+//! water bodies' samples count in that grid. Its ground is read for the area's normals, shade, chasm rims, ceilings and edge
+//! scenery, and never built into tiles. Objects may stand on it (the neighbour's trees); things and entrances may not.
+//!
+//! Tag prefix, optional: `"tagPrefix": "rivl"`, what the tags the engine gives start with (entrance doors `<prefix>_ent<id>`,
+//! object-mode placeables `<prefix>_p<id>`) in place of the area's name: a canvas's pieces share the canvas's, so a re-cut that moves
+//! a door into another piece keeps its tag.
 
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -194,10 +204,60 @@ pub struct Heightmap {
     pub settings: Option<serde_json::Value>,
     /// Edits to an imported area's original objects: `{ removed: ["List:3"], moved: { "List:4": { x, y, bearing } } }`.
     pub originals: Option<serde_json::Value>,
+    /// The ground beyond the area's edge ([`Halo`]); None: the edge samples carry on outward.
+    pub halo: Option<Halo>,
+    /// What the engine's own tags start with (see the module comment): the header's `tagPrefix`, else the area's name.
+    pub tag_prefix: String,
     /// Bumped on every load, so caches keyed on the terrain notice.
     pub serial: u64,
-    /// Each sample's normal ([`Heightmap::sample_normal`]), made on first use.
+    /// Each sample's normal ([`Heightmap::sample_normal`]), the halo's included, made on first use.
     pub(crate) normals: std::sync::OnceLock<Vec<[f32; 3]>>,
+}
+
+/// The most tiles a halo reaches beyond the area: the game client's scene covers 5 cells around an area, and edge scenery past
+/// that may be culled.
+pub const MAX_HALO_TILES: usize = 5;
+
+/// The ground around an area, `n` samples beyond each side, with the area's own in its middle (sample (i, j) of the area is
+/// (i + n, j + n) here). Read for what looks past the edge; tiles are built from the area's grids only.
+pub struct Halo {
+    /// Samples beyond each side.
+    pub n: usize,
+    /// Samples across, the area's and the halo's.
+    pub width: usize,
+    /// Samples up, the area's and the halo's.
+    pub height: usize,
+    /// Each sample's height (m), chasms dropped.
+    pub data: Vec<f32>,
+    /// Each sample's paint (palette index); empty when unpainted.
+    pub materials: Vec<u8>,
+    /// Each sample's water level (NaN: dry); empty: no water.
+    pub water: Vec<f32>,
+    /// Each sample's chasm rim; empty: no chasm.
+    pub rim: Vec<f32>,
+    /// Each sample's ceiling; empty: the flat roof, if any.
+    pub ceiling: Vec<f32>,
+}
+
+/// The grids samples are read from: the halo's when there is one, else the area's (`n` 0).
+struct Grids<'a> {
+    n: usize,
+    width: usize,
+    height: usize,
+    data: &'a [f32],
+    materials: &'a [u8],
+    water: &'a [f32],
+    rim: &'a [f32],
+    ceiling: &'a [f32],
+}
+
+/// The area's own `width` by `height` samples out of a grid `n` samples wider on each side (empty stays empty).
+fn cut_out<T: Copy>(full: &[T], n: usize, width: usize, height: usize) -> Vec<T> {
+    if full.is_empty() || n == 0 {
+        return full.to_vec();
+    }
+    let fw = width + 2 * n;
+    (0..height).flat_map(|j| full[(j + n) * fw + n..(j + n) * fw + n + width].iter().copied()).collect()
 }
 
 static CURRENT: RwLock<Option<Arc<Heightmap>>> = RwLock::new(None);
@@ -260,27 +320,49 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
     if width != samples(tiles) || height != samples(tiles_y) {
         bail!("{tiles} by {tiles_y} tiles at {spacing} m need a {} x {} grid, not {width} x {height}", samples(tiles), samples(tiles_y));
     }
+    // The halo: whole tiles of samples beyond each side, which every grid file carries around the area.
+    let per_tile = (10.0 / spacing).round() as usize;
+    let n = match &j["halo"] {
+        serde_json::Value::Null => 0,
+        v => v
+            .as_u64()
+            .map(|v| v as usize)
+            .filter(|&v| v % per_tile.max(1) == 0 && v <= MAX_HALO_TILES * per_tile)
+            .with_context(|| format!("halo {v}: whole tiles of samples ({per_tile} a tile), at most {MAX_HALO_TILES} tiles"))?,
+    };
+    let (fw, fh) = (width + 2 * n, height + 2 * n);
     let data_path = json_path.parent().unwrap_or(Path::new(".")).join(j["data"].as_str().context("data")?);
     let bytes = crate::atomic::read(&data_path).with_context(|| format!("reading {}", data_path.display()))?;
-    if bytes.len() != width * height * 4 {
-        bail!("{}: {} bytes, expected {}", data_path.display(), bytes.len(), width * height * 4);
+    if bytes.len() != fw * fh * 4 {
+        bail!("{}: {} bytes, expected {}", data_path.display(), bytes.len(), fw * fh * 4);
     }
     let mut data: Vec<f32> = bytes.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
     if let Some(k) = data.iter().position(|h| !h.is_finite()) {
-        bail!("the height at sample ({}, {}) is {}: heights must be numbers", k % width, k / width, data[k]);
+        bail!("the height at sample ({}, {}) is {}: heights must be numbers", k % fw, k / fw, data[k]);
     }
+    let tag_prefix = match j["tagPrefix"].as_str() {
+        None => name.clone(),
+        Some(p) => {
+            let p = p.to_lowercase();
+            anyhow::ensure!(
+                !p.is_empty() && p.len() <= 9 && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+                "tagPrefix must be 1-9 characters of a-z, 0-9, _"
+            );
+            p
+        }
+    };
     // An enclosed area whose roof follows the floor: the rock is cut down to `clearance` over the nearest open ground.
     let enclosed = matches!(j["kind"].as_str(), Some("underground" | "interior"));
     let ceiling = match (enclosed, j["roof"].as_f64(), j["clearance"].as_f64()) {
-        (true, Some(roof), Some(clearance)) if clearance > 0.0 => fit_ceiling(&mut data, width, roof as f32, clearance as f32),
+        (true, Some(roof), Some(clearance)) if clearance > 0.0 => fit_ceiling(&mut data, fw, roof as f32, clearance as f32),
         _ => Vec::new(),
     };
     let (mut materials, mut palette) = (Vec::new(), Vec::new());
     if let Some(file) = j["materials"].as_str() {
         let path = json_path.parent().unwrap_or(Path::new(".")).join(file);
         materials = crate::atomic::read(&path).with_context(|| format!("reading {}", path.display()))?;
-        if materials.len() != width * height {
-            bail!("{}: {} bytes, expected {}", path.display(), materials.len(), width * height);
+        if materials.len() != fw * fh {
+            bail!("{}: {} bytes, expected {}", path.display(), materials.len(), fw * fh);
         }
         palette =
             j["palette"].as_array().context("materials without a palette")?.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect();
@@ -289,8 +371,9 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         }
     }
     // A chasm: its samples dropped under their rims (after the ceiling: a chasm is open ground).
-    let chasm = chasm_of(&j["chasm"], width * height)?;
-    let rim = if chasm.iter().any(|&c| c) { fit_chasm(&mut data, width, &chasm) } else { Vec::new() };
+    // (fitted with the halo in view: a rim near the edge may be the neighbour's ground, and both pieces of a cut fit it alike)
+    let chasm = chasm_of(&j["chasm"], fw * fh)?;
+    let rim = if chasm.iter().any(|&c| c) { fit_chasm(&mut data, fw, &chasm) } else { Vec::new() };
     let water = match j["water"].as_array().filter(|b| !b.is_empty()) {
         Some(bodies) => {
             let bodies: Vec<Body> = bodies
@@ -306,10 +389,27 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
                 .context("water: each body needs i, j and level")?;
             // (water never runs into a chasm: its samples are walls to it)
             let walled: Vec<f32> = data.iter().zip(&chasm).map(|(&h, &c)| if c { f32::INFINITY } else { h }).collect();
-            dry_shallows(flood(&walled, width, &bodies), &data)
+            dry_shallows(flood(&walled, fw, &bodies), &data)
         }
         None => Vec::new(),
     };
+    let halo = (n > 0).then(|| Halo {
+        n,
+        width: fw,
+        height: fh,
+        data: data.clone(),
+        materials: materials.clone(),
+        water: water.clone(),
+        rim: rim.clone(),
+        ceiling: ceiling.clone(),
+    });
+    let (data, materials, water, rim, ceiling) = (
+        cut_out(&data, n, width, height),
+        cut_out(&materials, n, width, height),
+        cut_out(&water, n, width, height),
+        cut_out(&rim, n, width, height),
+        cut_out(&ceiling, n, width, height),
+    );
     let hm = Arc::new(Heightmap {
         name,
         tiles,
@@ -357,6 +457,8 @@ fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
                 .collect()
         }),
         ambience: crate::ambience::placements_of(&j["ambience"])?,
+        halo,
+        tag_prefix,
         serial: SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         normals: Default::default(),
     });
@@ -379,10 +481,13 @@ pub const SCALE: std::ops::RangeInclusive<f32> = 0.1..=5.0;
 fn in_range(hm: &Heightmap) -> Result<()> {
     let (w, h) = (hm.tiles as f32 * 10.0, hm.tiles_y as f32 * 10.0);
     let inside = |x: f32, y: f32| (-MARGIN..=w + MARGIN).contains(&x) && (-MARGIN..=h + MARGIN).contains(&y);
+    // (Objects may stand on the halo: the neighbour's trees in the edge scenery.)
+    let reach = hm.reach().max(MARGIN);
+    let on_ground = |x: f32, y: f32| (-reach..=w + reach).contains(&x) && (-reach..=h + reach).contains(&y);
     let at = |x: f32, y: f32| format!("({x}, {y})");
     for o in &hm.objects {
         let what = || format!("object {} at {}", o.model, at(o.x, o.y));
-        anyhow::ensure!(inside(o.x, o.y), "{}: outside the {w} by {h} m area", what());
+        anyhow::ensure!(on_ground(o.x, o.y), "{}: outside the {w} by {h} m area and its halo", what());
         anyhow::ensure!(o.z.is_finite() && o.bearing.is_finite(), "{}: its height and bearing must be numbers", what());
         anyhow::ensure!(SCALE.contains(&o.scale), "{}: its size is {}, not {} to {}", what(), o.scale, SCALE.start(), SCALE.end());
     }
@@ -531,8 +636,8 @@ pub const CHASM_DEPTH: f32 = 20.0;
 /// Ground more than this under its rim (m) is in a chasm: nothing walks there.
 pub const CHASM_BELOW: f32 = 0.3;
 
-/// The most chasm runs a header may list: one a sample, on the largest area (32 by 32 tiles).
-const MAX_CHASM_RUNS: usize = 513 * 513;
+/// The most chasm runs a header may list: one a sample, on the largest area (32 by 32 tiles) with the widest halo.
+const MAX_CHASM_RUNS: usize = (513 + 2 * 80) * (513 + 2 * 80);
 
 /// The chasm samples of a header's `chasm` list (runs of `[first, count]` over `samples` samples; null or missing: none).
 pub fn chasm_of(list: &serde_json::Value, samples: usize) -> Result<Vec<bool>> {
@@ -619,19 +724,74 @@ pub fn fit_chasm(data: &mut [f32], width: usize, chasm: &[bool]) -> Vec<f32> {
 }
 
 impl Heightmap {
+    /// The grids samples are read from: the halo's when there is one, else the area's.
+    fn grids(&self) -> Grids<'_> {
+        match &self.halo {
+            Some(h) => Grids {
+                n: h.n,
+                width: h.width,
+                height: h.height,
+                data: &h.data,
+                materials: &h.materials,
+                water: &h.water,
+                rim: &h.rim,
+                ceiling: &h.ceiling,
+            },
+            None => Grids {
+                n: 0,
+                width: self.width,
+                height: self.height,
+                data: &self.data,
+                materials: &self.materials,
+                water: &self.water,
+                rim: &self.rim,
+                ceiling: &self.ceiling,
+            },
+        }
+    }
+
+    /// How far beyond the area's edge its ground reaches (m): the halo's, 0 without one.
+    pub fn reach(&self) -> f32 {
+        self.halo.as_ref().map_or(0.0, |h| h.n as f32 * self.spacing)
+    }
+
+    /// Area point (x, y) on the sample grid of `g`: the sample south-west of it (clamped so its north-east neighbour is in the
+    /// grid) and how far towards that neighbour it lies.
+    fn cell(&self, g: &Grids<'_>, x: f32, y: f32) -> (usize, usize, f32, f32) {
+        let fx = (x / self.spacing + g.n as f32).clamp(0.0, (g.width - 1) as f32);
+        let fy = (y / self.spacing + g.n as f32).clamp(0.0, (g.height - 1) as f32);
+        let (ix, iy) = ((fx.floor() as usize).min(g.width - 2), (fy.floor() as usize).min(g.height - 2));
+        (ix, iy, fx - ix as f32, fy - iy as f32)
+    }
+
+    /// A grid's value at area point (x, y), bilinear.
+    fn bilinear(&self, g: &Grids<'_>, x: f32, y: f32, v: impl Fn(usize) -> f32) -> f32 {
+        let (ix, iy, tx, ty) = self.cell(g, x, y);
+        let k = |i: usize, j: usize| v(j * g.width + i);
+        let a = k(ix, iy) + (k(ix + 1, iy) - k(ix, iy)) * tx;
+        let b = k(ix, iy + 1) + (k(ix + 1, iy + 1) - k(ix, iy + 1)) * tx;
+        a + (b - a) * ty
+    }
+
+    /// Area sample (i, j)'s index in the grid of `g`, clamped to it (negative and past the area's last: the halo's samples).
+    fn index(g: &Grids<'_>, i: i64, j: i64) -> usize {
+        let (i, j) = ((i + g.n as i64).clamp(0, g.width as i64 - 1) as usize, (j + g.n as i64).clamp(0, g.height as i64 - 1) as usize);
+        j * g.width + i
+    }
+
+    /// The height of area sample (i, j), the halo's beyond the area (clamped to the ground there is).
+    pub fn sample_height(&self, i: i64, j: i64) -> f32 {
+        let g = self.grids();
+        g.data[Self::index(&g, i, j)]
+    }
+
     /// How far (x, y) is under its chasm's rim (m, bilinear): 0 on open ground, [`CHASM_DEPTH`] on a chasm's floor; 0 with no chasm.
     pub fn chasm_depth(&self, x: f32, y: f32) -> f32 {
-        if self.rim.is_empty() {
+        let g = self.grids();
+        if g.rim.is_empty() {
             return 0.0;
         }
-        let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
-        let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
-        let (ix, iy) = ((fx.floor() as usize).min(self.width - 2), (fy.floor() as usize).min(self.height - 2));
-        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
-        let d = |i: usize, j: usize| self.rim[j * self.width + i] - self.data[j * self.width + i];
-        let a = d(ix, iy) + (d(ix + 1, iy) - d(ix, iy)) * tx;
-        let b = d(ix, iy + 1) + (d(ix + 1, iy + 1) - d(ix, iy + 1)) * tx;
-        (a + (b - a) * ty).max(0.0)
+        self.bilinear(&g, x, y, |k| g.rim[k] - g.data[k]).max(0.0)
     }
 
     /// Whether (x, y) is in a chasm: more than [`CHASM_BELOW`] under its rim.
@@ -641,23 +801,17 @@ impl Heightmap {
 
     /// The ceiling at area coordinates: where the rock tops out (bilinear), the flat roof if it does not follow the floor.
     pub fn roof_at(&self, x: f32, y: f32) -> Option<f32> {
-        if self.ceiling.is_empty() {
+        let g = self.grids();
+        if g.ceiling.is_empty() {
             return self.roof;
         }
-        let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
-        let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
-        let (ix, iy) = ((fx.floor() as usize).min(self.width - 2), (fy.floor() as usize).min(self.height - 2));
-        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
-        let h = |i: usize, j: usize| self.ceiling[j * self.width + i];
-        let a = h(ix, iy) + (h(ix + 1, iy) - h(ix, iy)) * tx;
-        let b = h(ix, iy + 1) + (h(ix + 1, iy + 1) - h(ix, iy + 1)) * tx;
-        Some(a + (b - a) * ty)
+        Some(self.bilinear(&g, x, y, |k| g.ceiling[k]))
     }
 
-    /// The water level over sample (i, j), if it is under water (clamped).
+    /// The water level over sample (i, j), if it is under water (clamped; the halo's beyond the area).
     pub fn water_level(&self, i: i64, j: i64) -> Option<f32> {
-        let (i, j) = (i.clamp(0, self.width as i64 - 1) as usize, j.clamp(0, self.height as i64 - 1) as usize);
-        self.water.get(j * self.width + i).copied().filter(|l| !l.is_nan())
+        let g = self.grids();
+        g.water.get(Self::index(&g, i, j)).copied().filter(|l| !l.is_nan())
     }
 
     /// Water at area point (x, y): the nearest sample's level, if wet.
@@ -665,10 +819,10 @@ impl Heightmap {
         self.water_level((x / self.spacing).round() as i64, (y / self.spacing).round() as i64)
     }
 
-    /// The painted texture (palette index) of sample (i, j), clamped.
+    /// The painted texture (palette index) of sample (i, j), clamped (the halo's beyond the area).
     pub fn material(&self, i: i64, j: i64) -> u8 {
-        let (i, j) = (i.clamp(0, self.width as i64 - 1) as usize, j.clamp(0, self.height as i64 - 1) as usize);
-        self.materials.get(j * self.width + i).copied().unwrap_or(0)
+        let g = self.grids();
+        g.materials.get(Self::index(&g, i, j)).copied().unwrap_or(0)
     }
 
     /// Whether the area has paint: an unpainted one takes the default textures.
@@ -676,31 +830,24 @@ impl Heightmap {
         !self.materials.is_empty()
     }
 
-    /// Bilinear height at area coordinates (clamped to the grid).
+    /// Bilinear height at area coordinates (clamped to the grid; the halo's ground beyond the area).
     pub fn at(&self, x: f32, y: f32) -> f32 {
-        let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
-        let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
-        let (ix, iy) = ((fx.floor() as usize).min(self.width - 2), (fy.floor() as usize).min(self.height - 2));
-        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
-        let h = |i: usize, j: usize| self.data[j * self.width + i];
-        let a = h(ix, iy) + (h(ix + 1, iy) - h(ix, iy)) * tx;
-        let b = h(ix, iy + 1) + (h(ix + 1, iy + 1) - h(ix, iy + 1)) * tx;
-        a + (b - a) * ty
+        let g = self.grids();
+        self.bilinear(&g, x, y, |k| g.data[k])
     }
 
     /// The ground's unit normal at area coordinates (x east, y north, z up), smooth across the whole area: each sample's
     /// ([`Self::sample_normal`]), blended bilinearly between samples. The editor's view gives gentle ground the same normals
     /// (js/view.js, `updateNormals`), so slopes are textured alike in both ([`crate::triplanar`]); on steep ground they differ.
+    /// With a halo, the samples on the area's edge take their slope across it, as the uncut ground has it.
     pub fn normal(&self, x: f32, y: f32) -> [f32; 3] {
-        let fx = (x / self.spacing).clamp(0.0, (self.width - 1) as f32);
-        let fy = (y / self.spacing).clamp(0.0, (self.height - 1) as f32);
-        let (ix, iy) = ((fx.floor() as usize).min(self.width - 2), (fy.floor() as usize).min(self.height - 2));
-        let (tx, ty) = (fx - ix as f32, fy - iy as f32);
+        let g = self.grids();
+        let (ix, iy, tx, ty) = self.cell(&g, x, y);
         let mut n = [0.0; 3];
         for (i, j, w) in
             [(ix, iy, (1.0 - tx) * (1.0 - ty)), (ix + 1, iy, tx * (1.0 - ty)), (ix, iy + 1, (1.0 - tx) * ty), (ix + 1, iy + 1, tx * ty)]
         {
-            let s = self.sample_normal(i, j);
+            let s = self.sample_normal(&g, i, j);
             for k in 0..3 {
                 n[k] += s[k] * w;
             }
@@ -709,16 +856,16 @@ impl Heightmap {
         n.map(|c| c / len)
     }
 
-    /// Sample (i, j)'s unit normal. On gentle ground, its slope between its neighbours. Where a steep face runs across the samples'
-    /// grid at a slant (a river's bank), that slope swings from one sample to the next with how the face crosses them, and the
-    /// game's sun drew it as dark blotches along the face. Steep ground takes the slope over [`WIDE`] samples each way instead,
-    /// blended in between [`GENTLE_NZ`] and [`STEEP_NZ`] of that wide slope's tilt. Made once for every sample, on first use.
-    fn sample_normal(&self, i: usize, j: usize) -> [f32; 3] {
+    /// Sample (i, j)'s unit normal, on the grid of `g`. On gentle ground, its slope between its neighbours. Where a steep face runs
+    /// across the samples' grid at a slant (a river's bank), that slope swings from one sample to the next with how the face crosses
+    /// them, and the game's sun drew it as dark blotches along the face. Steep ground takes the slope over [`WIDE`] samples each way
+    /// instead, blended in between [`GENTLE_NZ`] and [`STEEP_NZ`] of that wide slope's tilt. Made once for every sample, on first use.
+    fn sample_normal(&self, g: &Grids<'_>, i: usize, j: usize) -> [f32; 3] {
         let normals = self.normals.get_or_init(|| {
-            (0..self.height)
-                .flat_map(|j| (0..self.width).map(move |i| (i, j)))
+            (0..g.height)
+                .flat_map(|j| (0..g.width).map(move |i| (i, j)))
                 .map(|(i, j)| {
-                    let (near, wide) = (self.slope_normal(i, j, 0), self.slope_normal(i, j, WIDE));
+                    let (near, wide) = (self.slope_normal(g, i, j, 0), self.slope_normal(g, i, j, WIDE));
                     let t = ((wide[2] - GENTLE_NZ) / (STEEP_NZ - GENTLE_NZ)).clamp(0.0, 1.0);
                     let t = t * t * (3.0 - 2.0 * t);
                     let n: [f32; 3] = std::array::from_fn(|k| near[k] + (wide[k] - near[k]) * t);
@@ -727,22 +874,23 @@ impl Heightmap {
                 })
                 .collect()
         });
-        normals[j * self.width + i]
+        normals[j * g.width + i]
     }
 
     /// Sample (i, j)'s unit normal from its rise per metre east and north between its neighbours, of the heights averaged over
-    /// `r` samples each way (0: the heights themselves). Near the area's edge the average takes fewer, as many on each side, so a
+    /// `r` samples each way (0: the heights themselves). Near the grid's edge the average takes fewer, as many on each side, so a
     /// plane's normal stays the plane's.
-    fn slope_normal(&self, i: usize, j: usize, r: usize) -> [f32; 3] {
+    fn slope_normal(&self, g: &Grids<'_>, i: usize, j: usize, r: usize) -> [f32; 3] {
+        let (width, height) = (g.width, g.height);
         let mean = |i: usize, j: usize| {
-            let (ri, rj) = (r.min(i).min(self.width - 1 - i), r.min(j).min(self.height - 1 - j));
+            let (ri, rj) = (r.min(i).min(width - 1 - i), r.min(j).min(height - 1 - j));
             let mut sum = 0.0;
             for y in j - rj..=j + rj {
-                sum += self.data[y * self.width + i - ri..=y * self.width + i + ri].iter().sum::<f32>();
+                sum += g.data[y * width + i - ri..=y * width + i + ri].iter().sum::<f32>();
             }
             sum / ((2 * ri + 1) * (2 * rj + 1)) as f32
         };
-        let (w, e, s, n) = (i.saturating_sub(1), (i + 1).min(self.width - 1), j.saturating_sub(1), (j + 1).min(self.height - 1));
+        let (w, e, s, n) = (i.saturating_sub(1), (i + 1).min(width - 1), j.saturating_sub(1), (j + 1).min(height - 1));
         let east = (mean(e, j) - mean(w, j)) / ((e - w) as f32 * self.spacing);
         let north = (mean(i, n) - mean(i, s)) / ((n - s) as f32 * self.spacing);
         let len = (east * east + north * north + 1.0).sqrt();
@@ -952,6 +1100,8 @@ mod tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            halo: None,
+            tag_prefix: String::new(),
             normals: Default::default(),
         };
         assert_eq!(hm.at(10.0, 0.0), 1.0);
@@ -989,7 +1139,7 @@ mod tests {
             for (i, j, w) in
                 [(i, j, (1.0 - tx) * (1.0 - ty)), (i + 1, j, tx * (1.0 - ty)), (i, j + 1, (1.0 - tx) * ty), (i + 1, j + 1, tx * ty)]
             {
-                let s = hm.slope_normal(i, j, 0);
+                let s = hm.slope_normal(&hm.grids(), i, j, 0);
                 for k in 0..3 {
                     v[k] += s[k] * w;
                 }
@@ -1045,6 +1195,8 @@ mod tests {
             ceiling: vec![],
             rim: vec![],
             serial: 0,
+            halo: None,
+            tag_prefix: String::new(),
             normals: Default::default(),
         }
     }
@@ -1134,5 +1286,78 @@ mod tests {
             e["id"] = bad.clone();
             assert!(entrances_of(&serde_json::json!([e])).is_err(), "{bad}");
         }
+    }
+
+    /// A 3 by 3 tile area with a halo of one tile (16 samples) a side: `height(i, j)` of each sample of the whole grid (the
+    /// area's (0, 0) is its (16, 16)), the header `extra` merged in.
+    fn haloed(tag: &str, extra: serde_json::Value, height: impl Fn(usize, usize) -> f32) -> Arc<Heightmap> {
+        let full = 3 * 16 + 1 + 32;
+        let heights = (0..full * full).map(|k| height(k % full, k / full)).collect();
+        let mut header = serde_json::json!({ "halo": 16 });
+        for (k, v) in extra.as_object().unwrap() {
+            header[k] = v.clone();
+        }
+        read(&area(tag, header, Some(heights))).unwrap()
+    }
+
+    #[test]
+    fn a_halo_is_read_beyond_the_edge_and_the_area_is_cut_out_of_it() {
+        let hm = haloed("halo-read", serde_json::json!({}), |i, j| i as f32 * 0.1 + j as f32 * 0.01);
+        let h = hm.halo.as_ref().unwrap();
+        assert_eq!((h.n, h.width, h.height), (16, 81, 81));
+        // The area's own grid is the middle, sample for sample.
+        assert_eq!(hm.data.len(), 49 * 49);
+        assert!((hm.data[0] - (1.6 + 0.16)).abs() < 1e-5);
+        // Heights, past the west edge, are the halo's: 5 m out is 8 samples into it.
+        assert!((hm.at(-5.0, 0.0) - (0.8 + 0.16)).abs() < 1e-4, "{}", hm.at(-5.0, 0.0));
+        assert!((hm.sample_height(-16, -16) - 0.0).abs() < 1e-6);
+        assert!((hm.reach() - 10.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn with_a_halo_the_edge_s_normal_takes_the_ground_across_it() {
+        // A ridge along the area's west edge: the uncut ground is level across its crest.
+        let ridge = |i: usize, _| 5.0 - (i as f32 - 16.0).abs() * 0.3;
+        let hm = haloed("halo-normal", serde_json::json!({}), ridge);
+        let n = hm.normal(0.0, 15.0);
+        assert!(n[0].abs() < 1e-3 && n[2] > 0.999, "{n:?}");
+        // Without one, the edge sees only its own side: tilted.
+        let plain =
+            read(&area("halo-normal-plain", serde_json::json!({}), Some((0..49 * 49).map(|k| ridge(k % 49 + 16, 0)).collect()))).unwrap();
+        assert!(plain.normal(0.0, 15.0)[0] > 0.1, "{:?}", plain.normal(0.0, 15.0));
+    }
+
+    #[test]
+    fn a_chasm_s_rim_is_fitted_with_the_halo_in_view() {
+        // Low ground in the west halo, high in the area; a chasm along the area's first three columns.
+        let full = 81;
+        let runs: Vec<serde_json::Value> = (0..full).map(|j| serde_json::json!([j * full + 16, 3])).collect();
+        let hm = haloed("halo-chasm", serde_json::json!({ "chasm": runs }), |i, _| if i < 16 { 0.0 } else { 5.0 });
+        // The first column's nearest open sample is the halo's, 0 m: it drops to 20 m under that; the third's is the area's.
+        assert!((hm.data[16 * 49] - (0.0 - CHASM_DEPTH)).abs() < 1e-4, "{}", hm.data[16 * 49]);
+        assert!((hm.data[16 * 49 + 2] - (5.0 - CHASM_DEPTH)).abs() < 1e-4, "{}", hm.data[16 * 49 + 2]);
+        assert!(hm.in_chasm(0.0, 10.0) && !hm.in_chasm(-5.0, 10.0));
+    }
+
+    #[test]
+    fn halos_are_whole_tiles_up_to_five_and_objects_may_stand_on_them() {
+        for (bad, says) in [(10, "whole tiles"), (96, "at most 5 tiles")] {
+            let e = read(&area(&format!("halo-bad{bad}"), serde_json::json!({ "halo": bad }), None))
+                .err()
+                .map_or_else(String::new, |e| format!("{e:#}"));
+            assert!(e.contains(says), "{e}");
+        }
+        let tree = |x: f32| serde_json::json!({ "objects": [{ "model": "tnp_tree_t21", "x": x, "y": 15, "z": 1 }] });
+        assert!(haloed("halo-tree", tree(-9.0), |_, _| 1.0).objects.len() == 1);
+        let e = read(&area("halo-tree-far", tree(-12.0), None)).err().map_or_else(String::new, |e| format!("{e:#}"));
+        assert!(e.contains("outside the 30 by 30 m area"), "{e}");
+    }
+
+    #[test]
+    fn the_tag_prefix_is_the_canvas_s_name_or_the_area_s() {
+        let hm = read(&area("prefix", serde_json::json!({ "tagPrefix": "Rivl" }), None)).unwrap();
+        assert_eq!(hm.tag_prefix, "rivl");
+        assert_eq!(read(&area("prefix-none", serde_json::json!({}), None)).unwrap().tag_prefix, "t");
+        assert!(read(&area("prefix-bad", serde_json::json!({ "tagPrefix": "a-b" }), None)).is_err());
     }
 }

@@ -1,6 +1,7 @@
 # Design: cut into pieces
 
-Status: design, not built. Written 2026-11-25 for the maintainer's review before any code.
+Status: design; step 2 (the halo, its edge scenery and `tagPrefix`) is built. Written 2026-11-25 for the maintainer's review before
+any code.
 
 A builder sets up one big canvas (100 by 100 tiles, say), sculpts and paints it as one landscape, then cuts it into rectangles.
 Each rectangle, a *piece*, becomes its own NWN area of at most 32 by 32 tiles, the game's limit. Players walk from piece to piece
@@ -283,6 +284,30 @@ cells where a shore runs, fixes the shores for 5,700 triangles more. A 64 px tex
 must be the 512 px bake shrunk down (small bakes now filter from the library's smaller mip levels, #41), and the water past the
 cut uses the export's shoreline. **Decided for step 2 (2026-11-25): G at 128 px with full detail along shores and roads.** Trees
 as two crossed pictures from 25 m out are on trial next (variant T).
+
+**Tree cards trial (2026-11-25, variant T).** T is S with each of the neighbour's trees standing 25 m or more past the cut (at its
+foot, as the fade measures) drawn as cards instead of its model: two crossed upright planes through the trunk, each side its own
+picture of the tree from that side, and a picture from above on a flat card where the crown is widest, 10 triangles a tree. The
+pictures of one stock tree model are one atlas, turned and scaled with each tree, so it is made once a model and shipped once a
+module. Its alpha is on or off at every mip level, each level keeping the leaves' coverage: the game blends half alpha, and a soft
+card read as a ghost next to the models. The top card fades out when seen edge-on, so from the game's cameras it never shows as a
+brim. In the trial piece 18 of the 37 trees past the cut became cards: 32,500 triangles past the edge instead of S's 46,000
+(-29%), the trees' share down from 29,900 to 16,400. At eye level in the game client T looked like S; the tells are a slightly
+more upright outline on an asymmetric tree seen from a diagonal and, now and then, a card trunk lit from the wrong side.
+**Decided: T**, after the maintainer saw it in the game client. Trees nearer than 25 m stay models, where a picture
+would show more.
+
+**Step 2 as built (2026-11-27).** `halo` is whole tiles of samples, at most 5 (the client's scene covers 5 cells round an area);
+the height, paint and chasm grids carry it round the area, and chasm runs and water seeds count in that larger grid. Objects may
+stand on the halo, things and entrances may not; an object on it is drawn only in the edge scenery, never in a tile and never
+blocking, and still casts its shade. "Full detail along roads" is read from the ground, since roads are painted with any texture:
+a 2.5 m cell whose ground the coarse grid misses by more than 0.25 m (a road's groove, a ditch, a bank) is drawn at the samples'
+0.625 m, as is every cell a shore runs through. Each halo tile's 128 px picture has the paint and the shade in it. The cards'
+pictures are drawn by the engine from the model's own triangles and textures, so any tree model gets them; a model counts as a
+tree by its name (`tree`). Until a canvas export (step 4) writes several areas into one module, each area's hak carries the atlases
+of its own card trees, named by model (`lsb_<model>`), so areas of one module share the pictures by name; step 4 can keep one
+copy. The trial piece rebuilt this way, with its halo: 27,900 triangles past the edge (ground 15,700, water 160, 19 trees as
+models 11,800, 18 as cards 180), exported in 6 s on 48 cores.
 
 ### 4. Tile levels and path nodes
 
@@ -656,7 +681,7 @@ the maintainer's time is review and testing. "Client" marks a check in the game 
 |---|---|---|---|---|---|
 | 0 | Spikes S1 to S4 | both | 9 h | 1 h | S2, S3 |
 | 1 | Today's areas, cheaper: undo of changed rectangles, IndexedDB copy, GPU uploads of changed ranges | web | 5 h | 30 min | no |
-| 2 | Area format: `halo` and `tagPrefix`; normals, shade, chasm rims and ceilings read the halo; edge scenery from the halo (G, full detail along shores and roads) | engine | 6 h | 45 min | 15 min: one area with a halo, its edges |
+| 2 | Area format: `halo` and `tagPrefix`; normals, shade, chasm rims and ceilings read the halo; edge scenery from the halo (G, full detail along shores and roads; T, trees 25 m out as cards) | engine | 6 h | 45 min | 15 min: one area with a halo, its edges |
 | 2b | The band around a single area: the editor shows, sculpts and paints the halo; a first fill carries the ground outward | web + engine | 5 h | 30 min | 10 min: an old area with its band |
 | 3 | Canvas storage: `canvases/<name>/` with blocks and versions, load and save of changed blocks, team workspaces and assignments | engine | 7 h | 45 min | no |
 | 4 | Cutting on the engine: pieces, water seeds, things by position, crossings with their tags, per-piece and whole-canvas route check, export of all pieces into one module | engine | 10 h | 1 h | 20 min: walk across three pieces |

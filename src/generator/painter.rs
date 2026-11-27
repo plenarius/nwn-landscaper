@@ -143,8 +143,10 @@ impl Painter {
     /// The four samples around (x, y) and their bilinear weights.
     fn corners(&self, x: f32, y: f32) -> [(u8, f32); 4] {
         let sp = self.hm.spacing;
-        let (last_x, last_y) = ((self.hm.width - 2) as f32, (self.hm.height - 2) as f32);
-        let (fx, fy) = ((x / sp).clamp(0.0, last_x + 1.0), (y / sp).clamp(0.0, last_y + 1.0));
+        // (Beyond the area: the halo's paint, as far as it reaches.)
+        let r = self.hm.reach() / sp;
+        let (last_x, last_y) = ((self.hm.width - 2) as f32 + r, (self.hm.height - 2) as f32 + r);
+        let (fx, fy) = ((x / sp).clamp(-r, last_x + 1.0), (y / sp).clamp(-r, last_y + 1.0));
         let (i, j) = (fx.floor().min(last_x), fy.floor().min(last_y));
         let (tx, ty) = (fx - i, fy - j);
         let (i, j) = (i as i64, j as i64);
@@ -241,8 +243,7 @@ impl Painter {
         // (The heights a pixel's normal reads: its corners' samples and their neighbours.)
         for j in ty as i64 * k - 2..=(ty as i64 + 1) * k + 2 {
             for i in tx as i64 * k - 2..=(tx as i64 + 1) * k + 2 {
-                let (i, j) = (i.clamp(0, hm.width as i64 - 1) as usize, j.clamp(0, hm.height as i64 - 1) as usize);
-                h.update(hm.data[j * hm.width + i].to_le_bytes());
+                h.update(hm.sample_height(i, j).to_le_bytes());
             }
         }
         used.sort_unstable();
@@ -270,10 +271,19 @@ impl Painter {
     /// Tile (tx, ty)'s own texture, `size` pixels a side: its ground as painted, each pixel the mean of 2 x 2 samples. A small
     /// bake reads the library textures halved to its samples' spacing: 2 x 2 samples of their full detail would glitter.
     pub(super) fn bake(&self, tx: usize, ty: usize, size: u32) -> mg_image::Rgba {
-        let (ox, oy) = (tx as f32 * TILE, ty as f32 * TILE);
-        let spacing = TILE / size as f32 / 2.0;
         // (Every point drawn is on this tile: its decals, looked up once.)
         let decals = self.decals.get(&(tx, ty)).map_or(&[][..], Vec::as_slice);
+        self.bake_over(tx as f32 * TILE, ty as f32 * TILE, size, decals)
+    }
+
+    /// The ground's texture over the tile-sized square from area point (ox, oy), as [`Painter::bake`] draws a tile's, without
+    /// decals: a halo tile's (beyond the area, its paint is the halo's).
+    pub(super) fn bake_square(&self, ox: f32, oy: f32, size: u32) -> mg_image::Rgba {
+        self.bake_over(ox, oy, size, &[])
+    }
+
+    fn bake_over(&self, ox: f32, oy: f32, size: u32, decals: &[std::sync::Arc<Decal>]) -> mg_image::Rgba {
+        let spacing = TILE / size as f32 / 2.0;
         paint::picture(size, size, |px, py| {
             let mut c = [0.0; 3];
             for (dx, dy) in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)] {
@@ -471,12 +481,15 @@ fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
     // (The sun is towards +x +y: at most 80 m that way, cos and sin of its bearing under 0.75.)
     let (x0, y0) = (tx as f32 * TILE - 14.0, ty as f32 * TILE - 14.0);
     let (x1, y1) = ((tx + 1) as f32 * TILE + 14.0 + 61.0, (ty + 1) as f32 * TILE + 14.0 + 61.0);
+    // (With a halo, its ground beyond the area shades the area too.)
     let sp = hm.spacing;
-    let (i0, i1) = (((x0 / sp).floor() as i64 - 1).max(0) as usize, ((x1 / sp).ceil() as usize + 1).min(hm.width - 1));
-    let (j0, j1) = (((y0 / sp).floor() as i64 - 1).max(0) as usize, ((y1 / sp).ceil() as usize + 1).min(hm.height - 1));
+    let (lo, hi_x, hi_y) = (-(hm.reach() / sp).round() as i64, hm.width as i64 - 1, hm.height as i64 - 1);
+    let (hi_x, hi_y) = (hi_x - lo, hi_y - lo);
+    let (i0, i1) = (((x0 / sp).floor() as i64 - 1).max(lo), ((x1 / sp).ceil() as i64 + 1).min(hi_x));
+    let (j0, j1) = (((y0 / sp).floor() as i64 - 1).max(lo), ((y1 / sp).ceil() as i64 + 1).min(hi_y));
     for j in j0..=j1 {
-        for v in &hm.data[j * hm.width + i0..=j * hm.width + i1] {
-            h.update(v.to_le_bytes());
+        for i in i0..=i1 {
+            h.update(hm.sample_height(i, j).to_le_bytes());
         }
     }
     if let Some(scene) = objects::scene() {

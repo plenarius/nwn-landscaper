@@ -330,19 +330,25 @@ fn triplanar(model: &str, bitmap: &str, mtrs: &mut Vec<(String, String)>) -> Str
     format!("  materialname {mat}\n")
 }
 
-/// Every edge model: (resref, ASCII model, its materials as (resref, MTR)).
-pub fn models(painter: Option<&Painter>) -> Vec<(String, String, Vec<(String, String)>)> {
+/// Every edge model: (resref, ASCII model, its materials as (resref, MTR)). `empty`: each without geometry, for an area whose
+/// boundary tiles reach out over its halo (overhang.rs): the client repeats an edge model 5 deep, under that real ground.
+pub fn models(painter: Option<&Painter>, empty: bool) -> Vec<(String, String, Vec<(String, String)>)> {
+    let blank = |name: &str| {
+        let mut s = header(name);
+        footer(&mut s, name);
+        s
+    };
     let mut out = Vec::new();
     for side in Side::ALL {
         for k in 0..side.cells() {
             let mut mtrs = Vec::new();
-            let text = strip_model(side, k, painter, &mut mtrs);
+            let text = if empty { blank(&strip_name(side, k)) } else { strip_model(side, k, painter, &mut mtrs) };
             out.push((strip_name(side, k), text, mtrs));
         }
     }
     for k in 0..4 {
         let mut mtrs = Vec::new();
-        let text = corner_model(k, painter, &mut mtrs);
+        let text = if empty { blank(&corner_name(k)) } else { corner_model(k, painter, &mut mtrs) };
         out.push((corner_name(k), text, mtrs));
     }
     out

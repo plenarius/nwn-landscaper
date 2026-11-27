@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 
 use mg_mdl::{Face, Mesh};
 
+use super::overhang;
 use super::{
     ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
     WALKABLE_NZ, WATER_METRES, WATER_TEXTURE, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name,
@@ -16,7 +17,8 @@ use super::{
 use crate::{ambience, heightmap, objects, paint, shared};
 
 /// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
-/// particle placements baked into it, and the pack they come from.
+/// particle placements baked into it, and the pack they come from. `overhang`: the edge scenery a boundary tile draws over the
+/// halo.
 pub(super) fn tile_model(
     name: &str,
     tx: usize,
@@ -26,6 +28,7 @@ pub(super) fn tile_model(
     shadow: bool,
     mtrs: &mut Vec<(String, String)>,
     ambience: Option<(&[ambience::Baked], &ambience::Pack)>,
+    overhang: Option<&overhang::Overhang>,
 ) -> String {
     let (ox, oy) = (tx as f32 * TILE + TILE / 2.0, ty as f32 * TILE + TILE / 2.0);
     let base = tile_level(tx, ty) as f32 * TRANSITION;
@@ -234,7 +237,7 @@ pub(super) fn tile_model(
         let (x0, y0) = (tx as f32 * TILE, ty as f32 * TILE);
         let (x1, y1) = (x0 + TILE, y0 + TILE);
         let mut node = 0;
-        for o in scene.objects.iter().filter(|o| o.baked && o.max[0] > x0 && o.min[0] < x1 && o.max[1] > y0 && o.min[1] < y1) {
+        for o in scene.objects.iter().filter(|o| o.baked && !o.halo && o.max[0] > x0 && o.min[0] < x1 && o.max[1] > y0 && o.min[1] < y1) {
             for (k, (texture, first, count, hint)) in o.groups.iter().enumerate() {
                 let (mut verts, mut uvs) = (Vec::new(), Vec::new());
                 for t in *first..first + count {
@@ -261,6 +264,10 @@ pub(super) fn tile_model(
         trimesh_with(&mut s, &format!("{name}_wat"), name, WATER_TEXTURE, "  transparencyhint 1\n", &water, &water.tris, |v| {
             [(v[0] + ox) / WATER_METRES, (v[1] + oy) / WATER_METRES]
         });
+    }
+    // The halo's ground and trees beyond the area's edge, meeting this tile's outline.
+    if let Some(o) = overhang {
+        s.push_str(&o.nodes(name, tx, ty, &g, origin));
     }
     // Particles: under the tile's `<name>a` dummy, keyed in its animations (`ambience`).
     if let Some((baked, pack)) = ambience {
