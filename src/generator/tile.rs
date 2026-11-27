@@ -474,7 +474,7 @@ pub(super) struct Grass {
     diffuse: [f32; 3],
 }
 
-/// The area's grass: its `atmosphere`'s `grass` (`{ "on": true, "density": 5, "height": 1, "texture": "grass",
+/// The area's grass: its `atmosphere`'s `grass` (`{ "on": true, "density": 5, "height": 0.9, "texture": "grass",
 /// "ambient": "#80994c", "diffuse": "#80994c" }`, all but `on` optional). Off unless turned on, so an area exported again keeps
 /// its look; never in a cave or an interior.
 pub(super) fn grass() -> Option<Grass> {
@@ -496,7 +496,7 @@ fn grass_of(underground: bool, g: Option<&serde_json::Value>) -> Option<Grass> {
     Some(Grass {
         texture,
         density: number("density", 5.0, 20.0),
-        height: number("height", 1.0, 4.0),
+        height: number("height", 0.9, 4.0),
         ambient: colour("ambient"),
         diffuse: colour("diffuse"),
     })
