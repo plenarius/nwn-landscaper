@@ -10,6 +10,11 @@ name: Release
 # the installers, the archives, the engine for the browser (landscaper-wasm.zip, wasm.yml), SHA256SUMS and the complete source
 # with every dependency vendored, as the GPL asks. The release is published by hand.
 #
+# The app's updates (docs/DESIGN-desktop-app.md, question 6): Tauri signs each system's update file with the updater key (the
+# AppImage, the NSIS installer, and the macOS app as a .app.tar.gz), and the release carries each .sig and latest.json, which
+# installed apps read on the newest published release. Nothing updates until the draft is published. Runs other than a version
+# tag sign with a throwaway key (deploy/release/updater-key.sh), so they make and check the same files.
+#
 # Run by hand (workflow_dispatch), or on a pull request that changes how the releases are made, it builds, packs and checks the
 # same way, with the editor's branch or tag given (default main), and keeps the installers and archives as the run's artifacts; it
 # makes no release, its Windows builds are unsigned and its macOS builds have only an ad-hoc signature. (GitHub offers
@@ -33,6 +38,7 @@ on:
       - "scripts/app-smoke.sh"
       - "deploy/release/**"
       - "app/tauri.conf.json"
+      - ".github/release-notes.md"
 
 permissions:
   contents: read
@@ -52,6 +58,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       version: ${{ steps.web.outputs.version }}
+      web_ref: ${{ steps.web.outputs.ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Which editor
@@ -107,13 +114,15 @@ jobs:
     runs-on: ubuntu-latest
     container: rust:1-bookworm
     timeout-minutes: 60
+    # The updater key lives in the release environment, which only v* tags may use; other runs get no environment.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Tools (glslang, which nwn-bake builds with, needs cmake and a C++ compiler; the app needs WebKitGTK)
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends cmake clang libclang-dev pkg-config git ca-certificates \
-            libwebkit2gtk-4.1-dev libxdo-dev file >/dev/null
+            libwebkit2gtk-4.1-dev libxdo-dev file jq >/dev/null
       - name: Build
         # The program for the archive. --workspace: with the features the app's crates turn on, the app's build below reuses
         # every crate built here; built alone, the engine's dependencies get fewer features and the app's build compiles them again.
@@ -122,15 +131,19 @@ jobs:
         with:
           name: extras
           path: bundle-extras
-      - name: The app (an AppImage and a .deb)
+      - name: The app (an AppImage and a .deb; the AppImage is the update)
         shell: bash
         env:
           # No FUSE in the container: Tauri's AppImage tools unpack themselves and run from there.
           APPIMAGE_EXTRACT_AND_RUN: "1"
           VERSION: ${{ needs.prepare.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           deploy/release/tauri-cli.sh
+          mkdir app-out
+          . deploy/release/updater-key.sh app-out/updater.pub
           # The AppImage's tools and runtime at fixed versions: Tauri and appimagetool would download some from releases that move.
           export XDG_CACHE_HOME="$RUNNER_TEMP/cache"
           LDAI_RUNTIME_FILE=$(deploy/release/appimage-tools.sh fetch "$XDG_CACHE_HOME/tauri")
@@ -138,8 +151,8 @@ jobs:
           cargo tauri build --ci --bundles appimage,deb --config deploy/release/tauri.json
           deploy/release/appimage-tools.sh check "$XDG_CACHE_HOME/tauri" target/release/bundle/appimage/*.AppImage
           # Named as the archives are (Tauri names them after the app, with a space); the .deb as Debian names packages.
-          mkdir app-out
           cp target/release/bundle/appimage/*.AppImage "app-out/nwn-landscaper-$VERSION-linux-x86_64.AppImage"
+          cp target/release/bundle/appimage/*.AppImage.sig "app-out/nwn-landscaper-$VERSION-linux-x86_64.AppImage.sig"
           cp target/release/bundle/deb/*.deb "app-out/nwn-landscaper_${VERSION}_amd64.deb"
           ls -l app-out
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -213,18 +226,23 @@ jobs:
         with:
           name: extras
           path: bundle-extras
-      - name: The app (an NSIS installer, per user; Tauri signs it on version tags)
+      - name: The app (an NSIS installer, per user, which is the update too; Tauri signs it on version tags)
         shell: bash
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           deploy/release/tauri-cli.sh
+          mkdir app-out
+          # (Tauri signs the update file last, after the installer's Authenticode signature: the .sig is of the installer that ships.)
+          . deploy/release/updater-key.sh app-out/updater.pub
           sign=()
           [ ! -f "$RUNNER_TEMP/tauri-sign.json" ] || sign=(--config "$RUNNER_TEMP/tauri-sign.json")
           cargo tauri build --ci --bundles nsis --config deploy/release/tauri.json "${sign[@]}"
-          mkdir app-out
           cp target/release/bundle/nsis/*-setup.exe "app-out/nwn-landscaper-$VERSION-windows-x86_64-setup.exe"
+          cp target/release/bundle/nsis/*-setup.exe.sig "app-out/nwn-landscaper-$VERSION-windows-x86_64-setup.exe.sig"
           ls -l app-out
           # Tauri signs the program, packs it, then puts the unsigned one back in target/: the packed copy is the one that ships.
           7z x -y -o"$RUNNER_TEMP/packed" app-out/*-setup.exe nwn-landscaper.exe >/dev/null
@@ -316,24 +334,31 @@ jobs:
         with:
           name: extras
           path: bundle-extras
-      - name: The app (universal, in a .dmg; Tauri signs, notarizes and staples it on version tags)
+      - name: The app (universal, in a .dmg, and the update, a .app.tar.gz; Tauri signs, notarizes and staples it on version tags)
         env:
           # Tauri notarizes with the same App Store Connect key, and staples the ticket to the app.
           APPLE_API_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && vars.APPLE_NOTARY_KEY_ID || '' }}
           APPLE_API_ISSUER: ${{ startsWith(github.ref, 'refs/tags/v') && vars.APPLE_NOTARY_ISSUER_ID || '' }}
           APPLE_API_KEY_PATH: ${{ startsWith(github.ref, 'refs/tags/v') && format('{0}/notary-key.p8', runner.temp) || '' }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           deploy/release/tauri-cli.sh
+          mkdir app-out
+          . deploy/release/updater-key.sh app-out/updater.pub
           # The Developer ID on version tags (with the hardened runtime, Tauri's default), else an ad-hoc signature: Apple
           # silicon runs nothing unsigned.
           identity=${SIGNING_IDENTITY:--}
           [ -n "$APPLE_API_KEY" ] || unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
           cargo tauri build --ci --target universal-apple-darwin --bundles app,dmg --config deploy/release/tauri.json \
             --config "{\"bundle\": {\"macOS\": {\"signingIdentity\": \"$identity\"}}}"
-          mkdir app-out
-          cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "app-out/nwn-landscaper-$VERSION-macos-universal.dmg"
+          bundle=target/universal-apple-darwin/release/bundle
+          cp $bundle/dmg/*.dmg "app-out/nwn-landscaper-$VERSION-macos-universal.dmg"
+          # The app as signed, notarized and stapled, packed by Tauri for the updater.
+          cp $bundle/macos/*.app.tar.gz "app-out/nwn-landscaper-$VERSION-macos-universal.app.tar.gz"
+          cp $bundle/macos/*.app.tar.gz.sig "app-out/nwn-landscaper-$VERSION-macos-universal.app.tar.gz.sig"
           ls -l app-out
       - name: Notarize and staple the .dmg (version tags)
         # The app inside has its ticket already; the .dmg gets its own, so Gatekeeper checks the download offline too.
@@ -406,17 +431,31 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: plenarius/nwn-landscaper-web
+          ref: ${{ needs.prepare.outputs.web_ref }}
+          path: web-source
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
-      - name: Installers, archives and SHA256SUMS
+      - name: minisign, which checks the update files' signatures
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends minisign >/dev/null
+      - name: Installers, archives, latest.json and SHA256SUMS
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
         run: |
           set -eu
           cp -r artifacts/extras/web web
-          mkdir dist
-          # The app's installers.
+          mkdir dist keys
+          # Each signature is checked against the key it was made with: on a version tag, the key in the app.
+          for p in windows-x86_64 macos-universal linux-x86_64; do
+            mv "artifacts/app-$p/updater.pub" "keys/$p.pub"
+            [ -z "$TAG" ] || [ "$(cat "keys/$p.pub")" = "$(jq -r .plugins.updater.pubkey app/tauri.conf.json)" ]
+          done
+          # The app's installers and update files.
           cp artifacts/app-windows-x86_64/* artifacts/app-macos-universal/* artifacts/app-linux-x86_64/* dist/
           pack() { # <platform> <binary> <zip|tar>
             dir="nwn-landscaper-$VERSION-$1"
@@ -433,6 +472,16 @@ jobs:
           cp artifacts/source/nwn-landscaper-*-source.tar.gz dist/
           # (Under one name in every release, for the handbook site's /try/ to download.)
           cp artifacts/wasm/landscaper-wasm.zip dist/
+          # What the app's version menu shows before it updates: this version's section of each changelog.
+          section() { awk -v v="## $VERSION" '$0 == v {f = 1; next} /^## / {if (f) exit} f' "$1"; }
+          engine=$(section CHANGELOG.md)
+          editor=$(section web-source/CHANGELOG.md)
+          {
+            [ -z "$engine" ] || { echo "## Engine"; echo "$engine"; echo; }
+            [ -z "$editor" ] || { echo "## Editor"; echo "$editor"; }
+          } > update-notes.md
+          python3 -I deploy/release/latest-json.py "$VERSION" dist keys update-notes.md > dist/latest.json
+          jq -c '{version, pub_date, platforms: (.platforms | map_values(.url))}' dist/latest.json
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS
           ls -l dist

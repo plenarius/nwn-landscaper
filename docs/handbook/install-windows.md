@@ -30,6 +30,9 @@ A Landscaper you ran from the zip archive before uses the same data folder, so t
 
 ## Update or remove it
 
-- **Update:** run the new release's installer. It replaces the program and leaves the data folder alone.
+- **Update:** the app does it. When a new release is out, a dot shows beside the version next to the title, and its menu
+  offers **Update to X.Y.Z** with what is new. Click it and say yes: the app downloads the new installer, checks its signature,
+  installs it and starts again. Your areas and the data folder stay as they are. An app from 0.7.3 or before doesn't look for
+  updates: run the new release's installer yourself once, and it updates itself from then on.
 - **Remove:** uninstall **NWN Landscaper** in Windows' **Settings > Apps**, as any other program. The data folder stays; delete
   `%LOCALAPPDATA%\landscaper` yourself to remove your areas too.

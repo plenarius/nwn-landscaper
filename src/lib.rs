@@ -153,14 +153,14 @@ fn quick_start() -> std::process::ExitCode {
 
 /// The editor's server on this machine alone, for the desktop app: what `landscaper serve --port <port> --web <web>` does (with
 /// the OneDrive user folder a double-click also looks in), so the app and the command line can't drift apart, plus the app's own
-/// route, `POST /api/app/open` (`{"what": "data" | "log" | "folders"}`), which `open` answers. No `web` finds the editor as
-/// `serve` does. It serves until the process ends. A team server is never this: with `LANDSCAPER_TEAM` set it stops and says so.
-pub fn serve_local(port: u16, web: Option<&std::path::Path>, open: AppOpen) -> Result<()> {
+/// routes under `/api/app/`, which `app` answers ([`AppRoutes`]). No `web` finds the editor as `serve` does. It serves until the
+/// process ends. A team server is never this: with `LANDSCAPER_TEAM` set it stops and says so.
+pub fn serve_local(port: u16, web: Option<&std::path::Path>, app: AppRoutes) -> Result<()> {
     anyhow::ensure!(
         config::setting_os("LANDSCAPER_TEAM").is_none(),
         "LANDSCAPER_TEAM is set: a team server runs as `landscaper serve --team` behind its sign-in proxy, not in the app"
     );
-    serve::app::set_open(open);
+    serve::app::set_routes(app);
     run(<cli::Cli as clap::Parser>::try_parse_from(local_args(port, web, onedrive_user_folder()))?)
 }
 
@@ -194,6 +194,16 @@ pub fn save_game_folders(root: &std::path::Path, user: Option<&std::path::Path>)
 /// What the app does for `POST /api/app/open`: `what` is `data`, `log` or `folders`; Ok, or why it couldn't (the editor shows
 /// it).
 pub type AppOpen = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// What the app answers on its own routes, for [`serve_local`].
+pub struct AppRoutes {
+    /// `POST /api/app/open`.
+    pub open: AppOpen,
+    /// `GET /api/app/update`: the app's updater, as JSON for the editor's version menu (`{"state": ...}`).
+    pub update: Box<dyn Fn() -> serde_json::Value + Send + Sync>,
+    /// `POST /api/app/update`: installs the update the updater offers, then the app starts again; Err why it can't.
+    pub install: Box<dyn Fn() -> Result<(), String> + Send + Sync>,
+}
 
 /// [`serve_local`]'s command line.
 fn local_args(port: u16, web: Option<&std::path::Path>, user: Option<PathBuf>) -> Vec<std::ffi::OsString> {

@@ -6,6 +6,11 @@ Install the app for your system: it opens the editor in a window of its own, wit
 `nwn-landscaper-*-macos-universal.dmg`, then drag NWN Landscaper to Applications. Linux: the `.AppImage`, or the `.deb`
 for Debian 12, Ubuntu 22.04 and newer.
 
+The app updates itself: when a newer release is out, its version menu (the version beside the title) offers **Update to
+X.Y.Z** with what is new, and asks before it downloads it, checks its signature, installs it and starts again. An app installed
+from the `.deb` updates by installing the new `.deb`, and its menu says so. The `.sig` files, the macOS `.app.tar.gz` and
+`latest.json` are what the app's updater reads.
+
 The archives hold the program alone, for the command line, for running it on a server, or with your own browser: unpack
 one and start the program, and the editor opens in your browser (QUICKSTART.txt in the archive). Each download holds the
 engine and the editor of this release (nwn-landscaper-web, same tag).
