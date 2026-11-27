@@ -130,6 +130,12 @@ pub(crate) fn height(x: f32, y: f32) -> f32 {
     hill * (1.0 - s) + cliff_height() * s
 }
 
+/// Where the tile model's vertex for area point (x, y) goes, vertices `step` metres apart, in the area, and the point whose height
+/// and paint it takes: an interior's walls stand upright ([`heightmap::Heightmap::upright`]); elsewhere the point at its [`height`].
+pub(super) fn render_point(x: f32, y: f32, step: f32) -> ([f32; 3], [f32; 2]) {
+    heightmap::current().map_or_else(|| ([x, y, height(x, y)], [x, y]), |h| h.upright(x, y, step))
+}
+
 /// The ground's unit normal at area point (x, y): the painted terrain's ([`heightmap::Heightmap::normal`]), else
 /// the built-in test terrain's slope over 0.625 m each way.
 pub(crate) fn ground_normal(x: f32, y: f32) -> [f32; 3] {

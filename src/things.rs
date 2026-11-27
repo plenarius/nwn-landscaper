@@ -753,8 +753,16 @@ pub fn place(game: &GameData, t: &Thing, ground: &dyn Fn(f32, f32) -> f32) -> Re
 /// Every thing of the loaded terrain as GIT entries: (list name, instance).
 pub fn instances(game: &GameData) -> Result<Vec<(&'static str, Struct)>> {
     let Some(hm) = crate::heightmap::current() else { return Ok(Vec::new()) };
-    let ground = |x: f32, y: f32| hm.at(x, y);
-    hm.things.iter().map(|t| place(game, t, &ground)).collect()
+    let ground = |x: f32, y: f32| hm.floor_at(x, y);
+    hm.things
+        .iter()
+        .map(|t| {
+            // A door pushed into an interior's wall goes onto the wall's line, as the editor draws it: behind the upright wall
+            // it would be hidden.
+            let [x, y] = if t.kind == ObjectKind::Door { hm.wall_foot(t.x, t.y) } else { [t.x, t.y] };
+            if [x, y] == [t.x, t.y] { place(game, t, &ground) } else { place(game, &Thing { x, y, ..t.clone() }, &ground) }
+        })
+        .collect()
 }
 
 /// Whether an instance is one of the editor's (carries the mark), and its editor id.

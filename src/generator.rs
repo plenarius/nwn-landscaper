@@ -40,7 +40,7 @@ use self::painter::{
 use self::plan::{CROSSING_LIMIT, choose_path_nodes, plan_digest, sim_area_of, simulate_all, tile_crossings_for, tile_mesh, walkmesh_raw};
 pub(crate) use self::plan::{Walk, area_plan, in_parallel, in_parallel_on, walkmesh};
 pub(crate) use self::terrain::{CLIFF_OVERRIDE, FLAT_OVERRIDE, RUGGED_OVERRIDE, blocked, height};
-use self::terrain::{TRANSITION, flat, ground_normal, in_void, rugged, tile_level};
+use self::terrain::{TRANSITION, flat, ground_normal, in_void, render_point, rugged, tile_level};
 use self::tile::{crlf, set_file, surfaced, tile_model, tile_wok};
 use crate::{heightmap, paint, shared};
 use std::fmt::Write as _;

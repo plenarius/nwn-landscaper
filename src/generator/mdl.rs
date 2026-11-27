@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use super::{TILE, TRANSITION, WALKABLE_NZ, Walk, ground_normal, height, tile_level};
+use super::{TILE, TRANSITION, WALKABLE_NZ, Walk, ground_normal, height, render_point, tile_level};
 use crate::triplanar;
 
 /// A grid of vertices over one tile, in the tile's own coordinates (centred: -5..5), and its triangles.
@@ -25,20 +25,32 @@ pub(super) fn grid(tx: usize, ty: usize, step: f32) -> Grid {
     let mut verts = Vec::with_capacity((n + 1) * (n + 1));
     for j in 0..=n {
         for i in 0..=n {
-            let (lx, ly) = (i as f32 * step, j as f32 * step);
-            verts.push([lx - TILE / 2.0, ly - TILE / 2.0, height(ox + lx, oy + ly) - base]);
+            let (p, _) = render_point(ox + i as f32 * step, oy + j as f32 * step, step);
+            verts.push([p[0] - ox - TILE / 2.0, p[1] - oy - TILE / 2.0, p[2] - base]);
         }
     }
     let at = |i: usize, j: usize| (j * (n + 1) + i) as u32;
     let mut tris = Vec::with_capacity(n * n * 2);
     for j in 0..n {
         for i in 0..n {
-            // Counter-clockwise seen from above.
-            tris.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
-            tris.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+            // Counter-clockwise seen from above. (An interior's upright wall folds some flat: those are left out.)
+            for t in [[at(i, j), at(i + 1, j), at(i + 1, j + 1)], [at(i, j), at(i + 1, j + 1), at(i, j + 1)]] {
+                if !flat_face(&verts, t) {
+                    tris.push(t);
+                }
+            }
         }
     }
     Grid { verts, tris }
+}
+
+/// Whether triangle `t` of `v` has no area (its corners in a line).
+pub(super) fn flat_face(v: &[[f32; 3]], t: [u32; 3]) -> bool {
+    let (a, b, c) = (v[t[0] as usize], v[t[1] as usize], v[t[2] as usize]);
+    let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    n[0] * n[0] + n[1] * n[1] + n[2] * n[2] < 1e-8
 }
 
 /// The up part of triangle `t`'s unit normal: how flat it is (1 flat, 0 a wall), the test for walkable ground.
