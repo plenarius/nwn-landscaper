@@ -1,0 +1,262 @@
+{
+ "format": 1,
+ "size": 512,
+ "bytes": 2797614,
+ "textures": [
+  {
+   "id": "grassMedium",
+   "file": "grassMedium.webp",
+   "sha256": "59d47ac630f19f21e37226b8c345e98d39391208b2b0790529e0eeb1314e6753"
+  },
+  {
+   "id": "grassBright",
+   "file": "grassBright.webp",
+   "sha256": "c134fd770e1e8a2bab59881e8e145cd00d69ebe03a673fbcd27dfd51fbb95ffe"
+  },
+  {
+   "id": "grassMeadow",
+   "file": "grassMeadow.webp",
+   "sha256": "0259460d6f80bf77e90780f789a4cfca94416dd7611e5a3be22930ab98ce5370"
+  },
+  {
+   "id": "grassMoss",
+   "file": "grassMoss.webp",
+   "sha256": "c20ca00fc6741d0d26a95ab023b327f81cbd2e561e2a8612eca8728325b1cd31"
+  },
+  {
+   "id": "grassForest",
+   "file": "grassForest.webp",
+   "sha256": "4b9f4a289e9072894557fb1cc602e16c43972fd33083b15760f089b87b589147"
+  },
+  {
+   "id": "grassSwamp",
+   "file": "grassSwamp.webp",
+   "sha256": "3a5b3a1c742fb1b28dd8ea71af6193c492ae462baa879fd66ca354f9ea10c3b4"
+  },
+  {
+   "id": "grassDry",
+   "file": "grassDry.webp",
+   "sha256": "f59ecb81aa89e56b2e0fb9d41e2381a3c553aedf027e07c97c2142c8043fd63b"
+  },
+  {
+   "id": "dirt",
+   "file": "dirt.webp",
+   "sha256": "4881aeba291699656c7ae5907e64e13317743fbf48b2e7bec3b55e536cb6bb96"
+  },
+  {
+   "id": "dirtDark",
+   "file": "dirtDark.webp",
+   "sha256": "230ff3fb3a229e2ccec6575165e48865c72bd3e1ea0ad02bc2c5bb938cbf41f3"
+  },
+  {
+   "id": "dirtBrown",
+   "file": "dirtBrown.webp",
+   "sha256": "6d468728d4340e4018cb95c93cdee1efd76bfb3c002a7c9a67413e10740062a3"
+  },
+  {
+   "id": "dirtForest",
+   "file": "dirtForest.webp",
+   "sha256": "5c2e3519ab93adb676934586ee2bc5208257cec1f88d423c4b9c10d5d4db51ac"
+  },
+  {
+   "id": "mudSwamp",
+   "file": "mudSwamp.webp",
+   "sha256": "d0ca805c1e3c3747e803c143e9f3070197766232b30c5b3e9d6b4f6a6a6aeeaf"
+  },
+  {
+   "id": "mudCracked",
+   "file": "mudCracked.webp",
+   "sha256": "08d9a153b91c780570c54d4d2895af3150bf9c9b1e8d5eff6cb3d396be7f3e66"
+  },
+  {
+   "id": "earthCracked",
+   "file": "earthCracked.webp",
+   "sha256": "65c71ed55054c49b3f9dd5a1c2d277483eddfe6dffa42d8a5161f946db830f02"
+  },
+  {
+   "id": "gravelPebbles",
+   "file": "gravelPebbles.webp",
+   "sha256": "63b69631023a369ce26f8f2b1ce285be202c22b1eae7b8f27c179214d6a027b0"
+  },
+  {
+   "id": "gravelGrey",
+   "file": "gravelGrey.webp",
+   "sha256": "a881455f6d30175524e9d1d67d5f72b23c97d59f743ea1e6504b40d941920703"
+  },
+  {
+   "id": "gravelMuddy",
+   "file": "gravelMuddy.webp",
+   "sha256": "ab22b75a0dd52e8da6f9e0f7caac2f0641dcf2b2f93409d1573621d3766304b5"
+  },
+  {
+   "id": "sandFine",
+   "file": "sandFine.webp",
+   "sha256": "a4e3838ed02418e34ce6a231424df05b2dbe3845c122f9decc41c446f6607152"
+  },
+  {
+   "id": "sandSoft",
+   "file": "sandSoft.webp",
+   "sha256": "f67b64152197844949e66cd64debd735ad9ed920c4d94e0ee8f96058bf63b396"
+  },
+  {
+   "id": "sandDune",
+   "file": "sandDune.webp",
+   "sha256": "2548292c558667ce1cb046bc1eb4b7cba4ecec8b4bb5c75cc59aa689ce1df54c"
+  },
+  {
+   "id": "sandSilt",
+   "file": "sandSilt.webp",
+   "sha256": "308362d66fde0e9564c18639af782172a0d1183a96c21982c786c0eb59e139a7"
+  },
+  {
+   "id": "rock",
+   "file": "rock.webp",
+   "sha256": "d63127be91630d3d5e631d8a97da13cda72d24bcc1747c406426fb99ba70c061"
+  },
+  {
+   "id": "rockCliff",
+   "file": "rockCliff.webp",
+   "sha256": "db6b3a42dc3880afda6ac11dff1f6875222cb9d34569b33e361cb8714b936a13"
+  },
+  {
+   "id": "swampRock",
+   "file": "swampRock.webp",
+   "sha256": "e880bab7748f7988324c4838bbe19d864c250f341d0bb91cfe1fd44315ff4906"
+  },
+  {
+   "id": "canyonRock",
+   "file": "canyonRock.webp",
+   "sha256": "6d5cf92fa235cab2a49cc18b7517b9ce6bbfe93e70342eae26390223b23407a2"
+  },
+  {
+   "id": "winterRock",
+   "file": "winterRock.webp",
+   "sha256": "b46ef94c16eb2050d36c98c003fb89b75320ed0cc26959862684ffccbb10e294"
+  },
+  {
+   "id": "rockGrey",
+   "file": "rockGrey.webp",
+   "sha256": "b81170ed8f5ef3eec8df2445532d758dc0f5a68c6aba5bdece4cec035e88b389"
+  },
+  {
+   "id": "rockRed",
+   "file": "rockRed.webp",
+   "sha256": "81e0d77a538cf740fbe714cf12877363582679b3b28c3d79b2aa16cbfdeb28f9"
+  },
+  {
+   "id": "rockPale",
+   "file": "rockPale.webp",
+   "sha256": "10dcd39e1a717e9f4178e394eb51448147aadad65dda7f4fd2263334180b0ecf"
+  },
+  {
+   "id": "rockMossy",
+   "file": "rockMossy.webp",
+   "sha256": "f99640a57c456d741b42d50da9f27839b5f879c986df7b640b02842cdda3f4b0"
+  },
+  {
+   "id": "rockCave",
+   "file": "rockCave.webp",
+   "sha256": "ef8d2f350510c244f94a0add0d2417102bc6c81f270139e3d36dc6fb482b6db3"
+  },
+  {
+   "id": "rockSlate",
+   "file": "rockSlate.webp",
+   "sha256": "e5e017786bd8554a721f2a4eb17fc63e6e4833713bbdb09c87c01d0ea63b3486"
+  },
+  {
+   "id": "rockBrown",
+   "file": "rockBrown.webp",
+   "sha256": "94c5a8ef021d1146eaa4b54c1e6c39d9725b09b89854a652a84cee6515513915"
+  },
+  {
+   "id": "rockFrosted",
+   "file": "rockFrosted.webp",
+   "sha256": "35ce023920ee08f3fad17368677078315e37a6962fb6f514ce15db0b6b62b4e2"
+  },
+  {
+   "id": "snowFresh",
+   "file": "snowFresh.webp",
+   "sha256": "b67d8cf255505992e1930c51bec0deda3bb777443892195dd73df3dbfdd7b1c8"
+  },
+  {
+   "id": "snowPacked",
+   "file": "snowPacked.webp",
+   "sha256": "f5cc45912ffb555e332b92393f7b7858693698aeb2f368cfbcf3ddf025642e14"
+  },
+  {
+   "id": "snowDrift",
+   "file": "snowDrift.webp",
+   "sha256": "c09e0ceb919a9ae2d823d3165ed12d34a2d80c5b82a3aa5b98e036742a502e95"
+  },
+  {
+   "id": "iceFloor",
+   "file": "iceFloor.webp",
+   "sha256": "c3e4a0a55ce3ba4015b484d8315167df9cfd480b0eea19f2c25bdf23240554e3"
+  },
+  {
+   "id": "floorBrick",
+   "file": "floorBrick.webp",
+   "sha256": "cf893c8e21fc1bf0369c058791d3602b3583a97be0655639587373c30d611e7c"
+  },
+  {
+   "id": "floorFlag",
+   "file": "floorFlag.webp",
+   "sha256": "5260cd64d10ad6e3498a4292a239d9283f3ccfdcec20c46c54a45e4d5e38a5f7"
+  },
+  {
+   "id": "floorStone",
+   "file": "floorStone.webp",
+   "sha256": "5af82bd24ff0131685c39bae67a941b8a3b422694e65b1f93fd833bc5bb38145"
+  },
+  {
+   "id": "floorCobble",
+   "file": "floorCobble.webp",
+   "sha256": "bec50f700ef00145a2ae631ac074db167ed7598fe6a5a479b603833868286317"
+  },
+  {
+   "id": "floorSlabs",
+   "file": "floorSlabs.webp",
+   "sha256": "4e1aee386298c821088018479de970e38a3c670f8055ea40a2346d59a7384feb"
+  },
+  {
+   "id": "floorPlank",
+   "file": "floorPlank.webp",
+   "sha256": "2cd2161cb0599b385ab81b9d7ee3a0bdee9ff060924e6358bf15cb6218a1fd7d"
+  },
+  {
+   "id": "woodOld",
+   "file": "woodOld.webp",
+   "sha256": "86822c1a9eef1f213f946ce837e1b7a880425dc0ac4f6aa9324a564339da0ed8"
+  },
+  {
+   "id": "wallFieldstone",
+   "file": "wallFieldstone.webp",
+   "sha256": "c9ca67fe482b0c8be9b94fb07fab78b60151aeef80b3d0d91e24ed007b496512"
+  },
+  {
+   "id": "wallMossy",
+   "file": "wallMossy.webp",
+   "sha256": "d2909b246d5e5936fec54dd85b533ca207aab8fcdfbb807404dd9c82616795aa"
+  },
+  {
+   "id": "wallField",
+   "file": "wallField.webp",
+   "sha256": "5d758bb0a99aebe05f8384304b9e38adf9a13e66ab4ba68b1898a07f41310df6"
+  },
+  {
+   "id": "wallWeathered",
+   "file": "wallWeathered.webp",
+   "sha256": "730cd289a5b55873ee7fab682d5f9fe450dbdd0e2d610210c463014d9eaf3739"
+  },
+  {
+   "id": "wallDark",
+   "file": "wallDark.webp",
+   "sha256": "cde988f7e45fa31dede63def290eb2a953cad6fc35ac62abae0e7bb366b0172a"
+  },
+  {
+   "id": "wallWood",
+   "file": "wallWood.webp",
+   "sha256": "64ece515b3919fe162723a0407604ea9ea66d50aa587619751ddba73f4de40c1"
+  }
+ ]
+}

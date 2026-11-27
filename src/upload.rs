@@ -142,7 +142,7 @@ fn store_in(dir: &std::path::Path, name: &str, body: &mut dyn std::io::Read) -> 
     anyhow::ensure!(file_ok(name), "{name:?} isn't a file name I can keep (letters, digits, _ . - and ending .mod or .erf)");
     std::fs::create_dir_all(dir)?;
     // A name of its own for each upload, so two uploads of the same name never write into one file.
-    let tmp = dir.join(format!(".{name}.{}-{}.part", std::process::id(), SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let tmp = dir.join(format!(".{name}.{}-{}.part", crate::pid(), SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let kept = (|| -> Result<(Vec<Value>, u64)> {
         let mut f = std::fs::File::create(&tmp)?;
         let len = std::io::copy(&mut std::io::Read::take(body, MAX_BYTES as u64 + 1), &mut f).context("reading the upload")?;

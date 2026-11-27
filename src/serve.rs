@@ -286,6 +286,62 @@ fn job() -> std::sync::MutexGuard<'static, ()> {
     JOB.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// The browser build (`landscaper wasi-request [REQUEST] [ANSWER]`, docs/DESIGN-web-demo.md): answers one API request, read whole
+/// as HTTP/1.x (request line, headers, blank line, body) from the file REQUEST or standard input, and writes the answer to the file
+/// ANSWER or standard output (a file keeps it apart from what the engine prints). The page runs the engine once per request.
+#[cfg(any(feature = "web", test))]
+pub fn wasi_request(request: Option<&Path>, answer_to: Option<&Path>) -> Result<()> {
+    use std::io::{Read, Write};
+    let raw = match request {
+        Some(p) => std::fs::read(p)?,
+        None => {
+            let mut raw = Vec::new();
+            std::io::stdin().read_to_end(&mut raw)?;
+            raw
+        }
+    };
+    let answer = answer_raw(&raw, Path::new("/web"))?;
+    match answer_to {
+        Some(p) => std::fs::write(p, answer)?,
+        None => {
+            let mut out = std::io::stdout().lock();
+            out.write_all(&answer)?;
+            out.flush()?;
+        }
+    }
+    Ok(())
+}
+
+/// The answer to the HTTP/1.x request `raw`, as [`answer`] gives it, written out as HTTP/1.0 (no chunks to undo).
+#[cfg(any(feature = "web", test))]
+fn answer_raw(raw: &[u8], web: &Path) -> Result<Vec<u8>> {
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or_else(|| anyhow::anyhow!("no blank line after the head"))?;
+    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
+    // (tiny_http's test request takes a body that lives for ever: one request per run, so it is let go of with the process.)
+    let body: &'static [u8] = Box::leak(raw[split + 4..].to_vec().into_boxed_slice());
+    let mut lines = head.split("\r\n");
+    let mut first = lines.next().unwrap_or("").split(' ');
+    let method: Method = first.next().unwrap_or("GET").parse().map_err(|()| anyhow::anyhow!("not an HTTP method"))?;
+    let path = first.next().unwrap_or("/").to_string();
+    let mut req = tiny_http::TestRequest::new().with_method(method).with_path(&path).with_body_bytes(body);
+    for line in lines {
+        if let Some((k, v)) = line.split_once(':') {
+            req = req.with_header(Header::from_bytes(k.trim(), v.trim()).map_err(|()| anyhow::anyhow!("a header that isn't ASCII: {k}"))?);
+        }
+    }
+    let mut req: tiny_http::Request = req.into();
+    // (On the page's own origin, which the page's Service Worker checked: the gate sees the editor's local host.)
+    let gate = Gate::new(80, false, None);
+    crate::workspace::begin_request();
+    let mut out = Vec::new();
+    let v10 = tiny_http::HTTPVersion(1, 0);
+    match answer(&mut req, web, &gate) {
+        Reply::Data(a) => a.raw_print(&mut out, v10, &[], false, None)?,
+        Reply::Stream(s) => s.raw_print(&mut out, v10, &[], false, None)?,
+    }
+    Ok(out)
+}
+
 /// What every route answers with.
 type Answer = Response<std::io::Cursor<Vec<u8>>>;
 
@@ -1175,5 +1231,41 @@ mod tests {
         let palette = vec!["grassMedium".to_string(), "@import:bay1".to_string()];
         assert_eq!(imports_in(&palette, &objects), vec!["bay1", "bay2", "other"]);
         assert!(imports_in(&[], &serde_json::Value::Null).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod wasi_request_tests {
+    use super::*;
+
+    #[test]
+    fn a_request_written_out_is_answered_as_the_server_answers_it() {
+        let raw = b"GET /api/me HTTP/1.1\r\nHost: localhost\r\nX-Landscaper: 1\r\n\r\n";
+        let out = String::from_utf8(answer_raw(raw, Path::new("/nowhere")).unwrap()).unwrap();
+        assert!(out.starts_with("HTTP/1.0 200"), "{out}");
+        let (_, body) = out.split_once("\r\n\r\n").unwrap();
+        let me: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert!(me["version"].as_str().is_some_and(|v| v.starts_with(env!("CARGO_PKG_VERSION"))), "{body}");
+        // Through the gate as the server's: an API request without the editor's header is refused.
+        let out =
+            String::from_utf8(answer_raw(b"GET /api/me HTTP/1.1\r\nHost: localhost\r\n\r\n", Path::new("/nowhere")).unwrap()).unwrap();
+        assert!(out.starts_with("HTTP/1.0 403"), "{out}");
+    }
+
+    #[test]
+    fn a_request_with_a_binary_body_reaches_its_route_and_the_answer_goes_to_a_file() {
+        let dir = std::env::temp_dir().join(format!("ls-wasi-request-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // A check of an area too small to be one: the route's refusal, not one of the request's framing.
+        let mut raw =
+            b"POST /api/check?name=x&tiles=1&tilesY=1 HTTP/1.1\r\nHost: localhost\r\nX-Landscaper: 1\r\nContent-Length: 4\r\n\r\n".to_vec();
+        raw.extend([0xff, 0x00, 0x80, 0x7f]);
+        std::fs::write(dir.join("req"), &raw).unwrap();
+        wasi_request(Some(&dir.join("req")), Some(&dir.join("answer"))).unwrap();
+        let out = String::from_utf8_lossy(&std::fs::read(dir.join("answer")).unwrap()).into_owned();
+        assert!(out.starts_with("HTTP/1.0 4"), "{out}");
+        assert!(out.contains("3 to 32 tiles"), "the route's own refusal: {out}");
+        assert!(answer_raw(b"GET / HTTP/1.1\r\n", Path::new("/nowhere")).is_err(), "a head that never ends");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

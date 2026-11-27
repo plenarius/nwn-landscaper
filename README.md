@@ -122,6 +122,7 @@ The texture library the editor paints with. The first start builds the starter s
 
 ```sh
 landscaper textures init                          # the starter set again, adding what is missing
+landscaper textures init --pictures ./pics        # the starter set from pictures named by id, no game
 landscaper textures add my-textures.json          # the game's or your haks' textures, by name
 landscaper textures build ~/pictures/ground --category Grass --surface 3
 landscaper textures list

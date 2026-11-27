@@ -74,6 +74,8 @@ crate unchanged.
   can't panic: a send to a connection's thread that is gone is ignored, and a turn that never comes is an error that closes the
   connection. Neither can happen as the code stands; a panic there would end an answering thread, which the Landscaper doesn't
   replace.
+- `TestRequest::with_body_bytes` (`src/test.rs`): a test request's body of any bytes, not only text. The browser build answers
+  the page's requests through a test request (`wasi_request` in the Landscaper's `src/serve.rs`).
 - `rustfmt.toml`: rustfmt's defaults, which the fork is formatted with, in place of the repository's (`cargo fmt --all` in the
   repository formats this folder too). The patch is formatted the fork's way.
 
