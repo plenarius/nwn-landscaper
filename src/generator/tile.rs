@@ -356,17 +356,22 @@ pub(super) fn crlf(s: &str) -> Vec<u8> {
 }
 
 /// Tile models: `<name>_<xx><yy>` (up to 14 characters). The water over tile (tx, ty), in its own coordinates: a flat quad at the
-/// water's level over each 0.625 m cell with a corner under water (the ground hides it beyond the shore).
+/// water's level over each 0.625 m cell with a corner under water, the shallows too, so it runs on under the bank and the ground
+/// hides it beyond the shore: the shore is where they meet, not the cells' edges.
 fn water_surface(tx: usize, ty: usize) -> Option<Grid> {
     let hm = heightmap::current().filter(|h| !h.water.is_empty())?;
+    water_cells(&hm, tx, ty, tile_level(tx, ty) as f32 * TRANSITION)
+}
+
+/// [`water_surface`] over `hm`, for a tile whose ground is `base` metres up.
+fn water_cells(hm: &heightmap::Heightmap, tx: usize, ty: usize, base: f32) -> Option<Grid> {
     let k = (TILE / hm.spacing).round() as i64;
-    let base = tile_level(tx, ty) as f32 * TRANSITION;
     let (mut verts, mut tris) = (Vec::new(), Vec::new());
     for cj in 0..k {
         for ci in 0..k {
             let (i, j) = (tx as i64 * k + ci, ty as i64 * k + cj);
             let level =
-                [(0, 0), (1, 0), (0, 1), (1, 1)].iter().filter_map(|(di, dj)| hm.water_level(i + di, j + dj)).fold(f32::NAN, f32::max);
+                [(0, 0), (1, 0), (0, 1), (1, 1)].iter().filter_map(|(di, dj)| hm.surface_level(i + di, j + dj)).fold(f32::NAN, f32::max);
             if level.is_nan() {
                 continue;
             }
@@ -445,4 +450,41 @@ pub(super) fn set_file(nodes: &[(char, u8)]) -> String {
     }
     s.push_str("[GROUPS]\nCount=0\n");
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_water_runs_over_the_dry_shallows_up_to_the_bank() {
+        // 3 by 3 tiles: a lake to 1.5 m over ground at 1 m west of x = 15 m, a shelf under 7.5 cm of water to x = 25 m, then dry
+        // ground at 2 m.
+        let dir = std::env::temp_dir().join(format!("ls-tile-water-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let n = 3 * 16 + 1;
+        let heights: Vec<f32> = (0..n * n)
+            .map(|k| match k % n {
+                0..24 => 1.0,
+                24..40 => 1.5 - heightmap::WET_DEPTH / 2.0,
+                _ => 2.0,
+            })
+            .collect();
+        std::fs::write(dir.join("t.f32"), heights.iter().flat_map(|h| h.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+        let header = serde_json::json!({
+            "name": "t", "tiles": 3, "spacing": 0.625, "width": n, "height": n, "data": "t.f32",
+            "water": [{ "i": 2, "j": 2, "level": 1.5 }],
+        });
+        std::fs::write(dir.join("t.json"), header.to_string()).unwrap();
+        let hm = heightmap::read(&dir.join("t.json")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        // The shelf is dry to walk on...
+        assert!(hm.water_at(20.0, 15.0).is_none());
+        // ...but the water's surface runs on over it, at the lake's level, to the cell where the bank comes up through it: the
+        // ground hides it from there, so the shore isn't cut along the cells where the shallows begin.
+        let east = water_cells(&hm, 2, 1, 0.0).expect("water over the shelf");
+        let reach = east.verts.iter().map(|v| v[0] + 2.5 * TILE).fold(f32::MIN, f32::max);
+        assert!((reach - 25.0).abs() < 1e-3, "reaches x = {reach}");
+        assert!(east.verts.iter().all(|v| (v[2] - 1.5).abs() < 1e-6));
+    }
 }
