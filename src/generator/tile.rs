@@ -10,9 +10,9 @@ use mg_mdl::{Face, Mesh};
 use super::overhang;
 use super::{
     ENTRANCE_DARK, Grid, MAT_DEEP_WATER, MAT_GRASS, MAT_NONWALK, MAT_WATER, Mapping, Painter, RENDER_STEP, TILE, TRANSITION, VOID_BELOW,
-    WALKABLE_NZ, WATER_METRES, WATER_TEXTURE, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name,
-    mtr_name, normal_z, num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh,
-    trimesh_full, trimesh_listed, trimesh_with,
+    WALKABLE_NZ, WATER_METRES, Walk, aabb_body, baked_name, edge, entrance, entrance_rock, grid, height, minimap_name, mtr_name, normal_z,
+    num, shadow_name, split, terrain_mesh, tile_level, tile_mtr, tile_name, tiles_x, tiles_y, tileset_name, trimesh, trimesh_full,
+    trimesh_listed, trimesh_with,
 };
 use crate::{ambience, heightmap, objects, paint, shared};
 
@@ -279,7 +279,8 @@ pub(super) fn tile_model(
         }
     }
     if let Some(water) = water_surface(tx, ty) {
-        trimesh_with(&mut s, &format!("{name}_wat"), name, WATER_TEXTURE, "  transparencyhint 1\n", &water, &water.tris, |v| {
+        let (wtex, wprops) = super::water_mesh();
+        trimesh_with(&mut s, &format!("{name}_wat"), name, &wtex, &wprops, &water, &water.tris, |v| {
             [(v[0] + ox) / WATER_METRES, (v[1] + oy) / WATER_METRES]
         });
     }

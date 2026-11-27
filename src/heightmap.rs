@@ -411,6 +411,8 @@ pub(crate) fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         cut_out(&rim, n, width, height),
         cut_out(&ceiling, n, width, height),
     );
+    // (a bad water look stops the check and the export here, naming it)
+    crate::atmosphere::water_look(j.get("atmosphere").filter(|a| a.is_object()))?;
     let hm = Arc::new(Heightmap {
         name,
         tiles,

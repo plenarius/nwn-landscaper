@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::Result;
 
 use super::cards::{self, Atlas, CARD_FROM};
-use super::{Grid, Painter, TILE, WATER_METRES, WATER_TEXTURE, height, mdl, num, shadow_strength, tiles_x, tiles_y, tileset_name};
+use super::{Grid, Painter, TILE, WATER_METRES, height, mdl, num, shadow_strength, tiles_x, tiles_y, tileset_name};
 use crate::{heightmap, objects, paint, shade};
 
 /// A coarse cell's side (m).
@@ -321,7 +321,8 @@ impl Overhang {
                 self.counts.water.fetch_add(water.len() / 3, Ordering::Relaxed);
                 let verts: Vec<[f32; 3]> = water.iter().map(|p| [p[0] - ox, p[1] - oy, p[2] - base]).collect();
                 let uvs: Vec<[f32; 2]> = water.iter().map(|p| [p[0] / WATER_METRES, p[1] / WATER_METRES]).collect();
-                mdl::trimesh_listed(&mut s, &format!("{name}_hw{n}"), name, WATER_TEXTURE, "  transparencyhint 1\n", &verts, &uvs);
+                let (wtex, wprops) = super::water_mesh();
+                mdl::trimesh_listed(&mut s, &format!("{name}_hw{n}"), name, &wtex, &wprops, &verts, &uvs);
             }
         }
         if let Some(list) = self.trees.get(&(tx, ty)) {
