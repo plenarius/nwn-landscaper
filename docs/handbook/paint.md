@@ -34,6 +34,15 @@ The mix brush paints a blend of textures in patches: grass with dry patches and 
 
 ![The Paint tool painting a mix](../assets/handbook/mix.webp)
 
+## How large a texture is drawn
+
+Every texture repeats every 4 m of ground. The starter set's close-ups of small things repeat their picture inside those 4 m, so
+the stones come out a believable size from the game's camera and at eye level: pebbles and cobbles twice each way, and so are
+brick and plank floors, fieldstone walls and rippled sand. Drawn once across 4 m, a pebble was a foot wide.
+
+A library made before this gets the new pictures the next time the Landscaper starts, unless you changed one; it is then
+yours and left alone. For a texture of your own, make its picture cover 4 m of ground.
+
 ## More textures
 
 **Get more textures** lists the texture packs on offer. See [Texture packs](texture-packs.md).
