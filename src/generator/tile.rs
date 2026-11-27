@@ -19,6 +19,9 @@ use crate::{ambience, heightmap, objects, paint, shared};
 /// Tile (tx, ty)'s model; `mtrs` gets the materials of its shadowed meshes (when shadows are on: `shadow`). `ambience`: the
 /// particle placements baked into it, and the pack they come from. `overhang`: the edge scenery a boundary tile draws over the
 /// halo.
+/// How high a tile's two main lights hang over its highest ground (m), as the stock tiles' do over theirs.
+const LIGHT_HEIGHT: f32 = 5.0;
+
 pub(super) fn tile_model(
     name: &str,
     tx: usize,
@@ -67,11 +70,16 @@ pub(super) fn tile_model(
         "newmodel {name}\nsetsupermodel {name} NULL\nclassification tile\nsetanimationscale 1\n\
          beginmodelgeom {name}\nnode dummy {name}\n  parent NULL\nendnode\n"
     );
+    // The main lights hang LIGHT_HEIGHT over the tile's highest ground, as a stock tile's over its fairly level ground: over the
+    // tile's base, a cliff tile's hung against its wall and lit a hot spot on the rock that slid about as the camera moved (the
+    // client lights a tile with the lights nearest the camera). In a cave, over the base, under the roof.
+    let top = if hm.as_deref().is_some_and(|h| h.underground) { 0.0 } else { g.verts.iter().fold(0.0f32, |top, v| top.max(v[2])) };
+    let z = num(top + LIGHT_HEIGHT);
     for l in ["ml1", "ml2"] {
         let _ = writeln!(
             s,
             "node light {name}{l}\n  parent {name}\n  ambientonly 0\n  shadow 0\n  isdynamic 0\n  affectdynamic 1\n  lightpriority 5\n  \
-             fadingLight 1\n  flareradius 0\n  position 0 0 5\n  radius 14\n  multiplier 1\n  color 0 0 0\nendnode"
+             fadingLight 1\n  flareradius 0\n  position 0 0 {z}\n  radius 14\n  multiplier 1\n  color 0 0 0\nendnode"
         );
     }
     // The tile's (0, 0, 0) in the area, for texture coordinates from area coordinates, so textures run on across tiles.

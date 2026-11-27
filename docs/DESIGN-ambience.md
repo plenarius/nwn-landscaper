@@ -56,8 +56,8 @@ repository at `master` b5fd6a1. Paths starting `js/` or `index.html` are the edi
 - **Placeables:** the Place and Scatter panels offer `placeables.2da`'s rows from the configured haks (`src/models.rs:176`,
   `LANDSCAPER_HAKS`). The Landscaper never writes that table. Baked objects (the default) copy only their models' triangles into
   the tiles (`src/objects.rs`), so a placeable's emitters and lights are lost when it is baked.
-- **Tile lights:** each tile model has two light nodes, `ml1` (5 m up, radius 14 m) and `ml2`, and the `.set` says so
-  (`src/generator/tile.rs:411`). The exported `.are` leaves every tile's `Tile_MainLight1` and `Tile_MainLight2` at 0, black. No
+- **Tile lights:** each tile model has two light nodes, `ml1` (5 m over the tile's highest ground, radius 14 m) and `ml2`, and the `.set`
+  says so (`src/generator/tile.rs:411`). The exported `.are` leaves every tile's `Tile_MainLight1` and `Tile_MainLight2` at 0, black. No
   tile has source lights or animations.
 - **Baked shadows:** one fixed sun direction for day and night (`src/shade.rs`). The tile shader multiplies its final colour by
   the shadow map after all lighting (`src/shared.rs:112`), so torches and tile lights are darkened in baked shade too.
