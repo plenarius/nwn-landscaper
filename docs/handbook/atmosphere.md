@@ -23,6 +23,11 @@ the sky that suits them.
 Change any colour after picking one; [Light](light.md) says what each setting does. **View distance** sets how far the fog
 lets the camera see.
 
+**Water**, in the same panel, sets how the area's water looks in the game: **Clear** (the rural tiles' water, as areas had
+before), **Murky** (brown-green, the bed barely showing), **Stagnant green** or **Dark pool**, each a stock water texture with
+a tint. Swamp picks Murky and the other looks Clear; an area keeps its water when it is reopened, so an older one stays Clear
+until you change it.
+
 The panel lies over the tools' panels. Picking a tool closes it, and `L` opens it again; the view keeps the light it set.
 
 ![The Sky & fog panel: the Dawn look, its Dawn haze sky in the Sky row and behind the valley](../assets/handbook/atmosphere.webp)

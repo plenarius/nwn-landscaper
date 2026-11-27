@@ -7,8 +7,10 @@
 //! { "time": "cycle" | "day" | "night", "fogClip": 150,
 //!   "sun":  { "ambient": "#50504f", "diffuse": "#d6d6d6", "fog": "#bbbbbb", "fogAmount": 7, "shadows": true },
 //!   "moon": { ... },
-//!   "sky": "dusk", "skyRow": 3 }
+//!   "sky": "dusk", "skyRow": 3,
+//!   "water": { "texture": "tds01_water01", "tint": "#c8c8b0", "opacity": 0.9 } }
 //! ```
+//! `water` is the area's water look ([`water_look`]), each key optional: without it the water is the rural tiles' clear water.
 //! `sky` and `skyRow` are the area's sky (an installed Landscaper sky, else a row of the module's `skyboxes.2da`), which the
 //! export writes as `SkyBox` (crate::skies).
 //! Colours are `#rrggbb`; the .are stores them as 0x00BBGGRR.
@@ -42,6 +44,47 @@ pub fn apply(are: &mut Struct, a: &Json) -> Result<()> {
     are.set("IsNight", Value::Byte(u8::from(time == "night")));
     are.set("FogClipDist", Value::Float(a["fogClip"].as_f64().unwrap_or(150.0) as f32));
     Ok(())
+}
+
+/// How the area's water is drawn: a game water texture, a tint its colour is multiplied by, and an opacity (1 as the texture has it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WaterLook {
+    pub texture: Option<String>,
+    pub tint: Option<[f32; 3]>,
+    pub opacity: Option<f32>,
+}
+
+/// The water look in atmosphere `a` (its `water`), checked; `None` when it has none.
+pub fn water_look(a: Option<&Json>) -> Result<Option<WaterLook>> {
+    let Some(w) = a.and_then(|a| a.get("water")).filter(|w| !w.is_null()) else { return Ok(None) };
+    anyhow::ensure!(w.is_object(), "atmosphere water: not an object");
+    let texture = match w.get("texture").filter(|t| !t.is_null()) {
+        None => None,
+        Some(t) => {
+            let t = t.as_str().context("water texture: not a name")?;
+            anyhow::ensure!(
+                !t.is_empty() && t.len() <= 16 && t.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_'),
+                "water texture '{t}': not a resref (1 to 16 of a-z, 0-9, _)"
+            );
+            Some(t.to_string())
+        }
+    };
+    let tint = match w.get("tint").filter(|t| !t.is_null()) {
+        None => None,
+        Some(t) => {
+            let rgb = bgr(t.as_str().context("water tint: not a colour")?)?;
+            Some([(rgb & 0xFF) as f32 / 255.0, ((rgb >> 8) & 0xFF) as f32 / 255.0, ((rgb >> 16) & 0xFF) as f32 / 255.0])
+        }
+    };
+    let opacity = match w.get("opacity").filter(|o| !o.is_null()) {
+        None => None,
+        Some(o) => {
+            let o = o.as_f64().context("water opacity: not a number")? as f32;
+            anyhow::ensure!((0.0..=1.0).contains(&o), "water opacity {o}: not 0 to 1");
+            Some(o)
+        }
+    };
+    Ok(Some(WaterLook { texture, tint, opacity }))
 }
 
 fn hex(bgr: i64) -> String {
@@ -78,6 +121,27 @@ pub fn read(are: &Struct) -> Json {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn water_look_is_optional_and_checked() {
+        use super::water_look;
+        let a = serde_json::json!({ "time": "cycle" });
+        assert_eq!(water_look(Some(&a)).unwrap(), None);
+        assert_eq!(water_look(None).unwrap(), None);
+        let a = serde_json::json!({ "water": { "texture": "tds01_water01", "tint": "#ff8000", "opacity": 0.5 } });
+        let w = water_look(Some(&a)).unwrap().unwrap();
+        assert_eq!(w.texture.as_deref(), Some("tds01_water01"));
+        assert_eq!(w.tint, Some([1.0, 128.0 / 255.0, 0.0]));
+        assert_eq!(w.opacity, Some(0.5));
+        for bad in [
+            serde_json::json!({ "water": { "texture": "Bad Name" } }),
+            serde_json::json!({ "water": { "texture": "a_name_longer_than_16" } }),
+            serde_json::json!({ "water": { "tint": "#zzzzzz" } }),
+            serde_json::json!({ "water": { "opacity": 1.5 } }),
+        ] {
+            assert!(water_look(Some(&bad)).is_err(), "{bad}");
+        }
+    }
+
     use super::*;
 
     #[test]

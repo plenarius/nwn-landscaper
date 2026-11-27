@@ -15,8 +15,8 @@
 use std::fmt::Write as _;
 
 use super::{
-    Grid, Painter, TILE, TRANSITION, WATER_METRES, WATER_TEXTURE, baked_name, height, heightmap, mtr_name, normal_z, paint, shared,
-    tile_level, tile_mtr, tiles_x, tiles_y, tileset_name, trimesh, trimesh_with,
+    Grid, Painter, TILE, TRANSITION, WATER_METRES, baked_name, height, heightmap, mtr_name, normal_z, paint, shared, tile_level, tile_mtr,
+    tiles_x, tiles_y, tileset_name, trimesh, trimesh_with,
 };
 
 /// A side of a tile (or of the area), by compass direction.
@@ -270,7 +270,8 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(
     }
     if !water.tris.is_empty() {
         let wuv = |v: [f32; 3]| [side.along(centre, v) / WATER_METRES, v[0] / 5.0];
-        trimesh_with(&mut s, &format!("{name}_wat"), &name, WATER_TEXTURE, "  transparencyhint 1\n", &water, &water.tris, wuv);
+        let (wtex, wprops) = super::water_mesh();
+        trimesh_with(&mut s, &format!("{name}_wat"), &name, &wtex, &wprops, &water, &water.tris, wuv);
     }
     footer(&mut s, &name);
     s
@@ -320,9 +321,8 @@ fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, Str
     }
     if let Some(level) = heightmap::current().and_then(|hm| hm.surface_at(x, y)) {
         let w = quad(level - base);
-        trimesh_with(&mut s, &format!("{name}_wat"), &name, WATER_TEXTURE, "  transparencyhint 1\n", &w, &w.tris, |v| {
-            [v[0] / 5.0, v[1] / 5.0]
-        });
+        let (wtex, wprops) = super::water_mesh();
+        trimesh_with(&mut s, &format!("{name}_wat"), &name, &wtex, &wprops, &w, &w.tris, |v| [v[0] / 5.0, v[1] / 5.0]);
     }
     footer(&mut s, &name);
     s

@@ -82,12 +82,17 @@ pub(super) fn trimesh_with(
     trimesh_full(out, name, root, bitmap, props, g, faces, &uv, None);
 }
 
+/// A mesh's colours: white, unless its properties give their own (a tinted water look).
+fn lit(props: &str) -> &'static str {
+    if props.contains("  diffuse ") { "" } else { "  ambient 1 1 1\n  diffuse 1 1 1\n" }
+}
+
 /// A trimesh of the triangles listed (three vertices each, with their own texture coordinates), as copied from another model.
 pub(super) fn trimesh_listed(out: &mut String, name: &str, root: &str, bitmap: &str, props: &str, verts: &[[f32; 3]], uvs: &[[f32; 2]]) {
     let _ = writeln!(
         out,
-        "node trimesh {name}\n  parent {root}\n  ambient 1 1 1\n  diffuse 1 1 1\n  specular 0 0 0\n  shininess 1\n  \
-         shadow 0\n{props}  bitmap {bitmap}"
+        "node trimesh {name}\n  parent {root}\n{}  specular 0 0 0\n  shininess 1\n  shadow 0\n{props}  bitmap {bitmap}",
+        lit(props)
     );
     let _ = writeln!(out, "  verts {}", verts.len());
     for v in verts {
@@ -263,8 +268,8 @@ pub(super) fn write_node(
 ) {
     let _ = writeln!(
         out,
-        "node trimesh {name}\n  parent {root}\n  ambient 1 1 1\n  diffuse 1 1 1\n  specular 0 0 0\n  shininess 1\n  \
-         shadow 0\n{props}  bitmap {bitmap}"
+        "node trimesh {name}\n  parent {root}\n{}  specular 0 0 0\n  shininess 1\n  shadow 0\n{props}  bitmap {bitmap}",
+        lit(props)
     );
     let _ = writeln!(out, "  verts {}", verts.len());
     for v in verts {

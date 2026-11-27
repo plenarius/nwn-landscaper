@@ -43,6 +43,7 @@ pub(crate) use self::terrain::{CLIFF_OVERRIDE, FLAT_OVERRIDE, RUGGED_OVERRIDE, b
 use self::terrain::{TRANSITION, flat, ground_normal, in_void, rugged, tile_level};
 use self::tile::{crlf, set_file, surfaced, tile_model, tile_wok};
 use crate::{heightmap, paint, shared};
+use std::fmt::Write as _;
 
 /// A tile's side (m), as the game's.
 pub(crate) const TILE: f32 = 10.0;
@@ -86,6 +87,26 @@ const SHALLOW: f32 = 0.5;
 /// The game's water texture (its TXI asks for EE's water shader) and the metres one repeat of it covers, as in the rural tiles.
 const WATER_TEXTURE: &str = "ttr01_water01";
 const WATER_METRES: f32 = 3.3;
+
+/// The area's water as its meshes are written: the texture, and the properties after the transparency hint (its tint as the
+/// mesh's ambient and diffuse colour, its opacity as alpha); without a water look ([`crate::atmosphere::water_look`]), the
+/// rural tiles' clear water as before.
+fn water_mesh() -> (String, String) {
+    let look = heightmap::current().and_then(|h| crate::atmosphere::water_look(h.atmosphere.as_ref()).ok().flatten());
+    water_mesh_of(look.as_ref())
+}
+
+fn water_mesh_of(look: Option<&crate::atmosphere::WaterLook>) -> (String, String) {
+    let mut props = "  transparencyhint 1\n".to_string();
+    let Some(w) = look else { return (WATER_TEXTURE.to_string(), props) };
+    if let Some([r, g, b]) = w.tint {
+        let _ = write!(props, "  ambient {0} {1} {2}\n  diffuse {0} {1} {2}\n", num(r), num(g), num(b));
+    }
+    if let Some(o) = w.opacity.filter(|o| *o < 1.0) {
+        let _ = writeln!(props, "  alpha {}", num(o));
+    }
+    (w.texture.clone().unwrap_or_else(|| WATER_TEXTURE.to_string()), props)
+}
 /// A black texture for the inside of entrances (written to the hak).
 const ENTRANCE_DARK: &str = shared::BLACK;
 /// A cave's rock is void (black) from this far below its roof up.
@@ -109,4 +130,26 @@ fn baked_name(tx: usize, ty: usize) -> String {
 /// A tile's minimap picture.
 fn minimap_name(tx: usize, ty: usize) -> String {
     format!("{}m", tile_name(tx, ty))
+}
+
+#[cfg(test)]
+mod water_look_tests {
+    use super::water_mesh_of;
+    use crate::atmosphere::WaterLook;
+
+    #[test]
+    fn without_a_look_the_water_is_written_as_before() {
+        assert_eq!(water_mesh_of(None), ("ttr01_water01".to_string(), "  transparencyhint 1\n".to_string()));
+        let murky = WaterLook { texture: Some("tds01_water01".into()), tint: Some([0.5, 1.0, 0.25]), opacity: Some(0.8) };
+        let (texture, props) = water_mesh_of(Some(&murky));
+        assert_eq!(texture, "tds01_water01");
+        assert!(props.contains("  diffuse 0.5 1 0.25\n") && props.contains("  ambient 0.5 1 0.25\n") && props.contains("  alpha 0.8\n"));
+        // (a tinted mesh's own colours replace the white ones; an untinted one keeps them)
+        let mut s = String::new();
+        super::mdl::trimesh_listed(&mut s, "w", "r", &texture, &props, &[[0.0; 3]; 3], &[[0.0; 2]; 3]);
+        assert!(!s.contains("diffuse 1 1 1") && s.contains("diffuse 0.5 1 0.25"));
+        let mut s = String::new();
+        super::mdl::trimesh_listed(&mut s, "w", "r", "ttr01_water01", "  transparencyhint 1\n", &[[0.0; 3]; 3], &[[0.0; 2]; 3]);
+        assert!(s.contains("  ambient 1 1 1\n  diffuse 1 1 1\n"));
+    }
 }
