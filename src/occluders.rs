@@ -394,6 +394,7 @@ mod tests {
             min: [0.0; 3],
             max: [0.0; 3],
             baked: true,
+            halo: false,
             what: String::new(),
             positions,
         }

@@ -13,12 +13,14 @@
 
 mod above;
 mod analyse;
+mod cards;
 mod edge;
 mod entrance;
 mod generate;
 mod hops;
 mod install;
 mod mdl;
+mod overhang;
 mod painter;
 mod plan;
 mod split;
@@ -60,6 +62,11 @@ pub(crate) const WALKABLE_NZ: f32 = 0.64; // acos(0.64): about 50 degrees
 /// Resref prefix of the generated tileset and tiles: the painted terrain's name, else the built-in test terrain's.
 pub(crate) fn tileset_name() -> String {
     heightmap::current().map_or_else(|| "lsp01".to_string(), |h| h.name.clone())
+}
+
+/// What the engine's own tags start with: the area's `tagPrefix` (a canvas's name), else its name ([`tileset_name`]).
+pub(crate) fn tag_prefix() -> String {
+    heightmap::current().map_or_else(tileset_name, |h| if h.tag_prefix.is_empty() { h.name.clone() } else { h.tag_prefix.clone() })
 }
 
 /// Name of the hak (and module) written.

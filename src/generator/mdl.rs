@@ -214,7 +214,7 @@ fn face_normal([a, b, c]: [[f32; 3]; 3]) -> [f32; 3] {
 
 /// Writes a trimesh node: `faces` index `verts` (and `normals`, if given), `tfaces` the texture vertices (`tverts`, and `tverts1`
 /// alike, if given).
-fn write_node(
+pub(super) fn write_node(
     out: &mut String,
     name: &str,
     root: &str,

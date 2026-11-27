@@ -30,6 +30,9 @@ pub struct Placed {
     pub max: [f32; 3],
     /// Baked into the tiles (else an object: footprint only).
     pub baked: bool,
+    /// Standing on the halo, beyond the area's edge (the neighbour's): drawn in the edge scenery and casting shadows, never in a
+    /// tile or blocking.
+    pub halo: bool,
     /// Its model and placement, for the shadow cache.
     pub what: String,
 }
@@ -61,7 +64,7 @@ fn place(o: &Object, f: &Flat) -> Placed {
         .collect();
     let groups = f.groups.iter().zip(&f.transparency).map(|((t, a, n), h)| (t.clone(), *a, *n, *h)).collect();
     let what = format!("{}:{}:{}:{}:{}:{}", o.model, o.x, o.y, o.z, o.bearing, o.scale);
-    Placed { positions, uvs: f.uvs.clone(), groups, glow: f.glow.clone(), footprint, min, max, baked: o.baked, what }
+    Placed { positions, uvs: f.uvs.clone(), groups, glow: f.glow.clone(), footprint, min, max, baked: o.baked, halo: false, what }
 }
 
 /// The current terrain's objects placed, and an index of their footprints.
@@ -89,7 +92,7 @@ pub fn scene() -> Option<Arc<Scene>> {
     if let Some(s) = SCENE.read().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().filter(|s| s.serial == hm.serial) {
         return Some(s.clone());
     }
-    let mut built = build(&hm.objects, hm.serial, area_of(&hm)).ok()?;
+    let mut built = build(&hm.objects, hm.serial, area_of(&hm), hm.halo.is_some()).ok()?;
     built.lowest = hm.data.iter().copied().fold(f32::MAX, f32::min);
     let built = Arc::new(built);
     *SCENE.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(built.clone());
@@ -102,7 +105,7 @@ pub fn check() -> Result<()> {
     if hm.objects.is_empty() {
         return Ok(());
     }
-    build(&hm.objects, hm.serial, area_of(&hm)).map(|_| ())
+    build(&hm.objects, hm.serial, area_of(&hm), hm.halo.is_some()).map(|_| ())
 }
 
 /// The area's size in metres, east and north.
@@ -116,14 +119,16 @@ fn cells_between(lo: f32, hi: f32, cell: f32, size: f32) -> std::ops::RangeInclu
     ((lo.max(-cell) / cell).floor() as i32)..=((hi.min(size + cell) / cell).floor() as i32)
 }
 
-fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2]) -> Result<Scene> {
+/// `halo`: the area has one, so an object standing beyond its edge is the halo's ([`Placed::halo`]).
+fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2], halo: bool) -> Result<Scene> {
     let game = models::game()?;
     let mut objects = Vec::new();
     let mut cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>> = Default::default();
     for o in list {
-        let p = place(o, &*models::flat(game, &o.model)?);
-        // Decoration (not solid) doesn't block walking.
-        for t in p.footprint.iter().filter(|_| o.solid) {
+        let mut p = place(o, &*models::flat(game, &o.model)?);
+        p.halo = halo && !((0.0..=aw).contains(&o.x) && (0.0..=ah).contains(&o.y));
+        // Decoration (not solid) doesn't block walking, nor does the halo's.
+        for t in p.footprint.iter().filter(|_| o.solid && !p.halo) {
             let (x0, x1) = (t.iter().map(|q| q[0]).fold(f32::MAX, f32::min), t.iter().map(|q| q[0]).fold(f32::MIN, f32::max));
             let (y0, y1) = (t.iter().map(|q| q[1]).fold(f32::MAX, f32::min), t.iter().map(|q| q[1]).fold(f32::MIN, f32::max));
             for cy in cells_between(y0, y1, CELL, ah) {
@@ -158,7 +163,7 @@ impl Scene {
 
 /// The tag of an object-mode placeable: how a re-export finds the ones it placed.
 pub fn tag(id: u32) -> String {
-    format!("{}_p{id}", crate::generator::tileset_name())
+    format!("{}_p{id}", crate::generator::tag_prefix())
 }
 
 /// The object-mode placeables, as the toolset places a blueprint: the blueprint with their appearance, not static, at their place and

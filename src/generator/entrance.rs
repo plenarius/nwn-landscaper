@@ -209,7 +209,7 @@ pub fn door_mark(door: &mg_gff::Struct) -> Option<i64> {
 /// what transitions and scripts name them by. From the entrance's id, not its place in the list, so taking one entrance out
 /// leaves the others' tags as they were.
 pub fn door_tag(id: u32) -> String {
-    format!("{}_ent{id}", crate::generator::tileset_name())
+    format!("{}_ent{id}", crate::generator::tag_prefix())
 }
 
 /// The doors of the entrances, made from DOOR_BLUEPRINT as the toolset

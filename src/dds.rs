@@ -39,7 +39,7 @@ fn unpack565(c: u16) -> [f32; 3] {
 }
 
 /// One DXT1 block (4-colour mode): the colour box's corners, inset a little.
-fn dxt1_block(px: &[[f32; 3]; 16]) -> [u8; 8] {
+pub(crate) fn dxt1_block(px: &[[f32; 3]; 16]) -> [u8; 8] {
     let (mut lo, mut hi) = ([255f32; 3], [0f32; 3]);
     for p in px {
         for k in 0..3 {

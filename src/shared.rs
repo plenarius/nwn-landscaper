@@ -100,8 +100,8 @@ fn stamp() -> Result<String> {
         }
     }
     shaders()?.hash(&mut h);
-    // (2: the chasm fade joined the black; 3: the triplanar shader)
-    3u32.hash(&mut h);
+    // (2: the chasm fade joined the black; 3: the triplanar shader; 4: the edge scenery's fade)
+    4u32.hash(&mut h);
     Ok(format!("{:016x}", h.finish()))
 }
 
@@ -121,15 +121,17 @@ fn stamp() -> Result<String> {
 ///   lit per vertex, by blending the vertex shader's two lights. Without a texture7 the surface is drawn as fslit draws it.
 /// - `ls_tp_fs`: `ls_lm_fs` with its texture drawn from three sides by the slope ([`crate::triplanar`]), for library textures:
 ///   see [`patch_triplanar`].
+/// - `ls_fd_fs`: `ls_lm_fs` fading to the fog colour past the area's edge, for the edge scenery over a halo; `ls_fdt_fs` the same
+///   for the top of a tree's cards, which also fades out when seen edge-on: see [`patch_fade`].
 ///
 /// An install without them (the dedicated server's download has no shaders) or with a different shape of them is an error that
 /// says so: without them the area would draw wrong, not only without shadows.
-pub fn shaders() -> Result<[(&'static str, String); 4]> {
+pub fn shaders() -> Result<[(&'static str, String); 6]> {
     let game = crate::models::game()?;
     // The browser build with no game folder given: placeholders, so the rest of the export still downloads. It draws wrong in the
     // game until exported again with the folder (docs/DESIGN-web-demo.md, question 5).
     if cfg!(feature = "web") && game.resman.get_named("fslit", ResType::SHD).is_err() {
-        return Ok([LIGHTING, "ls_lm_vs", "ls_tp_fs", "ls_lm_fs"].map(|n| (n, STUB_SHADER.to_string())));
+        return Ok([LIGHTING, "ls_lm_vs", "ls_tp_fs", "ls_lm_fs", "ls_fd_fs", "ls_fdt_fs"].map(|n| (n, STUB_SHADER.to_string())));
     }
     let stock = |name: &str| -> Result<String> {
         let data = game.resman.get_named(name, ResType::SHD).map_err(|e| {
@@ -145,6 +147,8 @@ pub fn shaders() -> Result<[(&'static str, String); 4]> {
         (LIGHTING, patch_lighting(&stock("inc_lighting")?)?),
         ("ls_lm_vs", patch_vslit(&stock("vslit")?)?),
         ("ls_tp_fs", patch_triplanar(&fs)?),
+        ("ls_fd_fs", patch_fade(&fs, false)?),
+        ("ls_fdt_fs", patch_fade(&fs, true)?),
         ("ls_lm_fs", fs),
     ])
 }
@@ -309,6 +313,44 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
         ],
     )?;
     Ok(s)
+}
+
+/// The fade past the area's edge (m): from, to. The edge scenery reaches 50 m, as far as the client's scene covers.
+pub const FADE: [f32; 2] = [25.0, 50.0];
+
+/// `ls_lm_fs` (made by [`patch_fslit`]) fading to the fog colour past the area's edge, from [`FADE`]'s first distance to its
+/// second, measured from the nearest point of the area (its size from the material's `lsAreaW` and `lsAreaH`): the edge
+/// scenery's end meets the background instead of stopping. `top`: also fading out when seen edge-on (a tree card lying flat over
+/// the crown, which from the side reads as a brim).
+fn patch_fade(ls_lm_fs: &str, top: bool) -> Result<String> {
+    let s = replace_line(
+        ls_lm_fs,
+        "fslit",
+        "varying vec3 vLsLocalLight;",
+        &["varying vec3 vLsLocalLight;", "uniform float lsAreaW;", "uniform float lsAreaH;"],
+    )?;
+    let [from, to] = FADE;
+    let mut with = vec![
+        "// The Landscaper's edge scenery (its overhang.rs): towards the fog colour past the area's edge.".to_string(),
+        "{".to_string(),
+        "    highp vec3 lsWP = (m_view_inv * vec4(vPosView, 1.0)).xyz;".to_string(),
+        "    highp vec2 lsOut = max(max(-lsWP.xy, lsWP.xy - vec2(lsAreaW, lsAreaH)), vec2(0.0));".to_string(),
+        format!("    FragmentColor.rgb = mix(FragmentColor.rgb, fogColor.rgb, smoothstep({from:.1}, {to:.1}, length(lsOut)));"),
+        "}".to_string(),
+    ];
+    if top {
+        with.extend(
+            [
+                "// Seen from the side, the top card shows only from about 25 degrees down, fully from 45.",
+                "FragmentColor.a *= smoothstep(0.42, 0.70, abs(dot(normalize(vVertexNormal), normalize(-vPosView))));",
+                "if (FragmentColor.a < 0.04) discard;",
+            ]
+            .map(str::to_string),
+        );
+    }
+    with.push("gl_FragColor = FragmentColor;".to_string());
+    let with: Vec<&str> = with.iter().map(String::as_str).collect();
+    replace_line(&s, "fslit", "gl_FragColor = FragmentColor;", &with)
 }
 
 /// `landscaper shaders <out>`: writes the three shaders as [`shaders`] makes them, to compare them with what a release had.
