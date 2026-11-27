@@ -6,6 +6,68 @@ All notable changes to the Landscaper engine; the editor's are in
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog. Changes not
 released yet wait in `changelog.d/`, a file each, until the release puts them in its section.
 
+## 0.7.1
+
+- **Ambience: no particle cap.** The export bakes every placement, however many particles the area keeps alive; its report and
+  summary still give the day and night counts. 1,500 is now only the editor's guide to a heavy area.
+- **No line along tile borders.** A tile's baked picture now reaches a third of a metre past the tile on each side. Seen from
+  afar the game reads a picture's smaller copies, and at a picture's edge it could only repeat its last pixel, so a faint line
+  ran down every tile border painted with several textures (clearest along a cave floor at eye level).
+- **Cliffs turned from the sun are rock in shade, not black.** The game lights every area from the north-east, so a cliff
+  facing south or west gets only the area's ambient light, and the baked shadow map then darkened that again for the shadow
+  the face casts on itself. The shadow map now takes a cast shadow only from ground that faces the sun, and the tiles'
+  shaders give steep ground some of the sun or moon bounced off the ground below it (none on flat ground). See
+  [Light](docs/handbook/light.md#shadows).
+- **An area with placeables this install lacks checks and exports.** The path check and the export stopped at the first model they
+  couldn't read, so an area from another install or a team showed "Live: error". Such a placeable now blocks nothing and is left
+  out of the tiles, and the report names its models (`missing_models`); one in object mode is still written to the module.
+- **The browser page carries the game's stock placeables.** `/try/` has every stock placeable model with its walkmesh and
+  textures, and the three shaders an export needs, fetched a model at a time: stock trees and rocks draw, block paths and export as
+  on the desktop, Place and Scatter work, and Export no longer asks for the game folder.
+- **Design: the director's line** ([DESIGN-director-line.md](docs/DESIGN-director-line.md)). A Film tool to draw
+  nwn-director's camera flights on the map, preview them on the path the director flies (its planner ported, checked equal on
+  five plans), check clearance as they are drawn, and hand them to the director: as a download, on the builder's machine, or
+  through a filming queue.
+- **The handbook covers the app and the band.** Getting started has an install page for
+  [Windows](docs/handbook/install-windows.md), [macOS](docs/handbook/install-macos.md) and
+  [Linux](docs/handbook/install-linux.md), one for [the first start and the Help menu](docs/handbook/first-start.md), and
+  one for [the program alone](docs/handbook/program-alone.md); README and QUICKSTART put the installers first. Terrain
+  describes the band round an area, and Export what the game shows past the edge. A pull request that adds a `changelog.d/`
+  entry but changes nothing under `docs/` gets a warning in CI (not a failure).
+- **Missing textures:** `/api/textures/starter` lists the starter set and lets an admin add starter textures to the library
+  from the game's files, for an area painted with ones the library lacks. Export names every missing texture at once instead of
+  the first ([Paint](docs/handbook/paint.md#missing-textures)).
+- **Painted edges without the sawtooth.** Where two textures meet in a baked tile, the bake drew the paint's 0.625 m grid, so a
+  trail showed square teeth along both sides. It now smooths each texture's paint over about 1.5 m and draws the edge where the
+  smoothed paint changes hands: sharp on a smooth line for laid surfaces (cobbles, flagstones, floors, planks), ragged by noise
+  and by the textures themselves for natural ground (gravel poking into snow). Every area gets it on its next export, with no
+  repainting; specks a sample or two across, like the mix brush's soft edge, are smoothed away. The texture catalog's new
+  `edge` (`crisp` or `broken`; unset, the category decides) picks the style, broken winning where the two differ. Tiles
+  beside a change of texture are baked too now (about 3% more hak), the minimap follows the smoothed paint, and every tile
+  bakes again once. The design: [#88](https://github.com/plenarius/nwn-landscaper/pull/88); how it works, for the editor to
+  match: `src/generator/soft.rs`.
+- **Design: soft paint** ([DESIGN-soft-paint.md](docs/DESIGN-soft-paint.md)). Why painted edges show the 0.625 m grid as a
+  sawtooth in the game, and the fix measured in the client: smoothed weights at bake time for existing areas, then a second
+  texture and weight per sample painted by a soft brush.
+- **Pebbles, cobbles, bricks and planks come out a believable size.** The starter set's close-ups repeat their picture inside the
+  4 m a texture covers (`repeats` in `src/starter_textures.json`): pebbles and cobblestones, brick and plank floors, old
+  planks, fieldstone walls and rippled sand twice each way. Drawn once across 4 m, a pebble was a foot wide and the floor read
+  as a photograph of rocks. A library made before is updated when the Landscaper starts, except a texture you changed. See
+  [Paint](docs/handbook/paint.md#how-large-a-texture-is-drawn).
+- **Walls meet the floor without stripes.** A texture's three projections are blended by the ground's own slope (the gentler
+  side's on walkable ground, the steeper side's on a steep face), in the baked tiles and in the game's shader through the
+  tile's third texture coordinates. They were blended by the light's normal, which is smoothed over several metres on steep
+  ground, so flat floor at a cave wall's foot took the projection from the side and smeared into striped bands, and the
+  wall's foot took the one from above and streaked. See [Paint](docs/handbook/paint.md#walls-and-steep-ground).
+- **The area list says which files it leaves out.** `/api/areas` has `unlisted` (`{ file, why }`) beside `areas`: each `.json`
+  of the areas folder that can't be opened, with the reason (a bad name, broken JSON, no header, or a `name` that isn't its
+  file's name), and the server's log says each once. A file copied in by hand used to vanish from Open without a word. A file
+  whose `name` differs from its file name is no longer listed under that name, which opened another file or none.
+- **A lake's shore is smooth in the game, not a sawtooth.** Since water under 15 cm became dry ground (0.7.0), the water's surface
+  stopped at the 0.625 m cells where the shallows began, so its edge stepped along the grid. The surface now runs on over the
+  shallows and under the bank, and the ground hides it: the shore is where the two meet. The shallows stay dry to walk on, and
+  the halo's and the edge scenery's water follow the same surface.
+
 ## 0.7.0
 
 - **Export and Check take the editor's band as the area's halo.** `halo` in the query gives the band's samples a side; the
