@@ -46,7 +46,7 @@ uninlined_format_args = "warn"
 
 [package]
 name = "landscaper"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 # As nwn-bake, which the Landscaper builds on.
 rust-version = "1.98"
