@@ -98,7 +98,7 @@ pub(super) fn tile_model(
             return;
         }
         let triplanar = match mapping {
-            Mapping::Boxed(metres) => Some(metres),
+            Mapping::Boxed(repeat) => Some(repeat),
             Mapping::Vertex(_) => None,
         };
         let props = if shadow || triplanar.is_some() {
@@ -113,7 +113,7 @@ pub(super) fn tile_model(
     match painter {
         None => {
             lit(&mut s, format!("{name}_gnd"), "ttr01_grass02", &ground, Mapping::Vertex(&|v| [(v[0] + ox) / 5.0, (v[1] + oy) / 5.0]));
-            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed(paint::TEXTURE_METRES));
+            lit(&mut s, format!("{name}_rck"), "ttr01_rock00", &rock, Mapping::Boxed(paint::Repeat::PLAIN));
         }
         Some(p) => {
             match p.tile_materials(tx, ty).as_slice() {
@@ -122,7 +122,7 @@ pub(super) fn tile_model(
                 // One texture: the library's, repeating, drawn from three sides.
                 [m] => {
                     let bitmap = paint::resref(&p.hm.palette[*m as usize]);
-                    lit(&mut s, format!("{name}_gnd"), &bitmap, &ground, Mapping::Boxed(p.metres(*m)));
+                    lit(&mut s, format!("{name}_gnd"), &bitmap, &ground, Mapping::Boxed(p.repeat(*m)));
                 }
                 // Several: the tile's own baked texture over its square (baked from three sides, as the one-texture tiles draw it).
                 _ => lit(&mut s, format!("{name}_gnd"), &baked_name(tx, ty), &ground, Mapping::Vertex(&on_picture)),
@@ -142,11 +142,11 @@ pub(super) fn tile_model(
                     // front: the grid's slope fills what they don't cover.)
                     let Some(tiles) = p.textures[*m as usize].tiles.as_ref() else { continue };
                     match tiles.cliffs.get(ty * tiles.width + tx).cloned().flatten() {
-                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed(paint::TEXTURE_METRES)),
+                        Some(cliff) => lit(&mut s, format!("{name}_rck{k}"), &cliff, faces, Mapping::Boxed(paint::Repeat::PLAIN)),
                         None => lit(&mut s, format!("{name}_rck{k}"), &baked_name(tx, ty), faces, Mapping::Vertex(&on_picture)),
                     }
                 } else {
-                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed(p.metres(*m)));
+                    lit(&mut s, format!("{name}_rck{k}"), &paint::resref(&p.hm.palette[*m as usize]), faces, Mapping::Boxed(p.repeat(*m)));
                 }
             }
         }
@@ -179,9 +179,9 @@ pub(super) fn tile_model(
         // (a tile's own picture lies over its square; a texture, from three sides like the steep faces)
         let picture = bitmap == baked_name(tx, ty);
         let mat = mtr_name(name, mtrs.len());
-        let metres = painter.filter(|p| !p.imported(m)).map_or(paint::TEXTURE_METRES, |p| p.metres(m));
-        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), (!picture).then_some(metres))));
-        let mapping = if picture { Mapping::Vertex(&on_picture) } else { Mapping::Boxed(metres) };
+        let repeat = painter.filter(|p| !p.imported(m)).map_or(paint::Repeat::PLAIN, |p| p.repeat(m));
+        mtrs.push((mat.clone(), tile_mtr(&bitmap, Some(shared::CHASM_FADE), (!picture).then_some(repeat))));
+        let mapping = if picture { Mapping::Vertex(&on_picture) } else { Mapping::Boxed(repeat) };
         terrain_mesh(
             &mut s,
             &format!("{name}_cw"),

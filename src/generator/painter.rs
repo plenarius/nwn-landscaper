@@ -126,6 +126,11 @@ impl Painter {
         self.textures[m as usize].metres
     }
 
+    /// How palette entry `m`'s texture repeats ([`paint::Repeat`]).
+    pub(super) fn repeat(&self, m: u8) -> paint::Repeat {
+        self.textures[m as usize].repeat()
+    }
+
     /// Whether palette entry `m` is an import's pictures.
     pub(super) fn imported(&self, m: u8) -> bool {
         self.textures[m as usize].tiles.is_some()
@@ -251,6 +256,7 @@ impl Painter {
             }
             // (Its size a repeat; its id seeds its edge's noise.)
             h.update(t.metres.to_le_bytes());
+            h.update(t.vary.to_le_bytes());
             h.update([self.looks[m as usize].edge as u8]);
             h.update(self.hm.palette[m as usize].as_bytes());
             h.update([0]);
@@ -314,8 +320,8 @@ impl Painter {
 /// Changed whenever a baked texture comes out differently from the same paint (the bake, its blending or the DDS encoder): the
 /// bake cache's entries from before no longer count.
 /// (2: drawn from three sides by the slope. 3: small bakes read the textures halved. 4: blended by the ground's own slope.
-/// 5: soft paint. 6: the margin.)
-const BAKE_VERSION: u32 = 6;
+/// 5: soft paint. 6: the margin. 7: varied repeats.)
+const BAKE_VERSION: u32 = 7;
 
 /// How far a tile's baked picture reaches past the tile on each side, as a part of the picture's side (16 pixels of 512, a
 /// third of a metre). Seen from afar the game reads the picture's smaller copies, whose pixels are a foot or more across: within
@@ -769,10 +775,10 @@ fn draw_shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
 }
 
 /// The material of a tile's mesh: our shaders and its texture, with `texture7` (the tile's baked shadow map, or a chasm wall's fade)
-/// over it when given. `triplanar`: a library texture covering that many metres a repeat, drawn from three sides by the ground's
-/// slope ([`crate::triplanar`], shader `ls_tp_fs`, its `lsMetres`); else at the mesh's own texture coordinates (`ls_lm_fs`, a
-/// picture over the tile's square).
-pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: Option<f32>) -> String {
+/// over it when given. `triplanar`: a library texture repeating so ([`paint::Repeat`]), drawn from three sides by the ground's
+/// slope ([`crate::triplanar`], shader `ls_tp_fs`, its `lsMetres` and `lsVary`); else at the mesh's own texture coordinates
+/// (`ls_lm_fs`, a picture over the tile's square).
+pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: Option<paint::Repeat>) -> String {
     let (fs, what) = if triplanar.is_some() { ("ls_tp_fs", "drawn from three sides by the slope, ") } else { ("ls_lm_fs", "") };
     let mut s = format!(
         "// NWN Landscaper: {what}lit as usual, the baked shadow map shading the area's sun or moon\ncustomshadervs ls_lm_vs\ncustomshaderfs {fs}\n\
@@ -781,8 +787,8 @@ pub(super) fn tile_mtr(bitmap: &str, texture7: Option<&str>, triplanar: Option<f
     if let Some(t) = texture7 {
         s += &format!("texture7 {t}\n");
     }
-    if let Some(metres) = triplanar {
-        s += &format!("parameter float lsMetres {metres:.2}\n");
+    if let Some(r) = triplanar {
+        s += &format!("parameter float lsMetres {:.2}\nparameter float lsVary {:.2}\n", r.metres, r.vary);
     }
     s
 }
@@ -807,9 +813,9 @@ mod tests {
 
     #[test]
     fn a_library_texture_s_material_draws_it_triplanar_and_a_picture_s_does_not() {
-        let tp = tile_mtr("ls_grass", Some("a_0102s"), Some(4.0));
+        let tp = tile_mtr("ls_grass", Some("a_0102s"), Some(paint::Repeat { metres: 4.0, vary: 1.5 }));
         assert!(tp.contains("customshaderfs ls_tp_fs\n") && tp.contains("texture0 ls_grass\n") && tp.contains("texture7 a_0102s\n"));
-        assert!(tp.contains("parameter float lsMetres 4.00\n"), "the shader's repeat size: {tp}");
+        assert!(tp.contains("parameter float lsMetres 4.00\nparameter float lsVary 1.50\n"), "the shader's repeat: {tp}");
         let lm = tile_mtr("a_0102t", None, None);
         assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7") && !lm.contains("lsMetres"), "{lm}");
     }

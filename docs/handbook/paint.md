@@ -64,6 +64,11 @@ The cliff rock, swamp rock and canyon rock repeat every 8 m instead: their fine 
 blurred into streaks like fur from the game's camera. A texture's `metres` in the library's `catalog.json` sets how much ground
 one repeat covers (4 when it doesn't say).
 
+Natural ground and rock don't show their repeat as a grid: each repeat is drawn in small cells, each shifted its own way and
+blended into its neighbours, with a slow change of brightness over tens of metres, in the game and in the editor. Laid surfaces
+(cobbles, planks, flagstones, brick) keep their regular pattern. A texture's `vary` in `catalog.json` turns it on (`true`) or off
+(`false`); without it, a texture with a broken edge is varied and one with a crisp edge is not.
+
 A library made before this gets the new pictures the next time the Landscaper starts, unless you changed one; it is then
 yours and left alone. For a texture of your own, make its picture cover 4 m of ground.
 

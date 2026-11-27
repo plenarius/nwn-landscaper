@@ -177,9 +177,9 @@ fn bitmap(painter: Option<&Painter>, m: u8) -> String {
     painter.map_or_else(|| "ttr01_grass02".to_string(), |p| paint::resref(&p.hm.palette[m as usize]))
 }
 
-/// Metres a repeat of palette entry `m`'s texture covers, as [`bitmap`] names it.
-fn metres(painter: Option<&Painter>, m: u8) -> f32 {
-    painter.map_or(paint::TEXTURE_METRES, |p| p.metres(m))
+/// How palette entry `m`'s texture repeats, as [`bitmap`] names it.
+fn repeat(painter: Option<&Painter>, m: u8) -> paint::Repeat {
+    painter.map_or(paint::Repeat::PLAIN, |p| p.repeat(m))
 }
 
 /// Faces counter-clockwise from above.
@@ -241,8 +241,8 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(
     // (For viewers without the game's shaders: the game draws a library texture from three sides at the world position, so it runs
     // on from the area's ground into every copy.)
     for (n, (m, faces)) in by_material.iter().enumerate() {
-        let metres = metres(painter, *m);
-        let uv = |v: [f32; 3]| [side.along(centre, v) / metres, v[0] / 5.0];
+        let repeat = repeat(painter, *m);
+        let uv = |v: [f32; 3]| [side.along(centre, v) / repeat.metres, v[0] / 5.0];
         if painter.is_some_and(|p| p.imported(*m)) {
             // An import's picture: the border tile's outer 5 m, mirrored out from the boundary and back (each cell's two ends are the
             // boundary, so the copies join).
@@ -261,7 +261,7 @@ fn strip_model(side: Side, k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(
             };
             trimesh(&mut s, &format!("{name}_g{n}"), &name, &baked_name(tx, ty), &g, faces, square);
         } else {
-            let props = triplanar(&name, &bitmap(painter, *m), metres, mtrs);
+            let props = triplanar(&name, &bitmap(painter, *m), repeat, mtrs);
             trimesh_with(&mut s, &format!("{name}_g{n}"), &name, &bitmap(painter, *m), &props, &g, faces, uv);
         }
     }
@@ -315,7 +315,7 @@ fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, Str
         };
         trimesh(&mut s, &format!("{name}_g"), &name, &baked_name(tx, ty), &g3, &g3.tris, uv);
     } else {
-        let props = triplanar(&name, &bitmap(painter, m), metres(painter, m), mtrs);
+        let props = triplanar(&name, &bitmap(painter, m), repeat(painter, m), mtrs);
         trimesh_with(&mut s, &format!("{name}_g"), &name, &bitmap(painter, m), &props, &g, &g.tris, |v| [v[0] / 5.0, v[1] / 5.0]);
     }
     if let Some(level) = heightmap::current().and_then(|hm| hm.surface_at(x, y)) {
@@ -328,11 +328,11 @@ fn corner_model(k: usize, painter: Option<&Painter>, mtrs: &mut Vec<(String, Str
     s
 }
 
-/// A material drawing library texture `bitmap` (`metres` a repeat) from three sides by the slope ([`crate::triplanar`]), as the
-/// area's tiles draw it, for model `model`; its `materialname` line.
-fn triplanar(model: &str, bitmap: &str, metres: f32, mtrs: &mut Vec<(String, String)>) -> String {
+/// A material drawing library texture `bitmap` (repeating so) from three sides by the slope ([`crate::triplanar`]), as the area's
+/// tiles draw it, for model `model`; its `materialname` line.
+fn triplanar(model: &str, bitmap: &str, repeat: paint::Repeat, mtrs: &mut Vec<(String, String)>) -> String {
     let mat = mtr_name(model, mtrs.len());
-    mtrs.push((mat.clone(), tile_mtr(bitmap, None, Some(metres))));
+    mtrs.push((mat.clone(), tile_mtr(bitmap, None, Some(repeat))));
     format!("  materialname {mat}\n")
 }
 

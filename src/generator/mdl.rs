@@ -132,9 +132,9 @@ pub(super) enum Mapping<'a> {
     Vertex(&'a dyn Fn([f32; 3]) -> [f32; 2]),
     /// A repeating library texture, box mapped: each face from the side it faces most ([`triplanar::box_projection`]), so no
     /// face is stretched more than 1.6 times whichever way it faces. The game's shader blends the three sides over this (`ls_tp_fs`,
-    /// through the mesh's material); these coordinates are what a viewer without it draws (Moonglow, nwn-bake). The texture's
-    /// metres a repeat ([`crate::paint::Texture::metres`]).
-    Boxed(f32),
+    /// through the mesh's material); these coordinates are what a viewer without it draws (Moonglow, nwn-bake). How the texture
+    /// repeats ([`crate::paint::Repeat`]): the coordinates take its metres; the material, both.
+    Boxed(crate::paint::Repeat),
 }
 
 /// A trimesh of the ground faces `faces` of `g`, a tile's grid whose (0, 0, 0) is area point `origin`: the ground's own normals
@@ -165,7 +165,7 @@ pub(super) fn terrain_mesh(
             tvert_of = (0..verts.len() as u32).collect();
             (verts.iter().map(|v| uv(*v)).collect(), local.clone())
         }
-        Mapping::Boxed(metres) => {
+        Mapping::Boxed(repeat) => {
             let mut index: HashMap<(u32, usize), u32> = HashMap::new();
             let mut tverts = Vec::new();
             let tfaces = local
@@ -174,7 +174,7 @@ pub(super) fn terrain_mesh(
                     let axis = triplanar::box_projection(face_normal(f.map(|v| verts[v as usize])));
                     f.map(|v| {
                         *index.entry((v, axis)).or_insert_with(|| {
-                            tverts.push(triplanar::uv(axis, area(verts[v as usize]), metres));
+                            tverts.push(triplanar::uv(axis, area(verts[v as usize]), repeat.metres));
                             tvert_of.push(v);
                             (tverts.len() - 1) as u32
                         })
@@ -333,7 +333,7 @@ mod tests {
             &g,
             &g.tris,
             origin,
-            Mapping::Boxed(crate::paint::TEXTURE_METRES),
+            Mapping::Boxed(crate::paint::Repeat::PLAIN),
             Some(&|v: [f32; 3]| [v[0], v[1]]),
         );
         assert_eq!(list(&s, "verts").len(), 4);

@@ -319,14 +319,16 @@ fn patch_fslit(stock: &str) -> Result<String> {
 /// from it, comes out of the same texture and differs only where the two readings do.)
 fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
     use crate::triplanar::SHARPNESS;
-    // (Metres a repeat: the material's lsMetres, the texture's own; paint::TEXTURE_METRES unless its catalog entry says more.)
-    let pos = "highp vec3 lsP = (m_view_inv * vec4(vPosView, 1.0)).xyz / lsMetres;";
+    // (Metres a repeat: the material's lsMetres, the texture's own; paint::TEXTURE_METRES unless its catalog entry says more. Its
+    // lsVary: hex cells to a repeat for a varied texture, 0 for a plain one; triplanar.rs, `varied`.)
+    let pos = "highp vec3 lsP = lsWorld / lsMetres;";
     let weights = format!("vec3 lsW = pow(abs(lsN), vec3({:.1}));", f64::from(SHARPNESS));
+    let varied = crate::triplanar::varied_glsl();
     let s = replace_line(
         ls_lm_fs,
         "fslit",
         "varying vec2 vShadowUV;",
-        &["varying vec2 vShadowUV;", "varying vec2 vLsBlend;", "uniform float lsMetres;"],
+        &["varying vec2 vShadowUV;", "varying vec2 vLsBlend;", "uniform float lsMetres;", "uniform float lsVary;", &varied],
     )?;
     let s = replace_line(
         &s,
@@ -337,6 +339,7 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
             "// The Landscaper's triplanar texture (its triplanar.rs): along x, along y and from above, by the slope.",
             "if (texture0Bound != 0)",
             "{",
+            "    highp vec3 lsWorld = (m_view_inv * vec4(vPosView, 1.0)).xyz;",
             &format!("    {pos}"),
             "    // Blended by the ground's own slope from the mesh's tverts2 (each plus 2; triplanar::blend_normal), else the vertex normal.",
             "    vec3 lsN = normalize(mat3(m_view_inv) * vVertexNormal);",
@@ -347,7 +350,9 @@ fn patch_triplanar(ls_lm_fs: &str) -> Result<String> {
             "    }",
             &format!("    {weights}"),
             "    lsW /= lsW.x + lsW.y + lsW.z;",
-            "    vec4 lsTex = texture2D(texUnit0, lsP.yz) * lsW.x + texture2D(texUnit0, lsP.xz) * lsW.y + texture2D(texUnit0, lsP.xy) * lsW.z;",
+            "    vec4 lsTex = lsVaried(texUnit0, lsP.yz, lsVary) * lsW.x + lsVaried(texUnit0, lsP.xz, lsVary) * lsW.y",
+            "        + lsVaried(texUnit0, lsP.xy, lsVary) * lsW.z;",
+            "    if (lsVary > 0.0) lsTex.rgb *= lsVaryShade(lsWorld);",
             "    FragmentColor.rgb = ApplyColorSpace(lsTex.rgb);",
             "}",
         ],
@@ -512,8 +517,11 @@ mod tests {
         assert!(read < replaced && replaced < at("lsAreaShade = lsShade;") && replaced < at("ApplyStandardShader();"));
         // The projections and weights triplanar.rs has: a repeat every lsMetres (the material's, the texture's own metres), along
         // x (y, z), along y (x, z), from above (x, y), power 4.
-        assert!(tp.contains("uniform float lsMetres;") && tp.contains(".xyz / lsMetres;") && tp.contains("vec3(4.0)"), "{tp}");
-        assert!(tp.contains("texUnit0, lsP.yz) * lsW.x") && tp.contains("texUnit0, lsP.xz) * lsW.y") && tp.contains("lsP.xy) * lsW.z"));
+        assert!(tp.contains("uniform float lsMetres;") && tp.contains("lsWorld / lsMetres;") && tp.contains("vec3(4.0)"), "{tp}");
+        assert!(tp.contains("texUnit0, lsP.yz, lsVary) * lsW.x") && tp.contains("texUnit0, lsP.xz, lsVary) * lsW.y"));
+        assert!(tp.contains("lsP.xy, lsVary) * lsW.z") && tp.contains("lsTex.rgb *= lsVaryShade(lsWorld);"), "{tp}");
+        // A varied texture's cells and shade, as triplanar.rs has them (the bake's).
+        assert!(tp.contains("uniform float lsVary;") && tp.contains(&crate::triplanar::varied_glsl()), "{tp}");
         // Blended by the mesh's tverts2 where it has them, else by the vertex normal.
         assert!(lines.contains(&"varying vec2 vLsBlend;".to_string()) && tp.contains("if (vLsBlend.x > 0.5)"), "{tp}");
     }
