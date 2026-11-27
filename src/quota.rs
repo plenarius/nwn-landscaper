@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 plenarius
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! What a builder's workspace may hold on a team server's disk: [`MAX_AREAS`] areas and [`MAX_BYTES`] in all, its uploads
-//! aside (they have limits of their own, `upload.rs`). Saves, imports, exports and checks are refused with 413 once the
-//! workspace is full. Without this a signed-in builder could fill the server's disk at 8 MB a request: an area's name has 37^9
-//! values, and every `/api/save?replace=1` kept another copy of the area it replaced.
+//! What a builder's workspace may hold on a team server's disk: [`MAX_AREAS`] areas (a canvas counts as one) and [`MAX_BYTES`]
+//! in all, its uploads aside (they have limits of their own, `upload.rs`). Saves, imports, exports and checks are refused with
+//! 413 once the workspace is full. Without this a signed-in builder could fill the server's disk at 8 MB a request: an area's
+//! name has 37^9 values, and every `/api/save?replace=1` kept another copy of the area it replaced.
 //!
 //! On your own machine there are no limits: the disk is yours.
 
@@ -67,9 +67,14 @@ fn room_in(root: &Path, name: &str, adding: u64, used: u64) -> Result<(), Full> 
 }
 
 /// The areas of the workspace `root`, by name: working copies (`areas/<name>.json`), exports and imports
-/// (`exports/<name>.json`, `exports/<name>.import`).
+/// (`exports/<name>.json`, `exports/<name>.import`), and canvases (`canvases/<name>/`, one each however many pieces it has).
 fn area_names(root: &Path) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
+    let mut out: BTreeSet<String> = std::fs::read_dir(root.join("canvases"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str().filter(|n| crate::canvas::name_ok(n)).map(str::to_string))
+        .collect();
     for dir in [root.join("areas"), root.join("exports")] {
         for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let file = e.file_name().to_string_lossy().into_owned();

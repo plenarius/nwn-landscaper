@@ -10,6 +10,7 @@
 pub(crate) mod app;
 mod areas;
 mod blueprints;
+mod canvases;
 mod dialogs;
 mod export;
 mod files;
@@ -413,6 +414,10 @@ fn guarded<R: Into<Reply>>(mut req: tiny_http::Request, make: impl FnOnce(&mut t
 mod body_max {
     /// An area: `/api/save`, `/api/export`, `/api/check`.
     pub const AREA: usize = 8 << 20;
+    /// A canvas save (`/api/canvas-save`): every block of a 128 by 128 tile canvas in one request, since a stroke that changes a
+    /// row two blocks share has to save both at once (64 blocks of 257 by 257 samples with a chasm mask, 0.53 MB each as
+    /// base64: 34 MB), and a header as large as an area's whole body.
+    pub const CANVAS: usize = 48 << 20;
     /// A conversation's JSON (`/api/dialog-save`).
     pub const DIALOG: usize = 4 << 20;
     /// A script's source (`/api/script-save`); the game's own `nwscript.nss` is under 0.3 MB.
@@ -569,12 +574,13 @@ struct Ask<'a> {
 
 /// The API's areas, asked in turn: each answers the requests that are its own and returns `None` for the rest. No two
 /// match the same request; anything left is a file of the editor (GET) or refused with 405.
-const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 12] = [
+const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 13] = [
     team::route,
     app::route,
     packs::route,
     skies::route,
     areas::route,
+    canvases::route,
     underlay::route,
     export::route,
     import::route,

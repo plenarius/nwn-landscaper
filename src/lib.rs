@@ -16,6 +16,7 @@ mod atmosphere;
 mod atomic;
 mod audit;
 mod blueprints;
+mod canvas;
 mod cli;
 mod config;
 mod dds;

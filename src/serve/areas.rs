@@ -322,6 +322,8 @@ fn save_area(name: &str, body: &[u8], new: bool, replace: bool, base: Option<&st
         let theirs = old.as_deref().and_then(|d| serde_json::from_slice::<serde_json::Value>(d).ok()).and_then(|o| created(&o));
         matches!((created(&v), theirs), (Some(a), Some(b)) if a != b)
     };
+    // (A canvas is never replaced by an area: `replace` doesn't reach it.)
+    anyhow::ensure!(!(new && super::canvases::canvas_exists(name)), "there is a canvas called {name}: pick another name");
     if !replace && ((new && area_exists(name)) || other()) {
         return Err(Taken(name.to_string()).into());
     }
