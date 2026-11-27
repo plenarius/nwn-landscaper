@@ -34,9 +34,13 @@ area of that name, you choose: open yours, or the showcase's under a free name (
 
 ## Where your areas are
 
-In your browser's storage for this site: they are there when you come back, in the same browser. That storage is no backup:
-clearing the site's data, or a browser short of space, removes it. **File, Download area** saves the area open as a file;
+In your browser's storage for this site, landscaper.layonara.com: they are there when you come back, in the same browser.
+That storage is no backup: clearing the site's data removes it. A browser short of space can remove it too; the page asks
+Chrome, Edge and Safari to keep it, which they may refuse. **File, Download area** saves the area open as a file;
 **File, Open area from a file** brings it back, in this browser or another.
+
+Areas saved at the page's old address, plenarius.github.io/nwn-landscaper/try/, are in that address's storage. That address
+now leads here, so they can't be opened any more.
 
 The page works in one tab at a time: a second tab waits until the first is closed.
 
@@ -49,7 +53,7 @@ too big for this browser; the Landscaper on your computer has no such limit.
 ## Browsers
 
 A current Chrome, Edge, Firefox or Safari, with WebGL. The first visit takes a few seconds more than the next ones: it
-prepares the textures once and keeps them.
+prepares the textures once and keeps them. The engine and the stock models it fetched are kept too, until a release changes them.
 
 ## Credits
 
@@ -76,6 +80,11 @@ with the game (the workflow has none): each model, its walkmesh and its textures
 `surfacemat.2da`, the three shaders, and the Place panel's lists. Without that release (or `NWN_ROOT`, when the script runs
 on a computer with the game) the page is built without them, draws every placeable as a box, and asks for the game folder at
 Export for the shaders.
+
+The browser keeps the engine and the stock files it fetched in its Cache Storage, in caches named by their SHA-256 in
+`try/site.json` (`engineSha256`, and `stockSha256` of `demo-stock.zip`): a later visit fetches neither, and a new engine or
+bundle replaces its old cache. Pages tells browsers to check every file again after ten minutes; the editor's own files follow
+that, so a release's editor is never stale.
 
 The page needs no header that GitHub Pages can't send. It runs the engine on one thread, so it needs no cross-origin isolation
 (that comes with threads, [DESIGN-web-demo.md](../DESIGN-web-demo.md) question 7). The Service Worker and the engine's Worker
