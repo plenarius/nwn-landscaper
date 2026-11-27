@@ -194,6 +194,8 @@ vec4 lsVaried(sampler2D t, highp vec2 uv, float cells)
     float s = 1.0 - step(0.0, fz);
     float s2 = 2.0 * s - 1.0;
     vec3 w = vec3(-fz * s2, s - f.y * s2, s - f.x * s2);
+    // (largest share 1: a third to the 14th, mid-triangle, fell under the floor below and drew a dark dot every cell)
+    w /= max(w.x, max(w.y, w.z));
     highp vec2 v1 = b + vec2(s, s);
     highp vec2 v2 = b + vec2(s, 1.0 - s);
     highp vec2 v3 = b + vec2(1.0 - s, s);
@@ -320,6 +322,20 @@ mod tests {
         let lit: Vec<bool> = (0..8).map(|k| varied([k as f32 + 0.05, 0.05], VARY_CELLS, dot)[0] > 0.5).collect();
         assert!(lit.iter().any(|l| !l), "the dot recurs at every repeat: {lit:?}");
         assert!((0.9..1.1).contains(&shade([123.0, 45.0, 6.0])));
+    }
+
+    #[test]
+    fn the_shader_keeps_a_dark_colour_mid_triangle() {
+        // Mid-triangle each share is a third: weighed as they were, the sum (2e-7) fell under the shader's floor of 1e-6.
+        let glsl = varied_glsl();
+        assert!(glsl.contains("w /= max(w.x, max(w.y, w.z));") && glsl.contains("sum / max(total, 1e-6)"), "{glsl}");
+        let c = 0.05;
+        let blend = |w: [f32; 3]| {
+            let weights = w.map(|x| x.powf(VARY_SHARPNESS) * (VARY_LIGHT + c));
+            weights.iter().map(|x| c * x).sum::<f32>() / weights.iter().sum::<f32>().max(1e-6)
+        };
+        assert!(blend([1.0 / 3.0; 3]) < 0.5 * c, "unscaled shares no longer darken: the test no longer shows the fault");
+        assert!(close(blend([1.0; 3]), c));
     }
 
     #[test]

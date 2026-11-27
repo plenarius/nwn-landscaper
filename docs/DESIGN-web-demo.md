@@ -301,7 +301,8 @@ to become a blob URL first: a change across many files of the editor.
 
 **Decided: the engine's workspace on OPFS.** browser_wasi_shim reads and writes OPFS files directly from a Worker
 (`SyncOPFSFile`), so the engine's own save, `.bak` and texture library code works unchanged and lasts across visits. The page asks
-for persistent storage (`navigator.storage.persist()`), so the browser doesn't clear it under pressure, and File offers **Download
+for persistent storage (`navigator.storage.persist()`) where the browser decides alone (Chromium, Safari; Firefox would ask the
+visitor, so it isn't asked), so the browser doesn't clear it under pressure, and File offers **Download
 area** (the `.json`) and **Open area** from a file, since storage in the browser is never a backup. Exports are downloads: the hak,
 `ls_textures.hak` and the module, in one zip.
 
@@ -347,6 +348,12 @@ site, one deploy, the handbook a click away.
   30,000 first visits at 3.1 MB.
 - **What Pages can't do:** set headers. No `Content-Encoding` of our choosing, no cache rules, no cross-origin isolation headers.
   Whether Pages compresses `.wasm` was not checked; at worst a visit downloads the engine's raw 7.9 MB.
+- **Caching:** Pages sends every file with `Cache-Control: max-age=600` and an ETag, so a browser asks for each again after ten
+  minutes, and its HTTP cache may drop a 7 MB file. The page keeps the engine and the stock files in Cache Storage
+  (the editor's `try/kept.js`), each in a cache named by its SHA-256 in `try/site.json` (`engineSha256`, `stockSha256`): a
+  repeat visit asks the network for neither, and a new hash fetches the new files and deletes the old cache. The engine is kept
+  only when its SHA-256 is right, and is still compiled from a streamed answer, so Chromium keeps its compiled code too. The
+  editor's own files stay on the HTTP cache, so a release's editor is never stale.
 
 Considered and not chosen: **a Pages repository of its own** (`nwn-landscaper-try`): a second site and deploy for the same files.
 
