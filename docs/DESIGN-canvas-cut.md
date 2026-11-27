@@ -309,6 +309,14 @@ of its own card trees, named by model (`lsb_<model>`), so areas of one module sh
 copy. The trial piece rebuilt this way, with its halo: 27,900 triangles past the edge (ground 15,700, water 160, 19 trees as
 models 11,800, 18 as cards 180), exported in 6 s on 48 cores.
 
+**Step 2b as built (2026-11-27).** The editor keeps the band as a grid of its own round the area's (80 samples a side), the
+area's samples copied into its middle, saved with the area. A new area, and an old one when it is opened, gets the first fill:
+each band sample takes its nearest edge sample's height and paint, which is the extruded edge the game showed before. Raise,
+Lower, Smooth, Flatten and Paint stamp it where the brush reaches past the edge, with undo; the area's water floods on into it
+as the engine floods the halo. It is drawn at full detail in place of the old skirt. Not yet in the band: the texture mix, chasms,
+digging and objects. A cave or an interior has no band, as it has no edge scenery. The export sends the band's grids with `halo`;
+the engine moves the water's seeds and the chasm's runs, which the editor keeps in the area's own grid, into the larger one.
+
 ### 4. Tile levels and path nodes
 
 - **Tile levels need nothing new.** A tile's level is the mean height of its own ground (`src/generator/terrain.rs:152`). A cut on
