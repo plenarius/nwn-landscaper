@@ -10,6 +10,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+#[cfg(target_os = "linux")]
 use tauri::Manager;
 use tauri::utils::config::BundleType;
 use tauri_plugin_updater::{Update, UpdaterExt};
@@ -62,8 +63,16 @@ impl Updates {
 
 /// How this copy gets a new version ([`How`]), from the installer the bundler marked it with.
 fn how(handle: &tauri::AppHandle) -> How {
+    // (An AppImage replaces itself only when run as one: unpacked, it has no file to replace.)
+    #[cfg(target_os = "linux")]
+    let appimage = handle.env().appimage.is_some();
+    #[cfg(not(target_os = "linux"))]
+    let appimage = {
+        let _ = handle;
+        false
+    };
     match tauri::utils::platform::bundle_type() {
-        Some(BundleType::AppImage) if handle.env().appimage.is_some() => How::Install,
+        Some(BundleType::AppImage) if appimage => How::Install,
         Some(BundleType::Nsis | BundleType::Msi | BundleType::App) => How::Install,
         Some(BundleType::Deb) => How::Deb,
         _ => How::Download,
