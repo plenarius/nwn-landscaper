@@ -19,6 +19,12 @@ Press `I` (or click **Pick from the ground**, or Alt-click) and click the ground
 On an imported area it picks the tileset's own texture under the click and adds it to the library, under **Tileset**, the first
 time. It then paints like any other texture and goes into your texture hak at export.
 
+## Walls and steep ground
+
+The ground's texture is drawn from above on level ground and from the side on walls and cliffs, so it keeps its size on every
+slope. Where a wall meets the floor, the floor is drawn from above right up to the wall and the wall from the side right down
+to the floor, so the two meet at a clean edge, in the editor and in the game.
+
 ## Paint a mix
 
 The mix brush paints a blend of textures in patches: grass with dry patches and dirt, sand with pebbles.
