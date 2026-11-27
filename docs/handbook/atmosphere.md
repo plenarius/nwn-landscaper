@@ -52,6 +52,12 @@ The sky is chosen here only: **Area settings** has no sky of its own.
 - **Real Skies** replaces the game's five stock skies with photographed panoramas. It is a hak for the module, made by a script
   from your own download: [Real Skies for modules](../REAL-SKIES.md).
 
+## Grass
+
+**Grass** in the **Sky & fog** panel turns on the game's own animated grass for the area, with its **density** and **height**
+(5 and 0.9 m to start; the game's rural tileset has 5 and 1.2). It grows on ground painted with a Grass texture only, so a track
+of earth or gravel through a meadow stays bare. Off by default. Players see it when their game's grass setting is on.
+
 ## Weather
 
 Rain, snow and wind, like the toolset's Area Properties, are in **Area > Area settings**, with the area's name, tag, scripts,

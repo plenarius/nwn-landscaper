@@ -128,7 +128,7 @@ pub(super) fn trimesh_full(
     let (verts, local) = used(g, faces);
     let tverts: Vec<[f32; 2]> = verts.iter().map(|v| uv(*v)).collect();
     let tverts1 = uv1.map(|f| verts.iter().map(|v| f(*v)).collect::<Vec<_>>());
-    write_node(out, name, root, bitmap, props, &verts, None, &tverts, tverts1.as_deref(), None, &local, &local);
+    write_node(out, name, root, bitmap, props, &verts, None, &tverts, tverts1.as_deref(), None, &local, &local, &[]);
 }
 
 /// How a tile's ground mesh takes its texture coordinates ([`terrain_mesh`]).
@@ -144,7 +144,8 @@ pub(super) enum Mapping<'a> {
 
 /// A trimesh of the ground faces `faces` of `g`, a tile's grid whose (0, 0, 0) is area point `origin`: the ground's own normals
 /// ([`ground_normal`]), so light and the triplanar blend run on smoothly across meshes and tiles where the game's smoothing stops
-/// at each mesh's edge; texture coordinates by `mapping`; second ones (`tverts1`) from each vertex by `uv1`, if given.
+/// at each mesh's edge; texture coordinates by `mapping`; second ones (`tverts1`) from each vertex by `uv1`, if given; each face's
+/// material (the game grows its grass on faces of a grass surface) from `surfaces`, else 0.
 pub(super) fn terrain_mesh(
     out: &mut String,
     name: &str,
@@ -156,6 +157,7 @@ pub(super) fn terrain_mesh(
     origin: [f32; 3],
     mapping: Mapping<'_>,
     uv1: Option<&dyn Fn([f32; 3]) -> [f32; 2]>,
+    surfaces: &[u32],
 ) {
     if faces.is_empty() {
         return;
@@ -213,7 +215,21 @@ pub(super) fn terrain_mesh(
             .collect();
         tvert_of.iter().map(|&v| blend[v as usize]).collect::<Vec<_>>()
     });
-    write_node(out, name, root, bitmap, props, &verts, Some(&normals), &tverts, tverts1.as_deref(), tverts2.as_deref(), &local, &tfaces);
+    write_node(
+        out,
+        name,
+        root,
+        bitmap,
+        props,
+        &verts,
+        Some(&normals),
+        &tverts,
+        tverts1.as_deref(),
+        tverts2.as_deref(),
+        &local,
+        &tfaces,
+        surfaces,
+    );
 }
 
 /// How far each way the blend normal's slopes reach (m): a heightmap sample's spacing.
@@ -251,7 +267,7 @@ fn face_normal([a, b, c]: [[f32; 3]; 3]) -> [f32; 3] {
 }
 
 /// Writes a trimesh node: `faces` index `verts` (and `normals`, if given), `tfaces` the texture vertices (`tverts`, and `tverts1` and
-/// `tverts2` alike, if given).
+/// `tverts2` alike, if given), `materials` each face's material (0 past its end).
 pub(super) fn write_node(
     out: &mut String,
     name: &str,
@@ -265,6 +281,7 @@ pub(super) fn write_node(
     tverts2: Option<&[[f32; 2]]>,
     faces: &[[u32; 3]],
     tfaces: &[[u32; 3]],
+    materials: &[u32],
 ) {
     let _ = writeln!(
         out,
@@ -294,8 +311,9 @@ pub(super) fn write_node(
         }
     }
     let _ = writeln!(out, "  faces {}", faces.len());
-    for (f, t) in faces.iter().zip(tfaces) {
-        let _ = writeln!(out, "    {} {} {} 1 {} {} {} 0", f[0], f[1], f[2], t[0], t[1], t[2]);
+    for (k, (f, t)) in faces.iter().zip(tfaces).enumerate() {
+        let m = materials.get(k).copied().unwrap_or(0);
+        let _ = writeln!(out, "    {} {} {} 1 {} {} {} {m}", f[0], f[1], f[2], t[0], t[1], t[2]);
     }
     let _ = writeln!(out, "endnode");
 }
@@ -340,6 +358,7 @@ mod tests {
             origin,
             Mapping::Boxed(crate::paint::Repeat::PLAIN),
             Some(&|v: [f32; 3]| [v[0], v[1]]),
+            &[],
         );
         assert_eq!(list(&s, "verts").len(), 4);
         assert_eq!(list(&s, "normals").len(), 4, "the ground's own normals, one a vertex");
@@ -361,7 +380,7 @@ mod tests {
     fn a_vertex_mapping_keeps_one_texture_vertex_a_vertex() {
         let g = Grid { verts: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 3.0]], tris: vec![[0, 1, 2]] };
         let mut s = String::new();
-        terrain_mesh(&mut s, "t", "r", "pic", "", &g, &g.tris, [0.0; 3], Mapping::Vertex(&|v| [v[0], v[1]]), None);
+        terrain_mesh(&mut s, "t", "r", "pic", "", &g, &g.tris, [0.0; 3], Mapping::Vertex(&|v| [v[0], v[1]]), None, &[]);
         assert_eq!(list(&s, "tverts").len(), 3);
         assert!(list(&s, "tverts1").is_empty());
         assert_eq!(list(&s, "faces")[0], ["0", "1", "2", "1", "0", "1", "2", "0"]);
