@@ -132,8 +132,9 @@ pub(super) enum Mapping<'a> {
     Vertex(&'a dyn Fn([f32; 3]) -> [f32; 2]),
     /// A repeating library texture, box mapped: each face from the side it faces most ([`triplanar::box_projection`]), so no
     /// face is stretched more than 1.6 times whichever way it faces. The game's shader blends the three sides over this (`ls_tp_fs`,
-    /// through the mesh's material); these coordinates are what a viewer without it draws (Moonglow, nwn-bake).
-    Boxed,
+    /// through the mesh's material); these coordinates are what a viewer without it draws (Moonglow, nwn-bake). The texture's
+    /// metres a repeat ([`crate::paint::Texture::metres`]).
+    Boxed(f32),
 }
 
 /// A trimesh of the ground faces `faces` of `g`, a tile's grid whose (0, 0, 0) is area point `origin`: the ground's own normals
@@ -164,7 +165,7 @@ pub(super) fn terrain_mesh(
             tvert_of = (0..verts.len() as u32).collect();
             (verts.iter().map(|v| uv(*v)).collect(), local.clone())
         }
-        Mapping::Boxed => {
+        Mapping::Boxed(metres) => {
             let mut index: HashMap<(u32, usize), u32> = HashMap::new();
             let mut tverts = Vec::new();
             let tfaces = local
@@ -173,7 +174,7 @@ pub(super) fn terrain_mesh(
                     let axis = triplanar::box_projection(face_normal(f.map(|v| verts[v as usize])));
                     f.map(|v| {
                         *index.entry((v, axis)).or_insert_with(|| {
-                            tverts.push(triplanar::uv(axis, area(verts[v as usize])));
+                            tverts.push(triplanar::uv(axis, area(verts[v as usize]), metres));
                             tvert_of.push(v);
                             (tverts.len() - 1) as u32
                         })
@@ -186,7 +187,7 @@ pub(super) fn terrain_mesh(
     let tverts1 = uv1.map(|f| tvert_of.iter().map(|&v| f(verts[v as usize])).collect::<Vec<_>>());
     // A library texture's blend normal ([`triplanar::blend_normal`]) in the third coordinates, for the shader: walkable ground
     // takes the gentler slope at each vertex, a steep face the steeper, so neither takes the other's projection at the crease.
-    let tverts2 = matches!(mapping, Mapping::Boxed).then(|| {
+    let tverts2 = matches!(mapping, Mapping::Boxed(_)).then(|| {
         let mut nz = vec![(0.0f32, 0u32); verts.len()];
         for f in &local {
             let n = face_normal(f.map(|v| verts[v as usize]));
@@ -323,7 +324,18 @@ mod tests {
         let g = Grid { verts: vec![[0.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0], [4.0, 0.0, 0.0]], tris: vec![[0, 1, 2], [0, 2, 3]] };
         let mut s = String::new();
         let origin = [10.0, 20.0, 5.0];
-        terrain_mesh(&mut s, "t", "r", "ls_rock", "", &g, &g.tris, origin, Mapping::Boxed, Some(&|v: [f32; 3]| [v[0], v[1]]));
+        terrain_mesh(
+            &mut s,
+            "t",
+            "r",
+            "ls_rock",
+            "",
+            &g,
+            &g.tris,
+            origin,
+            Mapping::Boxed(crate::paint::TEXTURE_METRES),
+            Some(&|v: [f32; 3]| [v[0], v[1]]),
+        );
         assert_eq!(list(&s, "verts").len(), 4);
         assert_eq!(list(&s, "normals").len(), 4, "the ground's own normals, one a vertex");
         let tverts = list(&s, "tverts");

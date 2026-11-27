@@ -667,6 +667,7 @@ mod tests {
             resref: String::new(),
             repeats: 1,
             foot: 0.0,
+            metres: super::super::STANDARD_METRES,
         };
         lib.put(&spec, "test", "x", picture(8, 8, 0)).unwrap();
         lib.save().unwrap();
