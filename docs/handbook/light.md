@@ -63,6 +63,9 @@ lamp or a torch, place a placeable that gives light ([Things](things.md)).
 The export writes the colours into the area (the toolset's main lights of each tile). It needs an engine of the same release:
 an older one leaves the lights off.
 
+Each tile's two lights hang 5 m over its highest ground (in a cave, over its floor's level), as the game's own tiles hang theirs.
+On a cliff the pool lies along the top; the wall below takes a gentle wash, not a bright spot.
+
 ## Light from what you bake
 
 A placeable baked into the tiles (with [Scatter or Place](scatter.md)) keeps its glow: a glowing crystal or mushroom still glows
