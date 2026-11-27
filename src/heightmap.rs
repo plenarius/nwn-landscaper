@@ -721,28 +721,38 @@ pub fn fit_chasm(data: &mut [f32], width: usize, chasm: &[bool]) -> Vec<f32> {
 const WALL_RISE: f32 = 1.5;
 
 /// [`Heightmap::upright`] along one axis: where a vertex at `u` goes (samples `spacing` apart, vertices `step` apart, `h` the
-/// height along the axis), and where its height is read. In a wall's cell: onto the foot, the top's height. The floor's vertex
-/// nearest the foot, past it: onto the foot. Else where it is.
-fn upright_axis(u: f32, spacing: f32, step: f32, h: impl Fn(f32) -> f32) -> (f32, f32) {
+/// height along the axis), where its height is read, and where its paint is. In a wall's cell: onto the foot, the top's height and
+/// paint. On the foot (the floor's vertex nearest it, moved onto it, or one on it already): the floor's height, the top's paint,
+/// so the wall's face takes the wall's paint down to the floor (the floor's own faces are baked, not painted by vertex). Else where
+/// it is.
+fn upright_axis(u: f32, spacing: f32, step: f32, h: impl Fn(f32) -> f32) -> (f32, f32, f32) {
     const EPS: f32 = 1e-3;
     let i = (u / spacing).floor();
     let (a, b) = (i * spacing, (i + 1.0) * spacing);
     let wall = |p: f32, q: f32| h(q) - h(p) > WALL_RISE;
     if u - a > EPS && b - u > EPS {
         if wall(a, b) {
-            return (a, b);
+            return (a, b, b);
         }
         if wall(b, a) {
-            return (b, a);
+            return (b, a, a);
+        }
+    }
+    let on = (u / spacing).round() * spacing;
+    if (u - on).abs() <= EPS {
+        for top in [on - spacing, on + spacing] {
+            if wall(on, top) {
+                return (u, u, top);
+            }
         }
     }
     if u - a > EPS && u - a < step - EPS && wall(a, a - spacing) {
-        return (a, a);
+        return (a, a, a - spacing);
     }
     if b - u > EPS && b - u < step - EPS && wall(b, b + spacing) {
-        return (b, b);
+        return (b, b, b + spacing);
     }
-    (u, u)
+    (u, u, u)
 }
 
 impl Heightmap {
@@ -872,18 +882,19 @@ impl Heightmap {
         self.bilinear(&g, x, y, |k| g.data[k])
     }
 
-    /// Where a render mesh of vertices `step` metres apart puts its vertex for area point (x, y), and the point whose height and
-    /// paint it takes. In an interior, a wall rose across one sample (a room's edge), so the mesh drew it leaning by a sample's
+    /// Where a render mesh of vertices `step` metres apart puts its vertex for area point (x, y), and the point whose paint its
+    /// steep faces take. In an interior, a wall rose across one sample (a room's edge), so the mesh drew it leaning by a sample's
     /// width: a door stood clear of it at the top and into it at the foot. There the vertices up the wall go onto its foot's line
-    /// at the top's height (and paint), and the floor's nearest onto that line too, so the wall stands upright on the room's edge.
+    /// at the top's height and paint, and the floor's nearest onto that line too, so the wall stands upright on the room's edge.
+    /// The foot's vertices take the top's paint as well: with the floor's, the wall's lower half took the floor's paint.
     /// Elsewhere, the point itself at its bilinear height.
     pub fn upright(&self, x: f32, y: f32, step: f32) -> ([f32; 3], [f32; 2]) {
         if !self.interior {
             return ([x, y, self.at(x, y)], [x, y]);
         }
-        let (px, ex) = upright_axis(x, self.spacing, step, |u| self.at(u, y));
-        let (py, ey) = upright_axis(y, self.spacing, step, |v| self.at(x, v));
-        ([px, py, self.at(ex, ey)], [ex, ey])
+        let (px, hx, cx) = upright_axis(x, self.spacing, step, |u| self.at(u, y));
+        let (py, hy, cy) = upright_axis(y, self.spacing, step, |v| self.at(x, v));
+        ([px, py, self.at(hx, hy)], [cx, cy])
     }
 
     /// In an interior, area point (x, y) in a wall's cell moved onto the wall's foot, where the wall is drawn ([`Self::upright`]);
@@ -1057,14 +1068,17 @@ mod tests {
         let heights: Vec<f32> = (0..n * n).map(|k| if room(k % n) && room(k / n) { 5.0 } else { 11.0 }).collect();
         let interior = read(&area("upright", serde_json::json!({ "kind": "interior", "roof": 11 }), Some(heights.clone()))).unwrap();
         let at = |x: f32| interior.upright(x, 15.0, 0.5);
-        // Up the west wall: onto its foot's line at the top's height, its paint the top's; the floor's nearest onto it too.
+        // Up the west wall: onto its foot's line at the top's height, its paint the top's; the floor's nearest onto it too, with the
+        // top's paint, so the wall's face is one paint to the floor.
         assert_eq!(at(11.0), ([11.25, 15.0, 11.0], [10.625, 15.0]));
-        assert_eq!(at(11.5), ([11.25, 15.0, 5.0], [11.25, 15.0]));
+        assert_eq!(at(11.5), ([11.25, 15.0, 5.0], [10.625, 15.0]));
+        // A vertex on the foot already takes the top's paint too.
+        assert_eq!(upright_axis(11.25, 0.625, 0.5, |u| if u < 11.0 { 11.0 } else { 5.0 }), (11.25, 11.25, 10.625));
         // The floor and the rock beyond stay where they are.
         assert_eq!(at(12.0), ([12.0, 15.0, 5.0], [12.0, 15.0]));
         assert_eq!(at(10.5), ([10.5, 15.0, 11.0], [10.5, 15.0]));
         // The east wall, the other way round.
-        assert_eq!(at(18.5), ([18.75, 15.0, 5.0], [18.75, 15.0]));
+        assert_eq!(at(18.5), ([18.75, 15.0, 5.0], [19.375, 15.0]));
         assert_eq!(at(19.0), ([18.75, 15.0, 11.0], [19.375, 15.0]));
         // The south wall, along y.
         assert_eq!(interior.upright(15.0, 11.0, 0.5), ([15.0, 11.25, 11.0], [15.0, 10.625]));
