@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The texture packs' routes (`/api/textures/packs`): what is installed and what the index offers, installing one (in the
-//! background, its progress asked for by the editor) and removing one. On a team server the library is everyone's, so only
-//! admins install or remove; on your own machine you are the admin.
+//! background, its progress asked for by the editor) and removing one. And the starter set's (`/api/textures/starter`): its list,
+//! and adding the starter textures an area is painted with to a library that lacks them. On a team server the library is
+//! everyone's, so only admins install, remove or add; on your own machine you are the admin.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -103,6 +104,36 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             )
         }
         (Method::Get, "/api/textures/packs/job") => json_response(200, &job().json()),
+        // The starter set, and whether this user may add from it (an admin, with the game's files to read them from).
+        (Method::Get, "/api/textures/starter") => {
+            json_response(200, &json!({ "textures": crate::textures::starter_list(), "add": admin && crate::config::has_game() }))
+        }
+        (Method::Post, "/api/textures/starter") if !admin => {
+            refuse(403, "only an admin adds textures to the library, as it is the whole team's: swap the missing ones for library textures")
+        }
+        (Method::Post, "/api/textures/starter") => {
+            if !crate::config::has_game() {
+                return Some(refuse(409, "the engine has none of the game's files to make them from"));
+            }
+            let ids: Vec<String> =
+                cx.query.text("ids").split(',').map(str::trim).filter(|s| !s.is_empty()).take(255).map(str::to_string).collect();
+            if ids.is_empty() {
+                return Some(refuse(400, "no texture ids given"));
+            }
+            // (An export under way reads the library: adding waits for it.)
+            let _turn = super::job();
+            match crate::textures::add_starter(&ids) {
+                Ok(r) => {
+                    crate::audit::log("texture_starter", None, true, &format!("added {} of {}", r.added, ids.join(", ")));
+                    let problems: Vec<String> = r.problems.iter().map(|p| crate::workspace::scrub(p)).collect();
+                    json_response(200, &json!({ "added": r.added, "kept": r.kept, "problems": problems }))
+                }
+                Err(e) => {
+                    crate::audit::log("texture_starter", None, false, &format!("adding {}: {e:#}", ids.join(", ")));
+                    fail(500, &e)
+                }
+            }
+        }
         (Method::Post, "/api/textures/packs/install" | "/api/textures/packs/remove") if !admin => {
             refuse(403, "only an admin installs or removes texture packs: the library is the whole team's")
         }

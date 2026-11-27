@@ -183,6 +183,18 @@ impl Texture {
     }
 }
 
+/// Why an area painted with `missing` (texture ids the library hasn't got) can't be exported. The editor refuses first, in its
+/// own words with each one's share of the ground (`js/missing.js`); this is for an export from the command line or an older editor.
+pub fn missing_message(missing: &[&str]) -> String {
+    let (n, list) = (missing.len(), missing.join(", "));
+    let textures = if n == 1 { "1 texture".to_string() } else { format!("{n} textures") };
+    format!(
+        "This area is painted with {textures} the texture library doesn't have: {list}. Open it in the editor to add {} or swap {} for others.",
+        if n == 1 { "it" } else { "them" },
+        if n == 1 { "it" } else { "them" }
+    )
+}
+
 /// Loads the library textures `ids` (their 512 px render copies).
 pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
     let dir = texture_dir();
@@ -191,6 +203,14 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
             .with_context(|| format!("no texture library in {} (run `landscaper textures init`)", dir.display()))?,
     )?;
     let entries = catalog["textures"].as_array().context("catalog.json: textures")?;
+    // All of them at once, as the editor says when the area opens: one at a time took an export per missing texture to find.
+    let mut missing: Vec<&str> = Vec::new();
+    for id in ids.iter().filter(|id| !id.starts_with(IMPORT) && !entries.iter().any(|t| t["id"] == id.as_str())) {
+        if !missing.contains(&id.as_str()) {
+            missing.push(id);
+        }
+    }
+    anyhow::ensure!(missing.is_empty(), "{}", missing_message(&missing));
     let mut out = HashMap::new();
     for id in ids {
         if out.contains_key(id) {
@@ -347,6 +367,19 @@ pub fn picture(width: u32, height: u32, colour: impl Fn(u32, u32) -> [f32; 3]) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_missing_textures_are_named_together() {
+        assert_eq!(
+            missing_message(&["sandFine"]),
+            "This area is painted with 1 texture the texture library doesn't have: sandFine. Open it in the editor to add it or swap it for others."
+        );
+        assert!(
+            missing_message(&["sandFine", "snowPacked"]).contains(
+                "2 textures the texture library doesn't have: sandFine, snowPacked. Open it in the editor to add them or swap them"
+            )
+        );
+    }
 
     #[test]
     fn an_areas_import_is_found_beside_it_when_it_was_imported_into_a_folder_of_its_own() {

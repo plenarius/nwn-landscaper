@@ -315,6 +315,43 @@ fn add_pictures(library: &mut Library, folder: &Path, specs: &[Spec]) -> Result<
     Ok(report)
 }
 
+/// The starter set as the editor reads it: each texture's id, name, category and game texture, so an area painted with one the
+/// library lacks can offer to add it, or a library texture made from the same game texture in its place.
+pub fn starter_list() -> Vec<Value> {
+    parse_list(STARTER).map_or_default(|(_, specs)| {
+        specs.into_iter().map(|s| json!({ "id": s.id, "name": s.name, "category": s.category, "resref": s.resref })).collect()
+    })
+}
+
+/// The starter specs named by `ids` (any case), and the ids that are not starter textures.
+fn starter_named(ids: &[String]) -> (Vec<Spec>, Vec<String>) {
+    let specs = parse_list(STARTER).map_or_default(|(_, s)| s);
+    let mut found: Vec<Spec> = Vec::new();
+    let mut unknown = Vec::new();
+    for id in ids {
+        match specs.iter().find(|s| s.id.eq_ignore_ascii_case(id)) {
+            Some(s) if !found.contains(s) => found.push(s.clone()),
+            Some(_) => {}
+            None => unknown.push(id.clone()),
+        }
+    }
+    (found, unknown)
+}
+
+/// Adds the starter textures `ids` from the game's files, as `textures add` would with their lines of the starter list: for an
+/// area painted with them on a library that never had them (a team's own). One the library has is left as it is.
+pub fn add_starter(ids: &[String]) -> Result<Report> {
+    let _one = lock();
+    let (specs, unknown) = starter_named(ids);
+    let mut library = Library::open(&paint::texture_dir())?;
+    let mut report = if specs.is_empty() { Report::default() } else { add_specs(&mut library, &[], &specs, false)? };
+    report.problems.extend(unknown.iter().map(|id| format!("{id}: not a starter texture")));
+    if report.added > 0 {
+        library.save()?;
+    }
+    Ok(report)
+}
+
 /// Adds the textures a list names (`{ "haks": [...], "textures": [...] }`, see [`parse_list`]); an existing id is replaced.
 pub fn add_listed(list: &Path) -> Result<Report> {
     let text = std::fs::read_to_string(list).with_context(|| format!("reading {}", list.display()))?;
@@ -712,6 +749,16 @@ mod tests {
         for id in EDITOR_DEFAULTS {
             assert!(specs.iter().any(|s| s.id == id), "the editor uses '{id}' by default, and the starter set hasn't got it");
         }
+    }
+
+    #[test]
+    fn starter_ids_are_found_in_any_case_and_others_are_named() {
+        let ids = ["sandfine", "SNOWPACKED", "sandFine", "myOwn"].map(str::to_string);
+        let (specs, unknown) = starter_named(&ids);
+        assert_eq!(specs.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["sandFine", "snowPacked"]);
+        assert_eq!(unknown, ["myOwn"]);
+        let listed = starter_list();
+        assert!(listed.iter().any(|t| t["id"] == "gravelPebbles" && t["resref"].as_str().is_some_and(|r| !r.is_empty())));
     }
 
     #[test]

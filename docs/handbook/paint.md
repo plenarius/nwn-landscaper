@@ -37,3 +37,12 @@ The mix brush paints a blend of textures in patches: grass with dry patches and 
 ## More textures
 
 **Get more textures** lists the texture packs on offer. See [Texture packs](texture-packs.md).
+
+## Missing textures
+
+An area painted on another library can name textures this one hasn't got. The editor draws them as a magenta checker and says
+which, and how much of the ground each covers; Export refuses until they are gone. Click **Add or swap them…**:
+
+- **Add from the game** makes starter textures from your game's files. On a team server only an admin sees it.
+- **Swap** paints that texture's ground with one the library has. It suggests one made from the same game texture, else one of the
+  same category. Undo takes a swap back.
