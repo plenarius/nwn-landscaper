@@ -197,7 +197,17 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     };
     anyhow::ensure!(TILES.contains(&tiles) && TILES.contains(&tiles_y), "an area is 3 to 32 tiles each way, not {tiles} by {tiles_y}");
     let (nx, ny) = (tiles * 16 + 1, tiles_y * 16 + 1);
-    let samples = nx * ny;
+    // The band round the area, its halo (samples a side): the heights and paint cover it too, the area in their middle.
+    let halo: usize = match param("halo") {
+        Some(v) => v.parse().context("halo")?,
+        None => 0,
+    };
+    anyhow::ensure!(
+        halo % 16 == 0 && halo <= crate::heightmap::MAX_HALO_TILES * 16,
+        "halo {halo}: whole tiles of samples (16 a tile), at most {} tiles",
+        crate::heightmap::MAX_HALO_TILES
+    );
+    let samples = (nx + 2 * halo) * (ny + 2 * halo);
     // Heights, then the paint and the JSON, when there are (see above).
     let (heights, rest) = body.split_at(body.len().min(samples * 4));
     let (materials, tail) = if rest.len() >= samples { rest.split_at(samples) } else { (rest, &[][..]) };
@@ -208,7 +218,7 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     };
     anyhow::ensure!(
         heights.len() == samples * 4,
-        "expected {} bytes of heights for {tiles} by {tiles_y} tiles, got {}",
+        "expected {} bytes of heights for {tiles} by {tiles_y} tiles and a halo of {halo}, got {}",
         samples * 4,
         body.len()
     );
@@ -250,6 +260,9 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     let mut header = serde_json::json!({
         "name": name, "tiles": tiles, "tilesY": tiles_y, "spacing": 0.625, "width": nx, "height": ny, "data": format!("{name}.f32"),
     });
+    if halo > 0 {
+        header["halo"] = halo.into();
+    }
     if !materials.is_empty() {
         crate::atomic::write(&dir.join(format!("{name}.materials")), materials)?;
         header["materials"] = format!("{name}.materials").into();
@@ -283,13 +296,15 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
         header["entrances"] = entrances;
     }
     header["entranceNextId"] = entrance_next.into();
+    // (The editor gives the water's samples and the chasm's in the area's own grid; with a halo the header counts them in the
+    // larger one.)
     if let Some(water) = extra.get("water") {
-        header["water"] = water.clone();
+        header["water"] = into_halo_water(water, halo);
     }
     // (checked as the header is read, `heightmap::chasm_of` and `heightmap::lights_of`)
     for key in ["chasm", "lights"] {
         if let Some(v) = extra.get(key).filter(|v| !v.is_null()) {
-            header[key] = v.clone();
+            header[key] = if key == "chasm" { into_halo_chasm(v, nx, ny, halo)? } else { v.clone() };
         }
     }
     // Without one (an export not from the editor), the last one carries on.
@@ -386,16 +401,69 @@ impl Drop for Rollback {
     }
 }
 
-/// The heights of the last export of `name`, if its files are complete.
+/// Water bodies `water` as the editor gives them (samples of the area's own grid) counted in a grid `halo` samples wider on each
+/// side: each one's seed and bounds moved by `halo`.
+fn into_halo_water(water: &serde_json::Value, halo: usize) -> serde_json::Value {
+    let mut water = water.clone();
+    if halo == 0 {
+        return water;
+    }
+    for b in water.as_array_mut().into_iter().flatten() {
+        for k in ["i", "j"] {
+            if let Some(v) = b[k].as_u64() {
+                b[k] = (v + halo as u64).into();
+            }
+        }
+        if let Some(bounds) = b["bounds"].as_array_mut() {
+            for v in bounds.iter_mut() {
+                if let Some(x) = v.as_u64() {
+                    *v = (x + halo as u64).into();
+                }
+            }
+        }
+    }
+    water
+}
+
+/// Chasm runs `runs` over an `nx` by `ny` area's samples, counted in a grid `halo` samples wider on each side (a run that
+/// crosses a row's end splits there).
+fn into_halo_chasm(runs: &serde_json::Value, nx: usize, ny: usize, halo: usize) -> Result<serde_json::Value> {
+    if halo == 0 {
+        return Ok(runs.clone());
+    }
+    let mask = crate::heightmap::chasm_of(runs, nx * ny)?;
+    let fw = nx + 2 * halo;
+    let mut out: Vec<[usize; 2]> = Vec::new();
+    for j in 0..ny {
+        let mut i = 0;
+        while i < nx {
+            if !mask[j * nx + i] {
+                i += 1;
+                continue;
+            }
+            let first = i;
+            while i < nx && mask[j * nx + i] {
+                i += 1;
+            }
+            out.push([(j + halo) * fw + first + halo, i - first]);
+        }
+    }
+    Ok(serde_json::json!(out))
+}
+
+/// The heights of the last export of `name`, if its files are complete (with a halo, the area's own out of its middle).
 fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightmap> {
     let header: serde_json::Value = serde_json::from_str(&crate::atomic::read_to_string(&dir.join(format!("{name}.json"))).ok()?).ok()?;
     let tiles = header["tiles"].as_u64()? as usize;
     let tiles_y = header["tilesY"].as_u64().map_or(tiles, |v| v as usize);
     let (nx, ny) = (tiles * 16 + 1, tiles_y * 16 + 1);
+    let halo = header["halo"].as_u64().unwrap_or(0) as usize;
     let bytes = crate::atomic::read(&dir.join(format!("{name}.f32"))).ok()?;
-    if bytes.len() != nx * ny * 4 {
+    let fw = nx + 2 * halo;
+    if bytes.len() != fw * (ny + 2 * halo) * 4 {
         return None;
     }
+    let bytes: Vec<u8> = (0..ny).flat_map(|j| bytes[((j + halo) * fw + halo) * 4..((j + halo) * fw + halo + nx) * 4].iter().copied()).collect();
     Some(crate::heightmap::Heightmap {
         name: name.to_string(),
         tiles,
@@ -621,6 +689,36 @@ mod tests {
         for p in paths {
             crate::atomic::write(p, b"new").unwrap();
         }
+    }
+
+    #[test]
+    fn the_editor_s_water_and_chasm_move_into_the_halo_s_grid() {
+        let water = serde_json::json!([{ "i": 3, "j": 4, "level": 2.5, "bounds": [0, 1, 10, 12] }]);
+        let moved = into_halo_water(&water, 16);
+        assert_eq!(moved, serde_json::json!([{ "i": 19, "j": 20, "level": 2.5, "bounds": [16, 17, 26, 28] }]));
+        assert_eq!(into_halo_water(&water, 0), water);
+        // A 4 by 3 grid: a run from the end of row 0 into row 1 splits at the row's end.
+        let runs = serde_json::json!([[2, 4], [11, 1]]);
+        let fw = 4 + 2 * 16;
+        let at = |i: usize, j: usize| (j + 16) * fw + i + 16;
+        assert_eq!(
+            into_halo_chasm(&runs, 4, 3, 16).unwrap(),
+            serde_json::json!([[at(2, 0), 2], [at(0, 1), 2], [at(3, 2), 1]])
+        );
+    }
+
+    #[test]
+    fn the_last_export_s_heights_are_the_area_s_out_of_its_halo() {
+        let dir = std::env::temp_dir().join(format!("landscaper-prev-halo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (n, halo) = (49, 16);
+        let fw = n + 2 * halo;
+        let heights: Vec<u8> = (0..fw * fw).flat_map(|k| ((k % fw) as f32).to_le_bytes()).collect();
+        std::fs::write(dir.join("a.f32"), heights).unwrap();
+        std::fs::write(dir.join("a.json"), serde_json::json!({ "tiles": 3, "halo": halo }).to_string()).unwrap();
+        let hm = previous_heights(&dir, "a").unwrap();
+        assert_eq!((hm.width, hm.data.len()), (n, n * n));
+        assert_eq!((hm.data[0], hm.data[n - 1]), (16.0, 64.0));
     }
 
     #[test]

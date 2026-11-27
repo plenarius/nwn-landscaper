@@ -1217,6 +1217,9 @@ mod tests {
             ("name=ok&tiles=2", "3 to 32 tiles"),
             ("name=ok&tiles=3&tilesY=33", "3 to 32 tiles"),
             ("name=ok&tiles=100000000000", "3 to 32 tiles"),
+            ("name=ok&tiles=3&halo=10", "whole tiles of samples"),
+            ("name=ok&tiles=3&halo=96", "at most 5 tiles"),
+            ("name=ok&tiles=3&halo=16", "a halo of 16"),
         ] {
             let e = format!("{:#}", export_request(q, &body, true).unwrap_err());
             assert!(e.contains(why), "{q}: {e}");
