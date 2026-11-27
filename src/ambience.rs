@@ -19,7 +19,8 @@
 //! - always-on kinds need no keys.
 //!
 //! The client keeps only the meshes of the scenery beyond the area's edge, so a placement outside the area is skipped, with a
-//! warning. So are a kind the pack doesn't have and placements past the area's live particle cap ([`AREA_LIVE_MAX`]).
+//! warning. So is a kind the pack doesn't have. Every other placement is baked, however many particles the area keeps alive: how
+//! busy an area is, is the builder's call.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -31,10 +32,6 @@ use mg_mdl::{Classification, Controller, Model, Node, NodeKind, ctrl};
 
 /// The most particles one placement of a kind may keep alive (the design's "under 60 a placement").
 pub const PLACEMENT_LIVE_MAX: f32 = 60.0;
-
-/// The most particles an area's placements may keep alive together, by day or at night: the design's budget for a view. Placements
-/// past it are skipped.
-pub const AREA_LIVE_MAX: f32 = 1500.0;
 
 /// Another particle pack than the one built in: `LANDSCAPER_PARTICLES`, a folder holding its `pack.json`.
 pub const PACK_ENV: &str = "LANDSCAPER_PARTICLES";
@@ -359,7 +356,6 @@ impl Plan {
             "baked": self.baked(),
             "tiles": self.tiles.len(),
             "live": { "day": round(self.live[0]), "night": round(self.live[1]) },
-            "cap": AREA_LIVE_MAX,
         })
     }
 
@@ -372,8 +368,7 @@ impl Plan {
     pub fn summary(&self) -> String {
         let skipped: usize = self.skipped.iter().map(|s| s.count).sum();
         format!(
-            "ambience: {} of {} placements baked into {} tiles, {:.0} particles alive by day and {:.0} at night (at most \
-             {AREA_LIVE_MAX:.0}){}",
+            "ambience: {} of {} placements baked into {} tiles, {:.0} particles alive by day and {:.0} at night{}",
             self.baked(),
             self.placements,
             self.tiles.len(),
@@ -385,8 +380,7 @@ impl Plan {
 }
 
 /// `list`'s placements sorted into the area's tiles (`tiles`: columns, rows, 10 m each), each at its point less the tile's middle
-/// and `base` height. Skipped: a kind `pack` doesn't have (or every one, without a pack), a point outside the area, and, in the
-/// list's order, a placement that would take the area past [`AREA_LIVE_MAX`].
+/// and `base` height. Skipped: a kind `pack` doesn't have (or every one, without a pack) and a point outside the area.
 pub fn plan(list: &[Placement], pack: std::result::Result<&Pack, &str>, tiles: (usize, usize), base: impl Fn(usize, usize) -> f32) -> Plan {
     let mut plan = Plan { placements: list.len(), ..Plan::default() };
     let pack = match pack {
@@ -399,7 +393,6 @@ pub fn plan(list: &[Placement], pack: std::result::Result<&Pack, &str>, tiles: (
         }
     };
     let (w, h) = (tiles.0 as f32 * TILE, tiles.1 as f32 * TILE);
-    let mut over_cap: Option<Skipped> = None;
     for p in list {
         let skip = |why: String| Skipped { at: [p.x, p.y], count: 1, why };
         let Some(k) = pack.kind(&p.kind) else {
@@ -412,24 +405,11 @@ pub fn plan(list: &[Placement], pack: std::result::Result<&Pack, &str>, tiles: (
             continue;
         }
         let live = pack.kinds[k].live;
-        if (plan.live[0] + live[0]).max(plan.live[1] + live[1]) > AREA_LIVE_MAX + 1e-3 {
-            match &mut over_cap {
-                Some(s) => s.count += 1,
-                None => {
-                    over_cap = Some(skip(format!(
-                        "the area's placements would keep more than {AREA_LIVE_MAX:.0} particles alive: these weren't baked (place \
-                         fewer)"
-                    )));
-                }
-            }
-            continue;
-        }
         plan.live = [plan.live[0] + live[0], plan.live[1] + live[1]];
         let (tx, ty) = ((p.x / TILE) as usize, (p.y / TILE) as usize);
         let at = [p.x - (tx as f32 + 0.5) * TILE, p.y - (ty as f32 + 0.5) * TILE, p.z - base(tx, ty)];
         plan.tiles.entry((tx, ty)).or_default().push(Baked { kind: k, at, scale: p.scale, bearing: p.bearing });
     }
-    plan.skipped.extend(over_cap);
     plan
 }
 
@@ -724,24 +704,34 @@ mod tests {
     }
 
     #[test]
-    fn outside_the_area_an_unknown_kind_and_past_the_cap_are_skipped_with_a_warning() {
+    fn outside_the_area_and_an_unknown_kind_are_skipped_with_a_warning() {
         let pack = test_pack();
         let mut list = vec![at("mist", -0.5, 5.0, 0.0), at("mist", 5.0, 30.0, 0.0), at("rain", 5.0, 5.0, 0.0)];
-        // 1,500 particles is 83 mists (18 each) and a fraction: the 84th and on are skipped.
-        list.extend((0..90).map(|i| at("mist", 0.1 + i as f32 * 0.3, 5.0, 0.0)));
+        list.extend((0..10).map(|i| at("mist", 0.1 + i as f32 * 0.3, 5.0, 0.0)));
         let plan = plan(&list, Ok(&pack), (3, 3), |_, _| 0.0);
-        assert_eq!(plan.baked(), 83);
-        assert_eq!(plan.live, [83.0 * 18.0; 2]);
+        assert_eq!(plan.baked(), 10);
         let whys: Vec<(usize, &str)> = plan.skipped.iter().map(|s| (s.count, s.why.as_str())).collect();
-        assert_eq!(whys.len(), 4, "{whys:?}");
+        assert_eq!(whys.len(), 3, "{whys:?}");
         assert!(whys[0].1.contains("outside the area") && whys[1].1.contains("outside the area"));
         assert!(whys[2].1.contains("no kind rain"));
-        assert_eq!(whys[3].0, 7);
-        assert!(whys[3].1.contains("more than 1500 particles"));
-        assert_eq!(plan.warnings().count(), 4);
+        assert_eq!(plan.warnings().count(), 3);
         // No pack: every placement is skipped, in one warning that says why.
         let none = super::plan(&list, Err("no particle pack"), (3, 3), |_, _| 0.0);
         assert_eq!((none.baked(), none.skipped.len(), none.skipped[0].count), (0, 1, list.len()));
+    }
+
+    #[test]
+    fn an_area_past_1500_particles_bakes_every_placement() {
+        let pack = test_pack();
+        // 200 mists keep 3,600 particles alive, over what the design calls heavy: every one is baked and counted.
+        let list: Vec<Placement> =
+            (0..200).map(|i| at("mist", 0.1 + (i % 100) as f32 * 0.29, 5.0 + (i / 100) as f32 * 10.0, 0.0)).collect();
+        let plan = plan(&list, Ok(&pack), (3, 3), |_, _| 0.0);
+        assert_eq!((plan.baked(), plan.skipped.len(), plan.live), (200, 0, [3600.0; 2]));
+        let report = plan.report();
+        assert_eq!((report["baked"].clone(), report["live"]["day"].clone()), (200.into(), 3600.0.into()));
+        assert!(report.get("cap").is_none());
+        assert!(plan.summary().starts_with("ambience: 200 of 200 placements baked"), "{}", plan.summary());
     }
 
     /// The text of a small tile model with `baked`'s nodes and animations, as tile.rs writes it.
