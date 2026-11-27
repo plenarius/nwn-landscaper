@@ -89,14 +89,44 @@ with open(path, "w") as f:
 EOF
 fi
 
+# The sky packs the packs index lists (docs/SKY-PACKS.md), such as Preset skies: the page installs them into its engine on the
+# first visit, as `landscaper skies get` does, so each preset shows its sky and an area with one exports with ls_skies.hak.
+# They need the stock files' skyboxes.2da, which decides their rows. Each zip is checked against the index's size and SHA-256;
+# site.json's skyPacks lists them.
+skies=$work/skies
+if [[ -f "$out/try/stock/res/skyboxes.2da" ]] && gh release download texture-packs --repo "$repo" --pattern index.json --dir "$skies"; then
+    for name in $(python3 -c 'import json, sys; print(*[p["url"] for p in json.load(open(sys.argv[1])).get("skies", [])])' "$skies/index.json"); do
+        gh release download texture-packs --repo "$repo" --pattern "$name" --dir "$skies"
+    done
+    python3 - "$skies" "$out/try" << 'EOF'
+import hashlib, json, pathlib, shutil, sys
+src, site_dir = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+packs = []
+for p in json.loads((src / "index.json").read_text()).get("skies", []):
+    data = (src / p["url"]).read_bytes()
+    if len(data) != p["size"] or hashlib.sha256(data).hexdigest() != p["sha256"]:
+        sys.exit(f"{p['url']}: not the size and SHA-256 the index gives")
+    (site_dir / "skies").mkdir(exist_ok=True)
+    shutil.copy(src / p["url"], site_dir / "skies" / p["url"])
+    packs.append({"file": f"skies/{p['url']}", "sha256": p["sha256"]})
+    print(f"the sky pack: {p['name']} {p['version']}")
+path = site_dir / "site.json"
+site = json.loads(path.read_text())
+site["skyPacks"] = packs
+path.write_text(json.dumps(site, indent=4) + "\n")
+EOF
+else
+    echo "the sky packs: none (no stock skyboxes.2da, or no packs index)"
+fi
+
 # The engine's licence and what else is built into it (the zip's README), beside it: the page hands the engine out.
 cp "$work/landscaper-wasm/LICENSE" "$out/try/LICENSE-engine.txt"
 cp "$work/landscaper-wasm/README.md" "$out/try/NOTICE-engine.md"
 
-# GitHub Pages takes a site of up to 1 GB; this page is about 14 MB, and 210 MB with the stock placeables. Much more means
-# something that shouldn't be there.
+# GitHub Pages takes a site of up to 1 GB; this page is about 14 MB, 290 MB with the stock placeables and skies, and 350 MB
+# with the sky packs. Much more means something that shouldn't be there.
 size=$(du -sm "$out" | cut -f1)
-limit=$([[ -d "$out/try/stock" ]] && echo 300 || echo 40)
+limit=$([[ -d "$out/try/stock" ]] && echo 450 || echo 40)
 if ((size > limit)); then
     echo "$out is $size MB, over the $limit MB this page should ever need" >&2
     exit 1

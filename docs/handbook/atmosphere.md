@@ -48,7 +48,7 @@ The sky is chosen here only: **Area settings** has no sky of its own.
 - **Sky packs** add skies: new rows of `skyboxes.2da` with their models and textures, installed as texture packs are. The export
   puts them in their own hak, `ls_skies.hak`. Setting one up is a job for whoever runs the Landscaper:
   [Sky packs](../SKY-PACKS.md). The first, [Preset skies](../PRESET-SKIES.md), has a sky for each outdoor look but Clear day,
-  made from your own download of Real Skies.
+  most of them from Savant1974's Real Skies; install it with `landscaper skies get preset-skies`. The browser page has it.
 - **Real Skies** replaces the game's five stock skies with photographed panoramas. It is a hak for the module, made by a script
   from your own download: [Real Skies for modules](../REAL-SKIES.md).
 
