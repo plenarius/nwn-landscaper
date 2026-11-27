@@ -7,6 +7,7 @@
 //! threads and the catching of a panic. The routes are in `serve/`, one file per area of the API, each reading its
 //! parameters through one parser (`serve/query.rs`).
 
+pub(crate) mod app;
 mod areas;
 mod blueprints;
 mod dialogs;
@@ -568,8 +569,9 @@ struct Ask<'a> {
 
 /// The API's areas, asked in turn: each answers the requests that are its own and returns `None` for the rest. No two
 /// match the same request; anything left is a file of the editor (GET) or refused with 405.
-const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 11] = [
+const ROUTES: [fn(&mut Ask<'_>) -> Option<Answer>; 12] = [
     team::route,
+    app::route,
     packs::route,
     skies::route,
     areas::route,

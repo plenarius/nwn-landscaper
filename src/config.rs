@@ -72,13 +72,23 @@ fn given() -> &'static Given {
 /// The game install `--root` named, else the settings file's `NWN_ROOT` when the environment has none (taken as `--root` is);
 /// None leaves it to `NWN_ROOT` and the usual places.
 pub fn game_root() -> Option<PathBuf> {
-    given().root.clone().or_else(|| file_folder(&["NWN_ROOT"]))
+    given().root.clone().or_else(settings_root)
 }
 
 /// The user folder `--user` named, else the settings file's `NWN_HOME` (or `NWN_USER_DIRECTORY`) when the environment has
 /// neither; None leaves it to `NWN_HOME` and the game's own rule.
 pub fn game_user() -> Option<PathBuf> {
-    given().user.clone().or_else(|| file_folder(&["NWN_HOME", "NWN_USER_DIRECTORY"]))
+    given().user.clone().or_else(settings_user)
+}
+
+/// The settings file's game folder, when the environment has no `NWN_ROOT` (what [`game_root`] takes without `--root`).
+pub fn settings_root() -> Option<PathBuf> {
+    file_folder(&["NWN_ROOT"])
+}
+
+/// The settings file's user folder, when the environment has neither `NWN_HOME` nor `NWN_USER_DIRECTORY`.
+pub fn settings_user() -> Option<PathBuf> {
+    file_folder(&["NWN_HOME", "NWN_USER_DIRECTORY"])
 }
 
 /// The settings file's value of the first of `names`, when none of them is in the environment. (The game's own detection reads
@@ -87,7 +97,8 @@ fn file_folder(names: &[&str]) -> Option<PathBuf> {
     if names.iter().any(|n| std::env::var_os(n).is_some_and(|v| !v.is_empty())) {
         return None;
     }
-    names.iter().find_map(|n| file_settings().get(*n)).map(PathBuf::from)
+    let file = file_settings();
+    names.iter().find_map(|n| file.get(*n)).map(PathBuf::from)
 }
 
 /// The custom talk table: `--tlk`, else `LANDSCAPER_TLK`; None finds the only one in the user folder.
@@ -174,7 +185,7 @@ pub fn settings_file() -> PathBuf {
 /// A setting: the environment's value when it is set and not blank, else the settings file's, else the environment's blank one
 /// (so a blank variable means what it meant before there was a file).
 pub fn setting(name: &str) -> Option<String> {
-    setting_from(name, std::env::var(name).ok(), file_settings())
+    setting_from(name, std::env::var(name).ok(), &file_settings())
 }
 
 /// [`setting`] for a value that may not be UTF-8 (a path).
@@ -193,26 +204,61 @@ fn setting_from(name: &str, env: Option<String>, file: &BTreeMap<String, String>
     file.get(name).cloned().or(env)
 }
 
-/// The settings file's settings, read once. A file that isn't there is none; one that can't be read or isn't a JSON object is
-/// said once and ignored, and so is each entry that isn't a setting.
-fn file_settings() -> &'static BTreeMap<String, String> {
-    static FILE: OnceLock<BTreeMap<String, String>> = OnceLock::new();
-    FILE.get_or_init(|| {
-        let path = settings_file();
-        let text = match std::fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return BTreeMap::new(),
-            Err(e) => {
-                eprintln!("warning: {} can't be read ({e}), so its settings are ignored", path.display());
-                return BTreeMap::new();
-            }
+/// The settings file's settings, read at the first setting asked for and again after [`save_settings`]. A file that isn't
+/// there is none; one that can't be read or isn't a JSON object is said and ignored, and so is each entry that isn't a setting.
+fn file_settings() -> std::sync::Arc<BTreeMap<String, String>> {
+    let mut kept = FILE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    kept.get_or_insert_with(|| std::sync::Arc::new(read_settings_file())).clone()
+}
+
+static FILE: std::sync::Mutex<Option<std::sync::Arc<BTreeMap<String, String>>>> = std::sync::Mutex::new(None);
+
+/// Sets settings in the settings file (None removes one), keeping what else it holds, and reads it again. For the desktop app's
+/// first start, before the engine opens the game.
+pub fn save_settings(changes: &[(&str, Option<&str>)]) -> anyhow::Result<()> {
+    write_settings(&settings_file(), changes)?;
+    *FILE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    Ok(())
+}
+
+fn write_settings(path: &std::path::Path, changes: &[(&str, Option<&str>)]) -> anyhow::Result<()> {
+    let mut object = match std::fs::read_to_string(path) {
+        Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Object(o)) => o,
+            _ => anyhow::bail!("{} isn't a JSON object of settings: mend or remove it first", path.display()),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::Map::new(),
+        Err(e) => return Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
+    };
+    for (name, value) in changes {
+        match value {
+            Some(v) => object.insert((*name).to_string(), serde_json::Value::String((*v).to_string())),
+            None => object.remove(*name),
         };
-        let (settings, problems) = settings_from(&text);
-        for p in problems {
-            eprintln!("warning: {}: {p}", path.display());
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut text = serde_json::to_string_pretty(&serde_json::Value::Object(object))?;
+    text.push('\n');
+    crate::atomic::write(path, text.as_bytes())
+}
+
+fn read_settings_file() -> BTreeMap<String, String> {
+    let path = settings_file();
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return BTreeMap::new(),
+        Err(e) => {
+            eprintln!("warning: {} can't be read ({e}), so its settings are ignored", path.display());
+            return BTreeMap::new();
         }
-        settings
-    })
+    };
+    let (settings, problems) = settings_from(&text);
+    for p in problems {
+        eprintln!("warning: {}: {p}", path.display());
+    }
+    settings
 }
 
 /// A settings file's settings, and what in it was ignored and why. Only `NWN_ROOT`, `NWN_HOME`, `NWN_USER_DIRECTORY` and
@@ -785,5 +831,22 @@ mod tests {
         let none = BTreeMap::new();
         assert_eq!(setting_from("LANDSCAPER_TEAM", Some(String::new()), &none).as_deref(), Some(""));
         assert_eq!(setting_from("LANDSCAPER_TEAM", None, &none), None);
+    }
+
+    #[test]
+    fn saving_settings_keeps_the_rest_of_the_file() {
+        let dir = std::env::temp_dir().join(format!("ls-settings-{}", std::process::id()));
+        let path = dir.join("landscaper").join("settings.json");
+        write_settings(&path, &[("NWN_ROOT", Some(r"C:\Games\NWN")), ("NWN_HOME", None)]).unwrap();
+        std::fs::write(&path, r#"{ "LANDSCAPER_HAKS": "a,b", "NWN_HOME": "/old", "mine": 1 }"#).unwrap();
+        write_settings(&path, &[("NWN_ROOT", Some("/g")), ("NWN_HOME", None)]).unwrap();
+        let (s, problems) = settings_from(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!((s.get("NWN_ROOT").map(String::as_str), s.get("LANDSCAPER_HAKS").map(String::as_str)), (Some("/g"), Some("a,b")));
+        assert!(!s.contains_key("NWN_HOME") && problems.len() == 1, "{problems:?}");
+        // A file that isn't settings is left for its owner to mend, not overwritten.
+        std::fs::write(&path, "[]").unwrap();
+        assert!(write_settings(&path, &[("NWN_ROOT", Some("/g"))]).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "[]");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
