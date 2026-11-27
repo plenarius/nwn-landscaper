@@ -25,6 +25,34 @@ pub fn metres_of(entry: &serde_json::Value) -> f32 {
     entry["metres"].as_f64().filter(|m| (1.0..=64.0).contains(m)).map_or(TEXTURE_METRES, |m| m as f32)
 }
 
+/// Whether a catalog entry's repeat is varied ([`triplanar::varied`]): its `vary`, else for natural ground and rock (a broken
+/// edge, [`Edge`]) and not for laid surfaces (cobbles, planks, flagstones), whose regular pattern is right.
+pub fn vary_of(entry: &serde_json::Value) -> bool {
+    entry["vary"].as_bool().unwrap_or_else(|| Edge::from_entry(entry) == Edge::Broken)
+}
+
+/// How a library texture repeats on the ground: the metres a repeat covers, and the hex cells to a repeat its features are
+/// varied by ([`triplanar::varied`]; 0 for a plain repeat).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Repeat {
+    /// Metres one repeat covers ([`metres_of`]).
+    pub metres: f32,
+    /// Hex cells to a repeat: [`triplanar::VARY_CELLS`] times the picture's own repeats inside it (the starter list's `repeats`),
+    /// or 0 for a plain repeat.
+    pub vary: f32,
+}
+
+impl Repeat {
+    /// A plain repeat every [`TEXTURE_METRES`]: a tileset's own texture, the stock rock.
+    pub const PLAIN: Repeat = Repeat { metres: TEXTURE_METRES, vary: 0.0 };
+
+    /// A catalog entry's ([`metres_of`], [`vary_of`]).
+    pub fn of(entry: &serde_json::Value) -> Repeat {
+        let repeats = entry["repeats"].as_u64().filter(|r| (1..=4).contains(r)).unwrap_or(1) as f32;
+        Repeat { metres: metres_of(entry), vary: if vary_of(entry) { triplanar::VARY_CELLS * repeats } else { 0.0 } }
+    }
+}
+
 /// The Landscaper's data folder: `landscaper` under `XDG_DATA_HOME` (default ~/.local/share; on Windows, which has no `HOME`
 /// unless a shell such as Git Bash sets one, `%LOCALAPPDATA%`, whichever way it is started).
 pub fn data_dir() -> PathBuf {
@@ -68,6 +96,8 @@ pub struct Texture {
     /// Metres one repeat of the picture covers ([`metres_of`]): [`TEXTURE_METRES`], or more for a cliff's rock, whose fine layers
     /// at 4 m blurred into streaks on a tall wall seen from afar.
     pub metres: f32,
+    /// Hex cells to a repeat its features are varied by ([`Repeat::vary`]; 0 for a plain repeat).
+    pub vary: f32,
 }
 
 /// How a texture's edge meets another's in a baked tile ([`crate::generator`]'s soft paint): where two meet, broken wins.
@@ -202,12 +232,25 @@ impl Texture {
         let mut c = [0.0; 3];
         for (axis, w) in w.into_iter().enumerate().filter(|(_, w)| *w > 0.0) {
             let [u, v] = triplanar::uv(axis, p, self.metres);
-            let s = self.sample_level(u, v, level);
+            let s = if self.vary > 0.0 {
+                triplanar::varied([u, v], self.vary, |u, v| self.sample_level(u, v, level))
+            } else {
+                self.sample_level(u, v, level)
+            };
             for k in 0..3 {
                 c[k] += s[k] * w;
             }
         }
+        if self.vary > 0.0 {
+            let shade = triplanar::shade(p);
+            c = c.map(|v| v * shade);
+        }
         c
+    }
+
+    /// How it repeats ([`Repeat`]).
+    pub fn repeat(&self) -> Repeat {
+        Repeat { metres: self.metres, vary: self.vary }
     }
 
     /// Colour at area point (x, y) on level ground.
@@ -280,7 +323,16 @@ pub fn load_library(ids: &[String]) -> Result<HashMap<String, Texture>> {
         let smaller = std::sync::Arc::new(halvings(&image));
         out.insert(
             id.clone(),
-            Texture { image, smaller, mean, surface, edge: Edge::from_entry(entry), tiles: None, metres: metres_of(entry) },
+            Texture {
+                image,
+                smaller,
+                mean,
+                surface,
+                edge: Edge::from_entry(entry),
+                tiles: None,
+                metres: metres_of(entry),
+                vary: Repeat::of(entry).vary,
+            },
         );
     }
     Ok(out)
@@ -351,6 +403,7 @@ fn load_import(name: &str) -> Result<Texture> {
         edge: Edge::Crisp,
         tiles: Some(std::sync::Arc::new(TilePictures { width, pictures, cliffs })),
         metres: TEXTURE_METRES,
+        vary: 0.0,
     })
 }
 
@@ -475,6 +528,17 @@ mod tests {
     }
 
     #[test]
+    fn natural_ground_is_varied_and_laid_surfaces_are_not_unless_the_catalog_says() {
+        let r = |v: serde_json::Value| Repeat::of(&v);
+        assert_eq!(r(serde_json::json!({"category": "Grass"})).vary, triplanar::VARY_CELLS);
+        assert_eq!(r(serde_json::json!({"category": "Earth", "repeats": 2})).vary, 2.0 * triplanar::VARY_CELLS);
+        assert_eq!(r(serde_json::json!({"category": "Floors"})).vary, 0.0, "cobbles and planks keep their pattern");
+        assert_eq!(r(serde_json::json!({"edge": "crisp"})).vary, 0.0);
+        assert_eq!(r(serde_json::json!({"category": "Grass", "vary": false})).vary, 0.0);
+        assert_eq!(r(serde_json::json!({"category": "Floors", "vary": true, "metres": 8})), Repeat { metres: 8.0, vary: 1.5 });
+    }
+
+    #[test]
     fn points_far_apart_read_a_texture_halved_so_fine_detail_blends() {
         // Black and white stripes a pixel wide: any point of the picture itself is near black or near white.
         let image = picture(512, 512, |x, _| if x % 2 == 0 { [0.0; 3] } else { [1.0; 3] });
@@ -486,6 +550,7 @@ mod tests {
             edge: Edge::Broken,
             tiles: None,
             metres: TEXTURE_METRES,
+            vary: 0.0,
         };
         assert_eq!(t.smaller.len(), 9);
         let up = [0.0, 0.0, 1.0];

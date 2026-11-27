@@ -12,6 +12,13 @@
 //! baked texture of a tile painted with several (painter.rs, `bake`) and the editor's view (js/triplanar.js in the web page, the
 //! same [`SHARPNESS`] and projections). The tiles' own texture coordinates, for viewers without the game's shaders (Moonglow,
 //! nwn-bake), give each face one side alone ([`box_projection`]): no blend, so a seam where two sides meet, but no streaks.
+//!
+//! A natural texture's repeat is varied ([`varied`]), so its features don't line up in a grid every 4 m: each projection is split
+//! into small hexagonal cells, each cell draws the picture shifted by its own offset, and the three cells round a point blend
+//! (hex tiling, after Mikkelsen's "Practical Real-Time Hex-Tiling", 2022), with a slow change of brightness over the ground
+//! ([`shade`]). The same three places draw it alike: a cell's offset is a sine of its whole-number coordinates (no hash), so
+//! the game's GPU and the bake agree to a small part of a pixel, and a slot changes cell only where its weight is 0, so the GPU's
+//! mipmaps never jump.
 
 /// How sharply the three projections blend: each weighs as the normal's part along its axis to this power. With 4, ground at 45
 /// degrees takes the top and the side projection evenly, and ground 30 degrees from flat takes 90% from the top: the blend is
@@ -85,6 +92,134 @@ pub fn uv(axis: usize, p: [f32; 3], metres: f32) -> [f32; 2] {
     }
 }
 
+/// Hex cells to a repeat of the game's picture, each way ([`varied`]): a cell is about two thirds of the picture, small enough that
+/// no feature recurs in a row, large enough that each cell shows whole stones and tufts.
+pub const VARY_CELLS: f32 = 1.5;
+
+/// How sharply the three cells round a point blend: each weighs as its share of the point (barycentric) to this power. At 7, close
+/// up in the game, two copies of a stone ghosted into one another where cells met; much higher shows the cells' edges.
+pub const VARY_SHARPNESS: f32 = 14.0;
+
+/// The brighter of two cells' colours wins where they blend (its weight times this plus its luminance): a pale stone over dark
+/// grit, not a grey average of the two.
+pub const VARY_LIGHT: f32 = 0.25;
+
+/// How far the ground's brightness strays over tens of metres ([`shade`]): up to 7% lighter or darker.
+pub const VARY_SHADE: f32 = 0.07;
+
+/// The skewed grid's matrix (hex tiling's): x - y / sqrt(3), 2 y / sqrt(3).
+pub const SKEW: [f32; 2] = [0.577_350_27, 1.154_700_5];
+
+/// A cell's offset, each way: sin(a x + b y + c) of its whole-number coordinates (x, y), as [a, b, c].
+pub const OFFSET: [[f32; 3]; 2] = [[1.7, 3.1, 0.0], [2.3, -1.3, 0.7]];
+
+/// The slow change of brightness ([`shade`]): the mean of two waves sin(a x + b y + c z + d) over area metres, as [a, b, c, d].
+pub const SHADE_WAVES: [[f32; 4]; 2] = [[0.13, 0.07, 0.05, 0.0], [-0.06, 0.11, 0.09, 2.1]];
+
+/// A cell's offset (texture repeats) from its whole-number coordinates ([`OFFSET`]): two sines, the same in the game's shader and
+/// the editor's; no hash, so the GPU's sine and the bake's differ by a small part of a pixel, not by another cell.
+pub fn cell_offset(v: [f32; 2]) -> [f32; 2] {
+    OFFSET.map(|[a, b, c]| (v[0] * a + v[1] * b + c).sin())
+}
+
+/// The three hex cells round texture point `uv` (repeats) with `cells` cells a repeat: for each slot, the cell (whole-number
+/// coordinates) and its share of the point (barycentric, summing to 1). A cell keeps its slot (by its coordinates' class, x + 2y
+/// modulo 3), so a slot changes cell only where its share is 0.
+pub fn hex_cells(uv: [f32; 2], cells: f32) -> [([f32; 2], f32); 3] {
+    let (su, sv) = (uv[0] * cells, uv[1] * cells);
+    let k = [su - SKEW[0] * sv, SKEW[1] * sv];
+    let base = [k[0].floor(), k[1].floor()];
+    let f = [k[0] - base[0], k[1] - base[1]];
+    let fz = 1.0 - f[0] - f[1];
+    let s = if fz < 0.0 { 1.0 } else { 0.0 };
+    let s2 = 2.0 * s - 1.0;
+    let w = [-fz * s2, s - f[1] * s2, s - f[0] * s2];
+    let v = [[base[0] + s, base[1] + s], [base[0] + s, base[1] + 1.0 - s], [base[0] + 1.0 - s, base[1] + s]];
+    let mut out = [([0.0; 2], 0.0); 3];
+    for (vk, wk) in v.into_iter().zip(w) {
+        let class = (vk[0] as i64 + 2 * vk[1] as i64).rem_euclid(3) as usize;
+        out[class] = (vk, wk.max(0.0));
+    }
+    out
+}
+
+/// A varied repeat: the colours `tap` gives at the three cells' offsets round `uv` ([`hex_cells`]), blended by their shares to
+/// [`VARY_SHARPNESS`], the brighter winning ([`VARY_LIGHT`]).
+pub fn varied(uv: [f32; 2], cells: f32, mut tap: impl FnMut(f32, f32) -> [f32; 3]) -> [f32; 3] {
+    let mut sum = [0.0; 3];
+    let mut total = 0.0;
+    for (v, w) in hex_cells(uv, cells) {
+        let o = cell_offset(v);
+        let c = tap(uv[0] + o[0], uv[1] + o[1]);
+        let weight = w.powf(VARY_SHARPNESS) * (VARY_LIGHT + 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]);
+        for k in 0..3 {
+            sum[k] += c[k] * weight;
+        }
+        total += weight;
+    }
+    sum.map(|c| c / total.max(f32::MIN_POSITIVE))
+}
+
+/// The slow change of a varied texture's brightness at area point `p` (metres), a factor about 1 ([`VARY_SHADE`]).
+pub fn shade(p: [f32; 3]) -> f32 {
+    let [x, y, z] = p;
+    1.0 + VARY_SHADE * SHADE_WAVES.iter().map(|[a, b, c, d]| 0.5 * (a * x + b * y + c * z + d).sin()).sum::<f32>()
+}
+
+/// GLSL for the game's tile shader (shared.rs) and, as its text, a check for the editor's: `vec4 lsVaried(sampler2D t, highp vec2
+/// uv, float cells)`, [`varied`] (`cells` 0: the plain texture), and `float lsVaryShade(highp vec3 p)`, [`shade`].
+pub fn varied_glsl() -> String {
+    let f = |v: f32| format!("{v:.8}");
+    let off = |k: usize| format!("sin(v.x * {} + v.y * {} + {})", f(OFFSET[k][0]), f(OFFSET[k][1]), f(OFFSET[k][2]));
+    let wave = |w: [f32; 4]| format!("0.5 * sin(p.x * {} + p.y * {} + p.z * {} + {})", f(w[0]), f(w[1]), f(w[2]), f(w[3]));
+    format!(
+        "// The Landscaper's varied repeat (its triplanar.rs, `varied`): three hex cells round a point, each drawing the texture
+// shifted by its own offset, blended by their shares, the brighter winning; a slot changes cell only where its share is 0.
+float lsClass(vec2 v) {{ float c = v.x + 2.0 * v.y; return c - 3.0 * floor((c + 0.5) / 3.0); }}
+vec4 lsTap(sampler2D t, highp vec2 uv, highp vec2 v, float w, inout float total)
+{{
+    vec4 c = texture2D(t, uv + vec2({}, {}));
+    float weight = pow(max(w, 0.0), {}) * ({} + dot(c.rgb, vec3(0.3, 0.59, 0.11)));
+    total += weight;
+    return c * weight;
+}}
+vec4 lsVaried(sampler2D t, highp vec2 uv, float cells)
+{{
+    if (cells <= 0.0) return texture2D(t, uv);
+    highp vec2 su = uv * cells;
+    highp vec2 k = vec2(su.x - {} * su.y, {} * su.y);
+    highp vec2 b = floor(k);
+    highp vec2 f = k - b;
+    float fz = 1.0 - f.x - f.y;
+    float s = 1.0 - step(0.0, fz);
+    float s2 = 2.0 * s - 1.0;
+    vec3 w = vec3(-fz * s2, s - f.y * s2, s - f.x * s2);
+    highp vec2 v1 = b + vec2(s, s);
+    highp vec2 v2 = b + vec2(s, 1.0 - s);
+    highp vec2 v3 = b + vec2(1.0 - s, s);
+    vec3 cls = vec3(lsClass(v1), lsClass(v2), lsClass(v3));
+    float total = 0.0;
+    vec4 sum = vec4(0.0);
+    for (int i = 0; i < 3; i++)
+    {{
+        vec3 e = vec3(1.0) - step(vec3(0.5), abs(cls - vec3(float(i))));
+        sum += lsTap(t, uv, v1 * e.x + v2 * e.y + v3 * e.z, dot(w, e), total);
+    }}
+    return sum / max(total, 1e-6);
+}}
+float lsVaryShade(highp vec3 p) {{ return 1.0 + {} * ({} + {}); }}",
+        off(0),
+        off(1),
+        f(VARY_SHARPNESS),
+        f(VARY_LIGHT),
+        f(SKEW[0]),
+        f(SKEW[1]),
+        f(VARY_SHADE),
+        wave(SHADE_WAVES[0]),
+        wave(SHADE_WAVES[1]),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +289,37 @@ mod tests {
             let len = (0.25f32 + 0.04 + 1.0).sqrt();
             assert!(close(n[0], -0.5 / len) && close(n[1], -0.2 / len) && close(n[2], 1.0 / len), "{n:?}");
         }
+    }
+
+    #[test]
+    fn a_point_s_three_cells_share_it_and_each_keeps_its_slot() {
+        for uv in [[0.1, 0.2], [3.7, -2.25], [10.5, 7.33], [-0.4, 0.9]] {
+            let cells = hex_cells(uv, VARY_CELLS);
+            assert!(close(cells.iter().map(|c| c.1).sum(), 1.0), "{uv:?}: {cells:?}");
+            for (slot, (v, _)) in cells.iter().enumerate() {
+                assert_eq!((v[0] as i64 + 2 * v[1] as i64).rem_euclid(3) as usize, slot, "{uv:?}");
+            }
+        }
+        // Across a triangle's edge a slot changes cell only where its share is 0: the GPU's mipmaps see no jump.
+        for x in 0..400 {
+            let (a, b) = (hex_cells([x as f32 * 0.01, 0.37], 2.0), hex_cells([x as f32 * 0.01 + 0.0001, 0.37], 2.0));
+            for slot in 0..3 {
+                if a[slot].0 != b[slot].0 {
+                    assert!(a[slot].1 < 1e-3 && b[slot].1 < 1e-3, "slot {slot} at {x}: {a:?} {b:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_varied_texture_has_no_grid_and_keeps_a_flat_colour() {
+        // A flat colour stays itself; a picture that is one bright dot in a repeat no longer has its dots every repeat.
+        let flat = varied([1.3, 2.7], VARY_CELLS, |_, _| [0.4, 0.5, 0.6]);
+        assert!(flat.iter().zip([0.4, 0.5, 0.6]).all(|(a, b)| close(*a, b)), "{flat:?}");
+        let dot = |u: f32, v: f32| if u.rem_euclid(1.0) < 0.1 && v.rem_euclid(1.0) < 0.1 { [1.0; 3] } else { [0.0; 3] };
+        let lit: Vec<bool> = (0..8).map(|k| varied([k as f32 + 0.05, 0.05], VARY_CELLS, dot)[0] > 0.5).collect();
+        assert!(lit.iter().any(|l| !l), "the dot recurs at every repeat: {lit:?}");
+        assert!((0.9..1.1).contains(&shade([123.0, 45.0, 6.0])));
     }
 
     #[test]
