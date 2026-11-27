@@ -8,6 +8,14 @@ released yet wait in `changelog.d/`, a file each, until the release puts them in
 
 ## 0.7.0
 
+- **Export and Check take the editor's band as the area's halo.** `halo` in the query gives the band's samples a side; the
+  heights and paint then cover it, and the water's seeds and the chasm's runs, which the editor gives in the area's own grid,
+  move into the larger one. The last export's heights, which objects follow when the ground changes, are cut out of a haloed
+  file too.
+- **The AppImage builds from pinned tools.** Tauri's AppImage tools and the AppImage runtime that appimagetool puts at the start
+  of the file come at fixed versions with checked checksums (`deploy/release/appimage-tools.sh`); before, one tool and the
+  runtime came from releases that move with every upstream change. The release checks that Tauri fetched nothing of its own
+  and that the AppImage starts with the pinned runtime.
 - **Particles baked into the tiles.** An area's `ambience` list (`{ "kind": "mist", "x", "y", "z", "scale", "seed" }`, and
   `bearing` for the kinds that blow or lean) exports as the particle pack's emitters in the tiles that hold them, under the
   tile's `<tile>a` dummy, so night-only kinds come on at dusk and day-only ones go off, and mist and ground fog loop
