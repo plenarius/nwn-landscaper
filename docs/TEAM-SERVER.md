@@ -99,7 +99,8 @@ and is never read as empty or written over: until it is fixed, every route that 
 - A builder can also upload their own `.mod` or `.erf` and import areas from it. Those are theirs and need no assignment, but their
   names may not collide with the module's. A file is at most 150 MB, a workspace keeps at most 20 files and 500 MB of them, and
   uploads take turns: one at a time per builder, four at once in all (more answer 429).
-- **A workspace has a disk quota:** at most 100 areas (working copies, exports and imports, by name) and 5 GB, its uploads aside.
+- **A workspace has a disk quota:** at most 100 areas (working copies, exports and imports, by name; a canvas counts as one) and
+  5 GB, its uploads aside.
   A save, import, export or check that would go over is answered 413 and writes nothing. A builder makes room by deleting areas
   they no longer need (see "Deleted areas" below). Of the copies kept when a save replaces another area of the same name
   (`<name>.json.replaced-<Unix seconds>`), the newest 3 stay, and so do the newest 3 deleted copies of each name; both count

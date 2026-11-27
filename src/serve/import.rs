@@ -185,6 +185,7 @@ fn import_request(area: Option<String>, source: Option<String>, name: String, up
     if area_exists(&name) {
         return Err(Taken(name).into());
     }
+    anyhow::ensure!(!super::canvases::canvas_exists(&name), "there is a canvas called {name}: pick another name");
     // Their own file: theirs to import, no assignment. Its name can't be one of the module's areas' (it would collide when published).
     if let Some(file) = upload {
         let resref = area.context("which area of the file?")?;

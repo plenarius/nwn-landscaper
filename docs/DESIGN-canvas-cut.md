@@ -404,6 +404,19 @@ reviewer decides.
   rewrites two pieces' files and renumbers their samples.
 - **C. One file for the canvas.** Today's format, larger: 20.5 MB a save at 100 by 100, a second of stall each time.
 
+**Built (step 3, 2026-11-27):** each block is one file, `blocks/b03_02.blk`, holding its heights, paint and chasm mask and ending
+with a check sum, rather than three files: a save replaces one file in one step, while three could be left half replaced by a
+crash. A block's version is that check sum. A block that was never saved has no file and is flat ground at the header's
+`ground` height. A save is refused when it would leave two blocks different on the row they share, so a stroke that changes a
+shared row saves both blocks together; a canvas save may carry every block of a 128 by 128 canvas (34 MB), not 8 MB. The
+format and the routes are in `src/canvas.rs` and `src/serve/canvases.rs`.
+
+**Decided (2026-11-27), with step 3:** a block is one `.blk` file whose check sum is its version, and a canvas save takes up to
+48 MB, as above. On a team server a piece named like an existing area needs the builder's assignment of that area, since its
+publish would replace it. A canvas's name stays 1 to 7 characters and can't be an area's in the workspace, so **Make a canvas
+from this area** (step 8) asks for a new name when the area's is longer or taken, instead of taking the area's name as
+question 10 said.
+
 On the team server a canvas is one more kind of item in the user's workspace, next to areas, with the same assignment and
 read-only rules. The editor's unsaved blocks wait in IndexedDB, keyed by canvas, block and base version.
 

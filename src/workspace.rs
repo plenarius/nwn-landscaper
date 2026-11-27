@@ -7,9 +7,9 @@
 //!
 //! A team server (`landscaper serve --team`) sits behind a sign-in proxy, which says who is asking in headers (`X-Forwarded-User`,
 //! `X-Forwarded-Groups`, ...; `LANDSCAPER_AUTH`). Each person then has a workspace of their own,
-//! `workspaces/<user>/{areas,exports,nwn}`, and people in the admin group may look at (never change) anyone's. Nothing here trusts a
-//! name the browser sends: only the proxy's headers, and, if `LANDSCAPER_PROXY_SECRET` is set, only requests that carry it (so a
-//! request that reaches the program without passing the proxy is refused).
+//! `workspaces/<user>/{areas,canvases,exports,nwn}`, and people in the admin group may look at (never change) anyone's. Nothing
+//! here trusts a name the browser sends: only the proxy's headers, and, if `LANDSCAPER_PROXY_SECRET` is set, only requests that
+//! carry it (so a request that reaches the program without passing the proxy is refused).
 //!
 //! A team server answers requests on a fixed set of threads (serve.rs), one request at a time on each, so who is asking (and whose
 //! workspace) belongs to the thread: [`begin_request`] clears it before each request, the request sets it once it knows who is asking,
@@ -148,6 +148,11 @@ pub fn exports_dir() -> PathBuf {
 /// The editor's working copies (`<name>.json`).
 pub fn areas_dir() -> PathBuf {
     root().join("areas")
+}
+
+/// The editor's canvases, a folder each (`<name>/`, see `crate::canvas`).
+pub fn canvases_dir() -> PathBuf {
+    root().join("canvases")
 }
 
 /// The areas deleted in the editor, each set aside in a folder of its own (`<name>-<Unix seconds>/`) with its working copy and
