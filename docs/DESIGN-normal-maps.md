@@ -26,14 +26,13 @@ Words used here:
   coordinates for their look (triplanar library textures, world-aligned baked pictures), so the Landscaper's own shaders read
   `texture1` themselves, as they already read `texture7`, and tilt the normal in world space. No stock tile has a normal map: the
   base game ships 7 materials and none has a `texture1`.
-- **One normal map per library texture, shared, none per baked tile.** A baked tile's material names the normal map of its most
-  relief-bearing library texture, and its shadow map's spare channel says how much of it each pixel has (#96's mechanism). This
-  adds **nothing** to an area's hak. A normal picture per baked tile would add 0 to 78 MB to each showcase area's hak (table
-  below), for a gain only where three or more relief textures meet in one tile.
-- **Where they come from.** The starter set's stock pictures have no normal maps, so they are generated on the builder's machine
-  (nothing made from the game's files may be committed) from a height made from the picture, band-passed at the scale of a stone
-  (not texel by texel, as #96 did), and, for laid stone, from the joints. The demo pack's photographs (Poly Haven, ambientCG) all
-  ship real normal maps: take those.
+- **A normal picture per baked tile, and one per library texture for single-texture tiles** (decided). A baked tile gets its own
+  normal picture beside its colour picture, exact wherever textures meet. It adds 0 to 78 MB to each showcase area's hak (table
+  below); the maintainer chose that over a shared normal map per texture, which would add nothing to an area's hak.
+- **Where they come from.** The starter set's stock pictures have no normal maps, so they are made once from a height made from
+  the picture, band-passed at the scale of a stone (not texel by texel, as #96 did), and, for laid stone, from the joints, then
+  tuned by hand and shipped with the Landscaper (decided; STYLE.md's rule on the game's files is relaxed to allow it). The demo
+  pack's photographs (Poly Haven, ambientCG) all ship real normal maps: take those.
 - **Cost:** 0.35 MB on the shared texture hak per texture given one (512 px, DXT5 with the normal in alpha and green). Pebbles,
   Cobblestones and Rock: 1.05 MB. Every stony texture (27): 9.4 MB. All 51: 17.8 MB. A texture that repeats its picture twice can
   store one repeat: a quarter of that.
@@ -261,8 +260,8 @@ review and testing.
 |---|---|---|---|---|---|
 | 0 | Spike: generated normal maps for three textures, wired by hand into an export, the client stills above. **Done** (`spike/normal-maps`) | engine | 2 h | 20 min (this design) | no |
 | 1 | The library's normal maps: a texture's optional normal picture (starter list, pack lists, the catalog), `ln_<id>` DDS in `ls_textures.hak`, `texture1` on library tiles, the triplanar normal in `ls_tp_fs`, tests | engine | 6 h | 45 min | 15 min: a pebble path, a cobbled square |
-| 2 | Baked tiles: #96's share in the shadow map (blue, then red), `texture1`/`texture2` by the tile's relief textures, the baked shader, the bake cache's version | engine | 5 h | 30 min | 15 min: the cave |
-| 3 | The starter set's normal maps, made at `textures init` on the builder's machine: the generator in Rust (height band-passed; joints for laid stone), each texture's settings in the starter list, tuned with stills; libraries made before get theirs on the next export | engine | 6 h | 1 h: judging the stills | 20 min |
+| 2 | Baked tiles: a normal picture per baked tile beside its colour picture (blended from its textures' normal maps as the colour is), `texture1` on the tile, the baked shader, the bake cache's version | engine | 5 h | 30 min | 15 min: the cave |
+| 3 | The starter set's normal maps, made once (the generator: height band-passed; joints for laid stone), tuned by hand with stills and shipped in the repository; libraries made before get theirs on the next start. Needs STYLE.md relaxed first (nwn-bake, then each repository's pin) | engine | 6 h | 1 h: judging the stills | 20 min |
 | 4 | The demo pack's: `make.py` fetches and fits them, the budget, the web demo installs them | engine | 2 h | 15 min | no |
 | 5 | The editor's view: `uNorm`, the shader, the toggle, the parity test | web | 5 h | 30 min | no |
 | 6 | Docs: handbook (Paint, Light), `docs/TEXTURE-PACKS.md` (`normal`), changelog | both | 1.5 h | 15 min | no |
@@ -277,6 +276,9 @@ Each gives the recommendation first and the options not chosen after it.
 
 ### 1. Shared normal maps, none per baked tile
 
+**Decided (2026-11-27): a normal picture per baked tile**, the option below, for exact relief wherever textures meet; the area
+hak cost is accepted.
+
 **Recommended: one normal map per library texture in `ls_textures.hak`, and a share per pixel in each baked tile's shadow map**
 (two relief textures a tile). Nothing more in any area's hak.
 
@@ -287,6 +289,8 @@ Considered and not chosen:
 - **Per baked tile at a lower size** (256 px DXT1): 4 cm a pixel, coarser than the pebbles it is meant to shape.
 
 ### 2. Which textures get one (the download size)
+
+**Decided (2026-11-27): as recommended.**
 
 **Recommended: the ten gravel and laid-stone textures first** (Pebbles, Grey gravel, Muddy gravel, Cobblestones, Flagstones, Stone
 floor, Floor slabs, Brick floor, both fieldstone walls): **2.2 MB** on `ls_textures.hak`, once for every area, with the five that
@@ -302,6 +306,9 @@ Considered and not chosen:
 
 ### 3. The starter set's source
 
+**Decided (2026-11-27): made once, tuned (cobble joints drawn in) and shipped** with the Landscaper. STYLE.md's "never the
+game's files" rule is relaxed for it, in nwn-bake's master copy and every repository that pins it.
+
 **Recommended: generated on the builder's machine** at `textures init`, by method 1 for gravel and method 2 (joints) for laid
 stone, with settings per texture in the starter list. Nothing from the game goes in the repository.
 
@@ -314,6 +321,8 @@ Considered and not chosen:
 
 ### 4. The demo pack's budget
 
+**Decided (2026-11-27): as recommended.**
+
 **Recommended: normal maps for the same ten textures, and the budget from 3 MB to 4 MB** (about 1 MB more as WebP).
 
 Considered and not chosen:
@@ -322,6 +331,8 @@ Considered and not chosen:
 - **None:** the web demo would show flat ground where the game has relief.
 
 ### 5. How strong
+
+**Decided (2026-11-27): as recommended.**
 
 **Recommended: as made, with the brightness kept** (see the verdict), and no strength slider for builders at first: a strength per
 texture in the starter list, tuned once in the client.
