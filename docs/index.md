@@ -9,6 +9,7 @@ can open in the toolset or the game, checked against the game's pathfinding.
 
 - **[The handbook](handbook/index.md):** building an area in the editor, step by step: terrain, paint, caves, scenery, light,
   particles, skies, export and hand-over.
+- **[Try it in your browser](handbook/try.md):** the editor and its engine in the page, nothing to install.
 - **[Showcase](showcase.md):** areas made in the Landscaper, filmed in the game.
 - **[Running it](SELF-HOSTING.md):** on your own machine, or as a team server where each builder has a workspace.
 - **[Internals](DESIGN-ambience.md):** the design documents behind the newer parts.

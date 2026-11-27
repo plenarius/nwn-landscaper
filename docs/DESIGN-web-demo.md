@@ -1,6 +1,6 @@
 # Design: try the Landscaper in a browser
 
-Status: stage 1 being built: steps 3, 4 and 5 done. Written 2026-11-26 from a spike; every question but threads decided the same
+Status: stage 1 built: steps 3 to 7 done. Written 2026-11-26 from a spike; every question but threads decided the same
 day. The page as built (step 4): "The page" below.
 
 A public "try it" page: the editor and its engine both in the visitor's browser, nothing to install and no engine on a server.
@@ -178,6 +178,19 @@ Measured in headless Chromium 131 on the 48-core server, the page served from th
 | Export, from the click to the download | 2.7 to 7.1 s; the zip itself 60 to 90 ms |
 | A request that reads nothing | 2 to 5 ms, and what it changed written to OPFS |
 
+### The site and the game folder (steps 6 and 7)
+
+- **`/try/` on the handbook site:** the docs workflow runs `scripts/try-page.sh` after MkDocs: the newest release's
+  `landscaper-wasm.zip` and the editor at that tag; until a release has the zip, it builds the engine itself (about 2 minutes
+  with the wasm job's cache) with the editor's `main`. A version tag's Release run starts the docs workflow again, so a release
+  reaches the page. The page needs no header Pages can't send: no threads, so no cross-origin isolation; Pages serves `.wasm`
+  as `application/wasm`. The site with `/try/` is 23 MB, the page 14 MB of it.
+- **The shaders from the game folder (question 5):** at Export the page reads `fslit`, `vslit` and `inc_lighting` from the
+  visitor's keys and archives (`nwn_retail.key` over `nwn_base.key`, as Moonglow's resource manager does; the same bytes as
+  neverwinter.nim's), reading the key's index (2.5 MB) and about 20 KB of shaders, and puts them in the engine's `override`
+  in memory: the shared hak's tile shaders are then made from them, its stamp noticing the change. Chromium remembers the
+  folder's handle in IndexedDB (no file of the game); Firefox and Safari choose it each visit in an upload field.
+
 ### To try in Firefox and Safari
 
 Headless Chromium is the only browser this page ran in. In a current Firefox and Safari (macOS, and an iPhone or iPad if one
@@ -187,9 +200,12 @@ is at hand), on the page step 6 publishes, or one made with `scripts/try-site.sh
 2. Sculpt a hill, paint a strip of another texture, Check paths: the report and its markers.
 3. Reload: the area is still there, as it was. Close the browser, open the page again: still there, and the start is quicker.
 4. File, Download area; then File, Open area from a file with it (renamed, or answer Replace).
-5. Export: `<area>.zip` downloads and opens (a module, two haks, the README).
+5. Export: the page asks for the game folder (choose it: an upload field in these browsers, which says it uploads but
+   doesn't); `<area>.zip` downloads and opens (a module, two haks, the README), and the report has no warning. Export again
+   choosing "Export without them": the warning is back.
 6. A second tab of the page: it says it waits, and starts when the first is closed.
 7. Safari only: a private window (OPFS may be missing there: the page should still work, without keeping the area).
+8. New area at 24 by 24: it asks first.
 
 ## What needs the game
 
@@ -358,10 +374,13 @@ generated skies with it. Reuses the texture pack's checks and install.
 
 ## Risks
 
-- **The game's files reaching the site.** The site build allows only listed files (the editor, the wasm, the demo pack, the
-  stand-ins) and fails on anything else; the stand-ins are made by a script, not copied.
-- **Memory on small devices:** 1.2 GB for a 32 by 32 export. Stage 1 caps the default size; a failed allocation is caught and
-  reported as "too big for this browser".
+- **The game's files reaching the site.** The site build allows only listed files (the editor, the wasm, the demo pack's
+  pictures that its `pack.json` names) and fails on anything else; the stand-ins are made in the page's code, not copied. The
+  shaders an export reads from the visitor's game folder go to the engine's memory for the visit, never into the site's
+  storage.
+- **Memory on small devices:** 1.2 GB for a 32 by 32 export. In the browser an area over 16 by 16 asks first, with the memory
+  its export needs; an export that runs out is reported as "too big for this browser" (not provoked in a test: Chromium on
+  this server had the memory).
 - **Browser support:** OPFS from a Worker is in current Chromium, Firefox and Safari; the folder picker only in Chromium (the
   upload field elsewhere). Only headless Chromium was tried.
 - **The Service Worker's updates:** a new `sw.js` takes over the next load. It only passes requests on, and the page and its
@@ -385,8 +404,8 @@ maintainer's time is review and testing.
 | 3 | The engine's WASI build: its Cargo configuration taking the patched Moonglow and nwn-bake, the `web` feature (the browser's entry point; no threads, TLS or import on WASI), `wasi-request` with its answer on its own stream, threads, process id; the CI `wasm` job and its size check; `landscaper-wasm.zip` in the release | engine | 6 h | 45 min |
 | 4 | The page: the engine in a Worker, the Service Worker passing requests, OPFS, Download and Open area, export as a zip, the texts that name a server or a disk path. **Done** | web | 8 h (took 2) | 45 min, plus 30 min in Firefox and Safari |
 | 5 | Demo assets: the texture pack (the maintainer's and CC0), the stand-ins made by a script, panels that need the game saying so | engine, web | 4 h | 30 min, choosing textures |
-| 6 | The site: `/try/` built by the docs workflow from the release, a handbook page "Try it in your browser" | engine | 3 h | 20 min |
-| 7 | Export's shaders from the visitor's game folder (picker and upload field) | web, engine | 4 h | 20 min, plus 15 min in the game: a downloaded area |
+| 6 | The site: `/try/` built by the docs workflow from the release, a handbook page "Try it in your browser". **Done** | engine | 3 h (took 1) | 20 min |
+| 7 | Export's shaders from the visitor's game folder (picker and upload field), and the 16 by 16 size cap. **Done** | web, engine | 4 h (took 1) | 20 min, plus 15 min in the game: a downloaded area |
 | 8 | Your own game: the folder read on demand, the long-lived engine, Place, Scatter, Things and Scripts from it | web, engine | 8 h | 45 min |
 | 9 | The model pack: placeables and plants, checked, credited, with rows; a sky pack of generated skies | engine (`packs/`) | 8 h | 1 h |
 | 10 | Import in the page (`mg-area` without its drawing) | Moonglow, engine | 4 h | 20 min |
@@ -401,7 +420,9 @@ Steps 1, 2 and 5 can start at once; 3 needs 1 and 2; 4 needs 3; 6 needs 3 and 4;
 
 - **Other browsers:** only headless Chromium ran the page. Firefox and Safari, and phones, weren't tried: "To try in Firefox
   and Safari" lists what to.
-- **The game folder in a page:** the WASI build reading a real install was run in Node, not in a browser through a folder picker.
+- **The game folder in a page:** the export's shaders were read from a copy of the game's keys and archives in headless
+  Chromium, through the upload field and a stand-in for the folder picker (headless Chromium can't show it), and remembered
+  across a reload. The real picker in Chrome and Edge wasn't clicked through.
 - **A real network:** the page loaded from this machine; Pages' compression of `.wasm` and the load time over the Internet are
   estimates from sizes.
 - **An idle Service Worker in a real browser:** Playwright kept it alive.

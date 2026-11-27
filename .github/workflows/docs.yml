@@ -1,14 +1,19 @@
 name: docs
 
 # The handbook site (mkdocs.yml). Every pull request to master builds it with --strict, so a dead link, a missing heading or a
-# page left out of the nav fails the check. A merge to master builds it again and publishes it to GitHub Pages.
+# page left out of the nav fails the check. A merge to master builds it again and publishes it to GitHub Pages, with /try/, the
+# Landscaper in the browser (scripts/try-page.sh).
 on:
   pull_request:
     branches: [master]
-    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, .github/workflows/docs.yml]
+    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, packs/demo/**, .github/workflows/docs.yml]
   push:
     branches: [master]
-    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, .github/workflows/docs.yml]
+    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, packs/demo/**, .github/workflows/docs.yml]
+  # A release (a version tag's Release run) brings a new landscaper-wasm.zip for /try/: the site is built again from master.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -20,8 +25,11 @@ concurrency:
 
 jobs:
   build:
+    # (Of the Release runs, only a version tag's that succeeded: not its pull request checks or a run by hand.)
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # (Until a release has landscaper-wasm.zip, /try/ builds the engine: about 5 minutes.)
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -39,13 +47,29 @@ jobs:
       - run: mkdocs build --strict
         env:
           NO_MKDOCS_2_WARNING: "1"
-      - if: github.event_name != 'pull_request'
+      # The Rust the engine's fallback build needs (scripts/try-page.sh), with the wasm job's cache.
+      - name: Rust (stable)
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: wasm
+          save-if: false
+      # /try/: the engine of the newest release with landscaper-wasm.zip and the editor at its tag (else built here, with the
+      # editor's main). The page needs no header Pages can't send: it uses no threads, so no cross-origin isolation.
+      - name: The page in the browser (/try/)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CARGO_TERM_COLOR: always
+          CARGO_INCREMENTAL: "0"
+        run: scripts/try-page.sh site/try
+      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
 
   deploy:
-    if: github.event_name != 'pull_request'
+    # (Only master's site: a run started by hand on another branch builds it without publishing it.)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
