@@ -216,13 +216,13 @@ jobs:
           mkdir app-out
           cp target/release/bundle/nsis/*-setup.exe "app-out/nwn-landscaper-$VERSION-windows-x86_64-setup.exe"
           ls -l app-out
-          if [ "${#sign[@]}" -gt 0 ]; then
-            for f in app-out/*-setup.exe target/release/nwn-landscaper.exe; do
-              status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature '$f').Status" | tr -d '\r')
-              echo "Authenticode, $f: $status"
-              [ "$status" = Valid ]
-            done
-          fi
+          # Tauri signs the program, packs it, then puts the unsigned one back in target/: the packed copy is the one that ships.
+          7z x -y -o"$RUNNER_TEMP/packed" app-out/*-setup.exe nwn-landscaper.exe >/dev/null
+          for f in app-out/*-setup.exe "$RUNNER_TEMP/packed/nwn-landscaper.exe"; do
+            status=$(powershell -NoProfile -Command "(Get-AuthenticodeSignature '$(cygpath -w "$f")').Status" | tr -d '\r')
+            echo "Authenticode, $(basename "$f"): $status"
+            [ "${#sign[@]}" -eq 0 ] || [ "$status" = Valid ]
+          done
       - name: Remove the signing token (version tags)
         if: always() && startsWith(github.ref, 'refs/tags/v')
         shell: bash
