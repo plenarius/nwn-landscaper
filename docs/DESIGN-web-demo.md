@@ -1,6 +1,7 @@
 # Design: try the Landscaper in a browser
 
-Status: design, stage 1 being built. Written 2026-11-26 from a spike; every question but threads decided the same day.
+Status: stage 1 being built: steps 3, 4 and 5 done. Written 2026-11-26 from a spike; every question but threads decided the same
+day. The page as built (step 4): "The page" below.
 
 A public "try it" page: the editor and its engine both in the visitor's browser, nothing to install and no engine on a server.
 Visitors without the game sculpt, paint, check paths and export with art that isn't the game's; visitors with the game point the
@@ -131,6 +132,64 @@ ring, ureq) 0.6 MB (useless here), `serde_json` 0.3 MB, Moonglow about 0.6 MB, n
 
 The editor's own files are 3.8 MB, 1.1 MB with gzip. A first visit downloads about 3.1 MB with brotli; at 20 Mbit/s that's about
 1.5 s, at 5 Mbit/s about 5 s, before the 0.2 s start.
+
+## The page
+
+Built in step 4, in nwn-landscaper-web: `js/start.js`, `sw.js`, `try/`, and `scripts/try-site.sh`, which makes the page from
+the editor's own files, `landscaper.wasm` and `packs/demo`'s listed pictures (each checked against its SHA-256) and refuses any
+other file. Step 6 runs it in the docs workflow. The page holds no file of the game: the stand-ins are made in code
+(`try/standins.js`), and are the spike's byte for byte.
+
+- **Start:** `js/start.js` reads `try/site.json`, which only that script writes; from `landscaper serve` or the desktop app the
+  engine answers 404 and the editor starts as before. With it, the page takes a lock (one tab at a time: a second one says so
+  and waits), starts the Service Worker and its own Worker, and the Worker compiles the engine and reads the data folder from
+  OPFS. Then the editor starts.
+- **Requests:** the Service Worker hands each `/api/...` and `textures/...` request to the page that made it, the page to its
+  Worker, the Worker to the engine (`landscaper wasi-request /io/request /io/answer`, its answer in a file of its own). The
+  Service Worker keeps nothing, so a browser stopping it when idle loses nothing.
+- **Saving (question 3), changed in one point:** the engine's data folder is copied from OPFS into memory at the start, and
+  what a request changed is written back to OPFS before its answer goes out. Not `SyncOPFSFile` as decided: OPFS makes a file
+  only with an asynchronous call, which the engine can't wait for in the middle of a write, and the engine saves by writing a
+  temporary file and renaming it over the old one. The engine is the same either way. Exports stay in memory (they are
+  downloads), so OPFS holds areas, deleted areas and the texture library: 34 MB after the first visit.
+- **The texture library:** the first visit builds it from the demo pack's pictures (decoded to PNG in the Worker, then
+  `textures init --pictures`) and keeps it in OPFS with the pack's SHA-256; a later visit reads it back, and a new pack builds
+  it again.
+- **File:** Download area (the area's JSON) and Open area from a file (asks before replacing an area of its name). Export
+  downloads `<area>.zip`: `modules/<module>.mod`, the haks of `hak/`, and a README on where they go and why the area draws
+  wrong in the game until it is exported with the game's shaders. The files are stored, not compressed: compressing 15 MB took
+  1 s and the zip never leaves the machine.
+- **Texts:** where the desktop names `landscaper serve`, a path on disk or the modules list, the page says what it does instead
+  (the export's report names the zip; the "No engine" line says the engine couldn't start in this browser). Help has the
+  engine's source at its tag. Texture packs (the engine can't reach the Internet yet) and Publish (a package for a team) are
+  hidden; the panels that need the game say so (step 5).
+
+Measured in headless Chromium 131 on the 48-core server, the page served from the same machine (so no download time):
+
+| | First visit | Repeat visit |
+|---|---|---|
+| The engine ready | 2.8 to 3.1 s: 2.3 to 2.4 s building the texture library, 0.5 s writing it to OPFS | 0.33 to 0.44 s, 0.24 to 0.3 s of it reading 34 MB from OPFS |
+| The editor settled (its last start-up answer) | 3.8 to 4.2 s | 1.4 to 1.7 s |
+
+| Job (8 by 8) | In the page |
+|---|---|
+| Check paths | 0.29 to 0.43 s |
+| Export, the engine's part | 1.9 to 2.3 s; 3.3 to 5.6 s the first time in a visit (it builds the texture library's hak) |
+| Export, from the click to the download | 2.7 to 7.1 s; the zip itself 60 to 90 ms |
+| A request that reads nothing | 2 to 5 ms, and what it changed written to OPFS |
+
+### To try in Firefox and Safari
+
+Headless Chromium is the only browser this page ran in. In a current Firefox and Safari (macOS, and an iPhone or iPad if one
+is at hand), on the page step 6 publishes, or one made with `scripts/try-site.sh` and served locally:
+
+1. The first visit: the start card, then the editor with the demo's grass. How long it took.
+2. Sculpt a hill, paint a strip of another texture, Check paths: the report and its markers.
+3. Reload: the area is still there, as it was. Close the browser, open the page again: still there, and the start is quicker.
+4. File, Download area; then File, Open area from a file with it (renamed, or answer Replace).
+5. Export: `<area>.zip` downloads and opens (a module, two haks, the README).
+6. A second tab of the page: it says it waits, and starts when the first is closed.
+7. Safari only: a private window (OPFS may be missing there: the page should still work, without keeping the area).
 
 ## What needs the game
 
@@ -305,8 +364,9 @@ generated skies with it. Reuses the texture pack's checks and install.
   reported as "too big for this browser".
 - **Browser support:** OPFS from a Worker is in current Chromium, Firefox and Safari; the folder picker only in Chromium (the
   upload field elsewhere). Only headless Chromium was tried.
-- **The Service Worker's updates:** a new `sw.js` takes over the next load; a stale page with a new engine could disagree on the
-  API. The engine's version is in `/api/me`, and the page reloads when they differ.
+- **The Service Worker's updates:** a new `sw.js` takes over the next load. It only passes requests on, and the page and its
+  engine load together (`try/site.json` is fetched without the cache), so a stale Service Worker can't pair an old page with a
+  new engine.
 - **Licences:** serving the wasm publicly distributes the engine (GPL-3.0): the page links to its source at the tag. The wasm also
   holds wasi-sdk's C and C++ libraries (Apache-2.0 with the LLVM exception, MIT), which `cargo-about` doesn't see; the licence page
   lists them by hand. browser_wasi_shim is MIT or Apache-2.0.
@@ -323,7 +383,7 @@ maintainer's time is review and testing.
 | 1 | Moonglow's patched copy: lazy BIF reads and read fallbacks on WASI, `strnicmp`, on a branch of the maintainer's fork | Moonglow (fork) | 3 h | 20 min |
 | 2 | nwn-bake: its thread pools run in turn on WASI; a release (the maintainer cuts it) | nwn-bake | 2 h | 15 min |
 | 3 | The engine's WASI build: its Cargo configuration taking the patched Moonglow and nwn-bake, the `web` feature (the browser's entry point; no threads, TLS or import on WASI), `wasi-request` with its answer on its own stream, threads, process id; the CI `wasm` job and its size check; `landscaper-wasm.zip` in the release | engine | 6 h | 45 min |
-| 4 | The page: the engine in a Worker, the Service Worker passing requests, OPFS, Download and Open area, export as a zip, the texts that name a server or a disk path | web | 8 h | 45 min, plus 30 min in Firefox and Safari |
+| 4 | The page: the engine in a Worker, the Service Worker passing requests, OPFS, Download and Open area, export as a zip, the texts that name a server or a disk path. **Done** | web | 8 h (took 2) | 45 min, plus 30 min in Firefox and Safari |
 | 5 | Demo assets: the texture pack (the maintainer's and CC0), the stand-ins made by a script, panels that need the game saying so | engine, web | 4 h | 30 min, choosing textures |
 | 6 | The site: `/try/` built by the docs workflow from the release, a handbook page "Try it in your browser" | engine | 3 h | 20 min |
 | 7 | Export's shaders from the visitor's game folder (picker and upload field) | web, engine | 4 h | 20 min, plus 15 min in the game: a downloaded area |
@@ -339,11 +399,14 @@ Steps 1, 2 and 5 can start at once; 3 needs 1 and 2; 4 needs 3; 6 needs 3 and 4;
 
 ## What this design could not check
 
-- **Other browsers:** only headless Chromium ran the page. Firefox and Safari, and phones, weren't tried.
+- **Other browsers:** only headless Chromium ran the page. Firefox and Safari, and phones, weren't tried: "To try in Firefox
+  and Safari" lists what to.
 - **The game folder in a page:** the WASI build reading a real install was run in Node, not in a browser through a folder picker.
 - **A real network:** the page loaded from this machine; Pages' compression of `.wasm` and the load time over the Internet are
   estimates from sizes.
 - **An idle Service Worker in a real browser:** Playwright kept it alive.
-- **The OPFS workspace:** the spike kept the engine's files in memory.
+- **The OPFS workspace:** checked in step 4, in headless Chromium only (areas kept across reloads and a new browser).
+- **A page loaded with the cache bypassed** (Shift and reload): the page asks the Service Worker to take it over; not tried,
+  as Playwright can't load a page that way.
 - **The client:** no export from the page was loaded in the game. The same export built natively is byte for byte the WASI one,
   so only the no-game export's placeholder shaders are new, and they are known to draw wrong.
