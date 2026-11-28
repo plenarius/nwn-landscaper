@@ -18,6 +18,8 @@ pub struct Placed {
     pub positions: Vec<[f32; 3]>,
     /// Each position's texture coordinates.
     pub uvs: Vec<[f32; 2]>,
+    /// Each position's normal, turned as it stands; empty when its model gives none ([`Flat::normals`]).
+    pub normals: Vec<[f32; 3]>,
     /// (texture, first triangle, count, transparency hint).
     pub groups: Vec<(String, usize, usize, u32)>,
     /// Each group's self-illumination colour; empty: none glows.
@@ -68,6 +70,12 @@ fn place(o: &Object, f: &Flat, model: [u8; 20]) -> Placed {
         [o.x + c * x - s * y, o.y + s * x + c * y, o.z + z]
     };
     let positions: Vec<[f32; 3]> = f.positions.iter().map(|p| at(*p)).collect();
+    // (Scaled alike every way, so only turned.)
+    let normals = if f.normals.len() == f.positions.len() {
+        f.normals.iter().map(|n| [c * n[0] - s * n[1], s * n[0] + c * n[1], n[2]]).collect()
+    } else {
+        Vec::new()
+    };
     let mut min = [f32::MAX; 3];
     let mut max = [f32::MIN; 3];
     for p in &positions {
@@ -88,7 +96,20 @@ fn place(o: &Object, f: &Flat, model: [u8; 20]) -> Placed {
         .collect();
     let groups = f.groups.iter().zip(&f.transparency).map(|((t, a, n), h)| (t.clone(), *a, *n, *h)).collect();
     let what = format!("{}:{}:{}:{}:{}:{}", o.model, o.x, o.y, o.z, o.bearing, o.scale);
-    Placed { positions, uvs: f.uvs.clone(), groups, glow: f.glow.clone(), footprint, min, max, baked: o.baked, halo: false, what, model }
+    Placed {
+        positions,
+        uvs: f.uvs.clone(),
+        normals,
+        groups,
+        glow: f.glow.clone(),
+        footprint,
+        min,
+        max,
+        baked: o.baked,
+        halo: false,
+        what,
+        model,
+    }
 }
 
 /// The current terrain's objects placed, and an index of their footprints.
@@ -247,11 +268,11 @@ pub fn instances(game: &mg_rules::GameData) -> Result<Vec<mg_gff::Struct>> {
     Ok(out)
 }
 
-/// A triangle's corner: its position and texture coordinates.
-type Corner = ([f32; 3], [f32; 2]);
+/// A triangle's corner: its position, texture coordinates and normal.
+type Corner = ([f32; 3], [f32; 2], [f32; 3]);
 
-/// A triangle and its corners' texture coordinates.
-pub type Piece = ([[f32; 3]; 3], [[f32; 2]; 3]);
+/// A triangle, its corners' texture coordinates and their normals (zero for a model with none: then they stay zero).
+pub type Piece = ([[f32; 3]; 3], [[f32; 2]; 3], [[f32; 3]; 3]);
 
 /// Where edge a-b crosses the plane `p[axis] = at`, on the plane exactly. The edge is taken from its lower end whichever way it is
 /// walked, so the two pieces on either side of a cut get the same point, bit for bit.
@@ -263,7 +284,16 @@ fn crossing(a: &Corner, b: &Corner, axis: usize, at: f32) -> Corner {
         p[k] = a.0[k] + (b.0[k] - a.0[k]) * t;
     }
     p[axis] = at;
-    (p, [a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t])
+    // (The normal as the texture coordinates, then made unit again: the cut's corners shade as the surface between its ends.)
+    let mut n = [0.0; 3];
+    for k in 0..3 {
+        n[k] = a.2[k] + (b.2[k] - a.2[k]) * t;
+    }
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len > 0.0 {
+        n = n.map(|v| v / len);
+    }
+    (p, [a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t], n)
 }
 
 /// The part of polygon `poly` where `(p[axis] - at) * sign >= 0`.
@@ -286,12 +316,14 @@ fn keep(poly: &[Corner], axis: usize, at: f32, sign: f32) -> Vec<Corner> {
 
 /// A convex polygon as triangles (a fan from its first corner).
 fn fan(poly: &[Corner]) -> Vec<Piece> {
-    (1..poly.len().saturating_sub(1)).map(|k| ([poly[0].0, poly[k].0, poly[k + 1].0], [poly[0].1, poly[k].1, poly[k + 1].1])).collect()
+    (1..poly.len().saturating_sub(1))
+        .map(|k| ([poly[0].0, poly[k].0, poly[k + 1].0], [poly[0].1, poly[k].1, poly[k + 1].1], [poly[0].2, poly[k].2, poly[k + 1].2]))
+        .collect()
 }
 
-/// Clips a triangle (positions and UVs) to the square [x0, x1] x [y0, y1]; the pieces as triangles.
-pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1: f32) -> Vec<Piece> {
-    let mut poly: Vec<Corner> = (0..3).map(|k| (tri[k], uv[k])).collect();
+/// Clips a triangle (positions, UVs and normals) to the square [x0, x1] x [y0, y1]; the pieces as triangles.
+pub fn clip((tri, uv, nrm): Piece, x0: f32, x1: f32, y0: f32, y1: f32) -> Vec<Piece> {
+    let mut poly: Vec<Corner> = (0..3).map(|k| (tri[k], uv[k], nrm[k])).collect();
     for (axis, at, sign) in [(0, x0, 1.0), (0, x1, -1.0), (1, y0, 1.0), (1, y1, -1.0)] {
         if poly.is_empty() {
             break;
@@ -303,14 +335,14 @@ pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1
 
 /// Splits a triangle at height `z`: the pieces below and those above. A triangle on one side is that side's whole; the pieces of
 /// one that crosses share their cut edge's points exactly, so nothing opens between them.
-pub fn split_at_height(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], z: f32) -> (Vec<Piece>, Vec<Piece>) {
+pub fn split_at_height((tri, uv, nrm): Piece, z: f32) -> (Vec<Piece>, Vec<Piece>) {
     if tri.iter().all(|p| p[2] <= z) {
-        return (vec![(tri, uv)], Vec::new());
+        return (vec![(tri, uv, nrm)], Vec::new());
     }
     if tri.iter().all(|p| p[2] >= z) {
-        return (Vec::new(), vec![(tri, uv)]);
+        return (Vec::new(), vec![(tri, uv, nrm)]);
     }
-    let poly: Vec<Corner> = (0..3).map(|k| (tri[k], uv[k])).collect();
+    let poly: Vec<Corner> = (0..3).map(|k| (tri[k], uv[k], nrm[k])).collect();
     (fan(&keep(&poly, 2, z, -1.0)), fan(&keep(&poly, 2, z, 1.0)))
 }
 
@@ -371,19 +403,30 @@ mod tests {
     fn a_triangle_across_a_tile_edge_is_split_between_the_tiles() {
         let tri = [[8.0, 2.0, 0.0], [12.0, 2.0, 1.0], [8.0, 6.0, 0.0]];
         let uv = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
-        let area = |ps: &[([[f32; 3]; 3], [[f32; 2]; 3])]| {
+        // (Normals: west at the first corner, east at the second.)
+        let nrm = [[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+        let area = |ps: &[Piece]| {
             ps.iter()
-                .map(|(t, _)| ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[2][0] - t[0][0]) * (t[1][1] - t[0][1])).abs() / 2.0)
+                .map(|(t, ..)| ((t[1][0] - t[0][0]) * (t[2][1] - t[0][1]) - (t[2][0] - t[0][0]) * (t[1][1] - t[0][1])).abs() / 2.0)
                 .sum::<f32>()
         };
-        let left = clip(tri, uv, 0.0, 10.0, 0.0, 10.0);
-        let right = clip(tri, uv, 10.0, 20.0, 0.0, 10.0);
+        let left = clip((tri, uv, nrm), 0.0, 10.0, 0.0, 10.0);
+        let right = clip((tri, uv, nrm), 10.0, 20.0, 0.0, 10.0);
         assert!((area(&left) + area(&right) - 8.0).abs() < 1e-4);
         // Past x = 10: the corner (10, 2), (12, 2), (10, 4).
         assert!((area(&right) - 2.0).abs() < 1e-4);
-        // The cut's height and UV are interpolated.
-        let cut =
-            right.iter().flat_map(|(t, u)| t.iter().zip(u)).find(|(p, _)| (p[0] - 10.0).abs() < 1e-5 && (p[1] - 2.0).abs() < 1e-5).unwrap();
-        assert!((cut.0[2] - 0.5).abs() < 1e-5 && (cut.1[0] - 0.5).abs() < 1e-5);
+        // The cut's height, UV and normal are interpolated, the normal made unit again. Halfway from west to east it is zero, and
+        // stays zero rather than pointing anywhere.
+        let cut = right
+            .iter()
+            .flat_map(|(t, u, n)| t.iter().zip(u).zip(n))
+            .find(|((p, _), _)| (p[0] - 10.0).abs() < 1e-5 && (p[1] - 2.0).abs() < 1e-5)
+            .unwrap();
+        assert!((cut.0.0[2] - 0.5).abs() < 1e-5 && (cut.0.1[0] - 0.5).abs() < 1e-5);
+        assert_eq!(*cut.1, [0.0; 3]);
+        // Where (10, 4) cuts edge 1-2: from east (1, 0, 0) halfway to up (0, 0, 1), made unit.
+        let far = right.iter().flat_map(|(t, _, n)| t.iter().zip(n)).find(|(p, _)| (p[1] - 4.0).abs() < 1e-5).unwrap().1;
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        assert!((far[0] - h).abs() < 1e-5 && far[1].abs() < 1e-6 && (far[2] - h).abs() < 1e-5, "{far:?}");
     }
 }

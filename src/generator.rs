@@ -146,10 +146,10 @@ mod water_look_tests {
         assert!(props.contains("  diffuse 0.5 1 0.25\n") && props.contains("  ambient 0.5 1 0.25\n") && props.contains("  alpha 0.8\n"));
         // (a tinted mesh's own colours replace the white ones; an untinted one keeps them)
         let mut s = String::new();
-        super::mdl::trimesh_listed(&mut s, "w", "r", &texture, &props, &[[0.0; 3]; 3], &[[0.0; 2]; 3]);
+        super::mdl::trimesh_listed(&mut s, "w", "r", &texture, &props, &[[0.0; 3]; 3], &[[0.0; 2]; 3], None);
         assert!(!s.contains("diffuse 1 1 1") && s.contains("diffuse 0.5 1 0.25"));
         let mut s = String::new();
-        super::mdl::trimesh_listed(&mut s, "w", "r", "ttr01_water01", "  transparencyhint 1\n", &[[0.0; 3]; 3], &[[0.0; 2]; 3]);
+        super::mdl::trimesh_listed(&mut s, "w", "r", "ttr01_water01", "  transparencyhint 1\n", &[[0.0; 3]; 3], &[[0.0; 2]; 3], None);
         assert!(s.contains("  ambient 1 1 1\n  diffuse 1 1 1\n"));
     }
 }

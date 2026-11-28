@@ -227,6 +227,11 @@ pub struct Flat {
     /// when no group glows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub glow: Vec<[f32; 3]>,
+    /// Each corner's normal ([`normals_of`]), one a position, so a baked copy shades as the model does; empty when the model has
+    /// none to give (an import's things). Neither written nor read, so the editor's `/api/model` answer and the imports' files stay
+    /// as they were.
+    #[serde(skip)]
+    pub normals: Vec<[f32; 3]>,
 }
 
 /// An `obj_*.json` file as read: every field of `nwn_bake::Flat` and the three of [`Flat`]. (A field added to `nwn_bake::Flat` stops
@@ -251,13 +256,13 @@ struct FlatFile {
 impl From<FlatFile> for Flat {
     fn from(f: FlatFile) -> Self {
         let FlatFile { positions, uvs, groups, transparency, footprint, min, max, decal, fixed, glow } = f;
-        Flat { mesh: nwn_bake::Flat { positions, uvs, groups, transparency, footprint, min, max }, decal, fixed, glow }
+        Flat { mesh: nwn_bake::Flat { positions, uvs, groups, transparency, footprint, min, max }, decal, fixed, glow, normals: Vec::new() }
     }
 }
 
 impl From<nwn_bake::Flat> for Flat {
     fn from(mesh: nwn_bake::Flat) -> Self {
-        Flat { mesh, decal: None, fixed: false, glow: Vec::new() }
+        Flat { mesh, decal: None, fixed: false, glow: Vec::new(), normals: Vec::new() }
     }
 }
 
@@ -288,6 +293,41 @@ pub fn glow_of(model: &mg_mdl::Model, groups: &[(String, usize, usize)]) -> Vec<
         return Vec::new();
     }
     glow
+}
+
+/// Each corner's normal for `flat`, flattened from `model` by nwn-bake: the meshes' own normals (stored, or from their smoothing
+/// groups), turned with their nodes at rest, in nwn-bake's order (drawn, textured meshes, their triangles' corners). Empty when the
+/// meshes don't line up with the groups, or one has no normal a vertex: then the copy keeps a flat normal a face.
+pub fn normals_of(model: &mg_mdl::Model, flat: &nwn_bake::Flat) -> Vec<[f32; 3]> {
+    let pose = nwn_bake::rest_pose(model);
+    let (mut out, mut group) = (Vec::with_capacity(flat.positions.len()), 0);
+    for (i, node) in model.nodes.iter().enumerate() {
+        let Some(mesh) = node.mesh() else { continue };
+        // (nwn-bake's choice of meshes, as glow_of)
+        let Some(texture) = mesh.textures[0].as_deref().filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("null")) else { continue };
+        if !mesh.render || mesh.vertices.is_empty() {
+            continue;
+        }
+        let count = mesh.triangles().count();
+        if count == 0 {
+            continue;
+        }
+        match flat.groups.get(group) {
+            Some((t, _, n)) if t.eq_ignore_ascii_case(texture) && *n == count && mesh.normals.len() >= mesh.vertices.len() => {}
+            _ => return Vec::new(),
+        }
+        group += 1;
+        for t in mesh.triangles() {
+            for v in t {
+                let n = mesh.normals.get(v as usize).copied().unwrap_or_default();
+                out.push(pose[i].transform_vector3(glam::Vec3::from_array(n)).normalize_or_zero().to_array());
+            }
+        }
+    }
+    if group != flat.groups.len() || out.len() != flat.positions.len() {
+        return Vec::new();
+    }
+    out
 }
 
 impl std::ops::Deref for Flat {
@@ -331,11 +371,12 @@ pub fn flat(game: &GameData, resref: &str) -> Result<Arc<Flat>> {
         return Ok(f.clone());
     }
     let mut f = Flat::from(nwn_bake::flatten(game, &kept.1)?);
-    // (nwn-bake leaves self-illumination out: read again here, cached with the rest)
+    // (nwn-bake leaves self-illumination and normals out: read again here, cached with the rest)
     if let Ok(data) = game.resman.get_named(&kept.1, ResType::MDL)
         && let Ok(model) = mg_mdl::Model::read(&data)
     {
         f.glow = glow_of(&model, &f.groups);
+        f.normals = normals_of(&model, &f.mesh);
     }
     let f = Arc::new(f);
     cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(kept, f.clone());
@@ -464,8 +505,26 @@ pub fn door_appearances(game: &GameData) -> Result<Vec<serde_json::Value>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Decal, EditorHaks, Flat};
+    use super::{Decal, EditorHaks, Flat, normals_of};
     use crate::config::Haks;
+
+    #[test]
+    fn a_model_s_normals_are_turned_with_its_nodes_one_a_corner() {
+        // One triangle facing +x in a node turned a quarter round z (so it faces +y in the model), and a second node with no
+        // texture, which nwn-bake leaves out.
+        let text = "newmodel t\nbeginmodelgeom t\nnode dummy t\n  parent NULL\nendnode\nnode trimesh a\n  parent t\n  \
+                    orientation 0 0 1 1.5707964\n  bitmap bark\n  verts 3\n    0 0 0\n    0 1 0\n    0 0 1\n  tverts 1\n    0 0 0\n  \
+                    faces 1\n    0 1 2 1 0 0 0 0\nendnode\nnode trimesh b\n  parent t\n  bitmap NULL\n  verts 3\n    0 0 0\n  \
+                    1 0 0\n    0 1 0\n  faces 1\n    0 1 2 1 0 0 0 0\nendnode\nendmodelgeom t\ndonemodel t\n";
+        let model = mg_mdl::Model::read(text.as_bytes()).unwrap();
+        let flat = nwn_bake::Flat { positions: vec![[0.0; 3]; 3], groups: vec![("bark".into(), 0, 1)], ..Default::default() };
+        let n = normals_of(&model, &flat);
+        assert_eq!(n.len(), 3);
+        assert!(n.iter().all(|n| n[0].abs() < 1e-5 && (n[1] - 1.0).abs() < 1e-5 && n[2].abs() < 1e-5), "{n:?}");
+        // Groups that don't match the meshes: none, rather than another mesh's.
+        let other = nwn_bake::Flat { groups: vec![("leaves".into(), 0, 1)], ..flat };
+        assert!(normals_of(&model, &other).is_empty());
+    }
 
     /// A game of `layers` (label, files), the first highest, each a placeables.2da (its rows after the header) and models.
     fn small_game(layers: &[(&str, Option<&str>, &[&str])]) -> mg_rules::GameData {
@@ -603,7 +662,7 @@ mod tests {
             min,
             max,
         };
-        let new = Flat { mesh, decal: decal.clone(), fixed, glow: Vec::new() };
+        let new = Flat { mesh, decal: decal.clone(), fixed, glow: Vec::new(), normals: Vec::new() };
         let old = Before { positions, uvs, groups, transparency: vec![2], footprint, min, max, decal, fixed };
         (new, old)
     }
@@ -671,7 +730,7 @@ mod tests {
             min: [0.5, 1.0, 2.0],
             max: [1.5, 2.0, 2.25],
         };
-        let flat = Flat { mesh, decal: Some(decal), fixed: true, glow: Vec::new() };
+        let flat = Flat { mesh, decal: Some(decal), fixed: true, glow: Vec::new(), normals: vec![[0.0, 0.0, 1.0]; 3] };
         assert_eq!(
             serde_json::to_string(&flat).unwrap(),
             concat!(

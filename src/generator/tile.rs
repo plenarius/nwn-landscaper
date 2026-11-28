@@ -307,23 +307,27 @@ pub(super) fn tile_model(
         for o in scene.objects.iter().filter(|o| o.baked && !o.halo && o.max[0] > x0 && o.min[0] < x1 && o.max[1] > y0 && o.min[1] < y1) {
             for (k, (texture, first, count, hint)) in o.groups.iter().enumerate() {
                 // Each texture's triangles in two nodes: the solid part, then the part that fades, cut flat between them.
-                let mut parts: [(Vec<[f32; 3]>, Vec<[f32; 2]>); 2] = Default::default();
+                let mut parts: [(Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<[f32; 3]>); 2] = Default::default();
                 let cut = fade_cut(o.min[2], o.max[2]);
+                let smooth = !o.normals.is_empty();
                 for t in *first..first + count {
                     let tri = [o.positions[3 * t], o.positions[3 * t + 1], o.positions[3 * t + 2]];
                     let uv = [o.uvs[3 * t], o.uvs[3 * t + 1], o.uvs[3 * t + 2]];
-                    let (below, above) = cut.map_or_else(|| (vec![(tri, uv)], Vec::new()), |z| objects::split_at_height(tri, uv, z));
+                    let nrm = if smooth { [o.normals[3 * t], o.normals[3 * t + 1], o.normals[3 * t + 2]] } else { [[0.0; 3]; 3] };
+                    let piece = (tri, uv, nrm);
+                    let (below, above) = cut.map_or_else(|| (vec![piece], Vec::new()), |z| objects::split_at_height(piece, z));
                     for (side, pieces) in [below, above].into_iter().enumerate() {
-                        let (verts, uvs) = &mut parts[side];
-                        for (tri, uv) in pieces {
-                            for (p, u) in objects::clip(tri, uv, x0, x1, y0, y1) {
+                        let (verts, uvs, normals) = &mut parts[side];
+                        for piece in pieces {
+                            for (p, u, n) in objects::clip(piece, x0, x1, y0, y1) {
                                 verts.extend(p.map(|v| [v[0] - ox, v[1] - oy, v[2] - base]));
                                 uvs.extend(u);
+                                normals.extend(n);
                             }
                         }
                     }
                 }
-                for (fading, (verts, uvs)) in parts.iter().enumerate() {
+                for (fading, (verts, uvs, normals)) in parts.iter().enumerate() {
                     if verts.is_empty() {
                         continue;
                     }
@@ -335,7 +339,7 @@ pub(super) fn tile_model(
                     if let Some(c) = o.glow.get(k).filter(|c| c.iter().any(|&x| x > 0.0)) {
                         let _ = writeln!(props, "  selfillumcolor {} {} {}", num(c[0]), num(c[1]), num(c[2]));
                     }
-                    trimesh_listed(&mut s, &format!("{name}_o{node}"), name, texture, &props, verts, uvs);
+                    trimesh_listed(&mut s, &format!("{name}_o{node}"), name, texture, &props, verts, uvs, smooth.then_some(&normals[..]));
                     node += 1;
                 }
             }
@@ -605,20 +609,21 @@ mod tests {
             0.5 * (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt()
         };
         let uv = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let up = [[0.0, 0.0, 1.0]; 3];
         // Whole on one side: a trunk's triangle below the cut, a crown's above.
-        let (below, above) = objects::split_at_height([[0.0, 0.0, 10.0], [1.0, 0.0, 11.0], [0.0, 1.0, 14.0]], uv, 14.0);
+        let (below, above) = objects::split_at_height(([[0.0, 0.0, 10.0], [1.0, 0.0, 11.0], [0.0, 1.0, 14.0]], uv, up), 14.0);
         assert_eq!((below.len(), above.len()), (1, 0));
-        let (below, above) = objects::split_at_height([[0.0, 0.0, 16.0], [1.0, 0.0, 17.0], [0.0, 1.0, 14.0]], uv, 14.0);
+        let (below, above) = objects::split_at_height(([[0.0, 0.0, 16.0], [1.0, 0.0, 17.0], [0.0, 1.0, 14.0]], uv, up), 14.0);
         assert_eq!((below.len(), above.len()), (0, 1));
         // One across it: cut at the plane, the halves' areas adding up and their corners on the plane the same points.
         let tri = [[0.0, 0.0, 12.0], [1.3, 0.2, 15.7], [0.1, 0.9, 13.1]];
-        let (below, above) = objects::split_at_height(tri, uv, 14.0);
+        let (below, above) = objects::split_at_height((tri, uv, up), 14.0);
         assert!(!below.is_empty() && !above.is_empty());
-        let total: f32 = below.iter().chain(&above).map(|(t, _)| area(t)).sum();
+        let total: f32 = below.iter().chain(&above).map(|(t, ..)| area(t)).sum();
         assert!((total - area(&tri)).abs() < 1e-5, "{total} against {}", area(&tri));
-        assert!(below.iter().flat_map(|(t, _)| t).all(|p| p[2] <= 14.0) && above.iter().flat_map(|(t, _)| t).all(|p| p[2] >= 14.0));
+        assert!(below.iter().flat_map(|(t, ..)| t).all(|p| p[2] <= 14.0) && above.iter().flat_map(|(t, ..)| t).all(|p| p[2] >= 14.0));
         let on = |pieces: &[objects::Piece]| {
-            let mut v: Vec<[u32; 3]> = pieces.iter().flat_map(|(t, _)| *t).filter(|p| p[2] == 14.0).map(|p| p.map(f32::to_bits)).collect();
+            let mut v: Vec<[u32; 3]> = pieces.iter().flat_map(|(t, ..)| *t).filter(|p| p[2] == 14.0).map(|p| p.map(f32::to_bits)).collect();
             v.sort_unstable();
             v.dedup();
             v
@@ -627,7 +632,9 @@ mod tests {
         assert_eq!(on(&below), on(&above), "the cut edge's ends, bit for bit");
         // Texture coordinates follow: where the cut meets edge 0-1 (u from 0 to 1), u is the share of the way up it.
         let t = (14.0 - 12.0) / (15.7 - 12.0);
-        assert!(below.iter().any(|(p, u)| p.iter().zip(u).any(|(p, u)| p[2] == 14.0 && (u[0] - t).abs() < 1e-5)));
+        assert!(below.iter().any(|(p, u, _)| p.iter().zip(u).any(|(p, u)| p[2] == 14.0 && (u[0] - t).abs() < 1e-5)));
+        // And normals: all up, so every cut corner's is up too.
+        assert!(below.iter().chain(&above).all(|(.., n)| n.iter().all(|n| *n == [0.0, 0.0, 1.0])));
     }
 
     #[test]

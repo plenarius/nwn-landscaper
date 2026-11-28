@@ -323,7 +323,7 @@ impl Overhang {
                 let verts: Vec<[f32; 3]> = water.iter().map(|p| [p[0] - ox, p[1] - oy, p[2] - base]).collect();
                 let uvs: Vec<[f32; 2]> = water.iter().map(|p| [p[0] / WATER_METRES, p[1] / WATER_METRES]).collect();
                 let (wtex, wprops) = super::water_mesh();
-                mdl::trimesh_listed(&mut s, &format!("{name}_hw{n}"), name, &wtex, &wprops, &verts, &uvs);
+                mdl::trimesh_listed(&mut s, &format!("{name}_hw{n}"), name, &wtex, &wprops, &verts, &uvs, None);
             }
         }
         if let Some(list) = self.trees.get(&(tx, ty)) {
@@ -421,6 +421,7 @@ impl Overhang {
                         uvs.push(o.uvs[3 * t + c]);
                     }
                 }
+                let normals = (!o.normals.is_empty()).then(|| &o.normals[3 * first..3 * (first + count)]);
                 if verts.is_empty() {
                     continue;
                 }
@@ -432,7 +433,7 @@ impl Overhang {
                 if let Some(m) = self.materials.get(&texture.to_ascii_lowercase()) {
                     let _ = writeln!(props, "  materialname {m}");
                 }
-                mdl::trimesh_listed(s, &format!("{name}_ht{node}"), name, texture, &props, &verts, &uvs);
+                mdl::trimesh_listed(s, &format!("{name}_ht{node}"), name, texture, &props, &verts, &uvs, normals);
                 node += 1;
             }
         }
