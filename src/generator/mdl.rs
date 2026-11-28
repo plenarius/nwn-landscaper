@@ -100,26 +100,52 @@ fn lit(props: &str) -> &'static str {
 }
 
 /// A trimesh of the triangles listed (three vertices each, with their own texture coordinates), as copied from another model.
+/// Corners at the same place with the same texture coordinates are one vertex: lsforest's tile 0000 has 141,924 corners and
+/// 26,957 such vertices, so its text is a fifth as long to write and to compile. Its faces are in smoothing group 0, so each
+/// keeps its own flat normal as when every corner was a vertex of its own, and the model draws the same.
 pub(super) fn trimesh_listed(out: &mut String, name: &str, root: &str, bitmap: &str, props: &str, verts: &[[f32; 3]], uvs: &[[f32; 2]]) {
     let _ = writeln!(
         out,
         "node trimesh {name}\n  parent {root}\n{}  specular 0 0 0\n  shininess 1\n  shadow 0\n{props}  bitmap {bitmap}",
         lit(props)
     );
-    let _ = writeln!(out, "  verts {}", verts.len());
-    for v in verts {
+    let (corners, vertex) = merged(verts, uvs);
+    let _ = writeln!(out, "  verts {}", vertex.len());
+    for &k in &vertex {
+        let v = verts[k];
         let _ = writeln!(out, "    {} {} {}", num(v[0]), num(v[1]), num(v[2]));
     }
-    let _ = writeln!(out, "  tverts {}", uvs.len());
-    for t in uvs {
+    let _ = writeln!(out, "  tverts {}", vertex.len());
+    for &k in &vertex {
+        let t = uvs[k];
         let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
     }
-    let _ = writeln!(out, "  faces {}", verts.len() / 3);
-    for k in 0..verts.len() / 3 {
-        let (a, b, c) = (3 * k, 3 * k + 1, 3 * k + 2);
-        let _ = writeln!(out, "    {a} {b} {c} 1 {a} {b} {c} 0");
+    let _ = writeln!(out, "  faces {}", corners.len() / 3);
+    for c in corners.as_chunks::<3>().0 {
+        let [a, b, c] = *c;
+        let _ = writeln!(out, "    {a} {b} {c} 0 {a} {b} {c} 0");
     }
     let _ = writeln!(out, "endnode");
+}
+
+/// The corners `verts` and `uvs` (one each a corner) as vertices: each corner's vertex, and the corner each vertex is first
+/// listed at. Equal as the compiler compares them: exactly, -0 as 0.
+fn merged(verts: &[[f32; 3]], uvs: &[[f32; 2]]) -> (Vec<u32>, Vec<usize>) {
+    let bits = |x: f32| if x == 0.0 { 0 } else { x.to_bits() };
+    let mut index: HashMap<([u32; 3], [u32; 2]), u32> = HashMap::with_capacity(verts.len());
+    let mut first = Vec::new();
+    let corners = verts
+        .iter()
+        .zip(uvs)
+        .enumerate()
+        .map(|(k, (v, t))| {
+            *index.entry((v.map(bits), t.map(bits))).or_insert_with(|| {
+                first.push(k);
+                first.len() as u32 - 1
+            })
+        })
+        .collect();
+    (corners, first)
 }
 
 /// [`trimesh_with`] with second texture coordinates (`tverts1`), if given.
@@ -396,5 +422,62 @@ mod tests {
         assert_eq!(list(&s, "tverts").len(), 3);
         assert!(list(&s, "tverts1").is_empty());
         assert_eq!(list(&s, "faces")[0], ["0", "1", "2", "1", "0", "1", "2", "0"]);
+    }
+
+    #[test]
+    fn listed_corners_merge_into_vertices_and_draw_the_same_mesh() {
+        // A quad's two triangles bent along their shared edge, then a third at that edge with its own texture coordinates.
+        let verts = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.5],
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 0.5],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [-1.0, 0.5, 1.0],
+            [-0.0, 1.0, 0.0],
+        ];
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.5, 0.5], [0.0, 1.0], [0.0, 1.0]];
+        let model =
+            |node: &str| format!("newmodel m\nbeginmodelgeom m\nnode dummy m\n  parent NULL\nendnode\n{node}endmodelgeom m\ndonemodel m\n");
+        let mut node = String::new();
+        trimesh_listed(&mut node, "o", "m", "tex", "", &verts, &uvs);
+        // (Two corners share both place and texture coordinates with an earlier one; -0 is 0.)
+        assert_eq!((list(&node, "verts").len(), list(&node, "tverts").len(), list(&node, "faces").len()), (6, 6, 3));
+        // As it was written before: a vertex a corner, smoothing group 1.
+        let mut old = String::from("node trimesh o\n  parent m\n  ambient 1 1 1\n  diffuse 1 1 1\n  specular 0 0 0\n  shininess 1\n");
+        old += "  shadow 0\n  bitmap tex\n  verts 9\n";
+        for v in verts {
+            old += &format!("    {} {} {}\n", num(v[0]), num(v[1]), num(v[2]));
+        }
+        old += "  tverts 9\n";
+        for t in uvs {
+            old += &format!("    {} {} 0\n", num(t[0]), num(t[1]));
+        }
+        old += "  faces 3\n";
+        for k in 0..3 {
+            let (a, b, c) = (3 * k, 3 * k + 1, 3 * k + 2);
+            old += &format!("    {a} {b} {c} 1 {a} {b} {c} 0\n");
+        }
+        old += "endnode\n";
+        // What is drawn is the same: places, normals, tangents, texture coordinates and corners. (The face records' neighbours and
+        // the bounding sphere's centre come from the text's vertex numbers, as the game's compiler has them, so the bytes differ.)
+        let drawn = |node: &str| {
+            let compiled = mg_mdl::compile::compile(model(node).as_bytes(), &Default::default()).unwrap().binary;
+            let m = mg_mdl::Model::read(&compiled).unwrap();
+            let mesh = m.nodes.iter().find_map(mg_mdl::Node::mesh).unwrap().clone();
+            (mesh.vertices, mesh.normals, mesh.tangents, mesh.uvs, mesh.faces)
+        };
+        assert_eq!(drawn(&node), drawn(&old), "the same mesh drawn");
+        // Smoothing group 1 on shared vertices would have smoothed the bend.
+        let smoothed: String = node
+            .lines()
+            .map(|l| match l.split_whitespace().collect::<Vec<_>>()[..] {
+                [a, b, c, "0", ta, tb, tc, m] => format!("    {a} {b} {c} 1 {ta} {tb} {tc} {m}\n"),
+                _ => format!("{l}\n"),
+            })
+            .collect();
+        assert_ne!(drawn(&smoothed).1, drawn(&old).1, "the test can tell smoothing apart");
     }
 }
