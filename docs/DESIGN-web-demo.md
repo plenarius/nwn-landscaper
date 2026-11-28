@@ -205,7 +205,8 @@ the first model it couldn't read ("Live: error") and the view drew nothing for t
 - **What:** `landscaper demo-stock DIR` (`src/demostock.rs`) writes, from an install with no haks, every placeable model of
   `placeables.2da` that the game has (1,268), its walkmesh and its textures as the game has them (579), `placeables.2da`,
   `surfacemat.2da` (which faces of a walkmesh block), the three shaders, and the answers of `/api/placeables` and
-  `/api/placeable-groups`: 2,841 files, 195 MB, the largest 3 MB.
+  `/api/placeable-groups`; since 2026-11-27 also `skyboxes.2da` and the game's skies (21 models, 38 textures, "The sky
+  packs"): 2,904 files, 272 MB, the largest 3 MB.
 - **Where from:** Actions has no game, so the folder is made once on a computer with it, zipped, and attached to the
   `demo-stock` release; `scripts/try-page.sh` downloads it into the page's `try/stock/` (or makes it, given `NWN_ROOT`). Made
   again when the game's placeables change.
@@ -217,6 +218,24 @@ the first model it couldn't read ("Live: error") and the view drew nothing for t
   blocks nothing and is left out of the tiles, and the check's report names those models (`missing_models`). The editor draws
   each as a translucent box, says so in one line over the view per area, and Live stays green or amber. A placeable in object
   mode is still written to the module, from a blueprint the engine makes when the game has none.
+
+### The sky packs (2026-11-27)
+
+The page has the packs index's sky packs ([Preset skies](PRESET-SKIES.md)), so each preset shows its sky, the Sky row lists
+them as installed, and an area with one exports, as on the desktop.
+
+- **Where from:** `scripts/try-page.sh` downloads each pack the `texture-packs` release's `index.json` lists under `skies`,
+  checks its size and SHA-256, and puts it in the page's `try/skies/`; `site.json`'s `skyPacks` names them.
+- **The table:** `landscaper demo-stock` also writes the game's `skyboxes.2da` (put in the engine's `override` at the start)
+  and each of its rows' models and textures (`skies` in `index.json`: `row-<n>` to its models), so the game's skies have
+  their pictures, a pack's skies take the rows they take on the desktop (32 to 38 for Preset skies), and the export's
+  `ls_skies.hak` has the game's rows with the pack's added.
+- **In the page:** on the first visit the Worker runs `landscaper skies get` on each zip, kept in Cache Storage by its SHA-256,
+  and notes it in the data folder (`demo-skies.sha256`), so a later visit installs nothing. The install took 1.2 s in headless
+  Chromium. The export's zip has `ls_skies.hak` beside the other haks.
+- **A 16 by 16 area's export** (the swamp showcase: a 610 MB hak) ran out of the engine's 4 GB at its end, with or without a
+  sky: drawing the minimaps from above reads the hak back whole, and the engine builds each hak in memory before writing it.
+  The page sets `LS_MINIMAP=terrain` (minimaps from the terrain), and the export then finishes.
 
 ### To try in Firefox and Safari
 
@@ -247,9 +266,9 @@ wrote it; none of it is the game's.
 | Nine palettes (`creaturepal.itp` and the rest) | the module's custom palettes | empty palettes, made here |
 | `environment.2da` | the module's lighting scheme | one row of light colours, made here |
 | `placeables.2da` and the placeables' models | Place, Scatter, baked objects | the game's stock placeables, fetched a model at a time ("The stock placeables"); a model not among them draws as a box and blocks nothing |
-| Blueprints, `genericdoors.2da`, music, ambient sound, load screens, `skyboxes.2da` | Things, doors, Area settings' lists | empty lists; hidden or explained |
+| Blueprints, `genericdoors.2da`, music, ambient sound, load screens | Things, doors, Area settings' lists | empty lists; hidden or explained |
 | `nwscript.nss` | the script editor's compiler | none; the Scripts panel stays off |
-| Sky models | the Sky & fog panel's lists (a sky pack needs the maintainer's own skies) | none; the preset's colours still show |
+| `skyboxes.2da` and the sky models | the Sky & fog panel's lists and pictures, a sky pack's rows, the export's `ls_skies.hak` | the game's own, with the stock placeables; and the [Preset skies](PRESET-SKIES.md) pack, installed on the first visit ("The sky packs") |
 | The tilesets (`.set`, tile models) | importing an existing area | not in the demo: import also needs `mg-area` (stage 4) |
 
 The particle pack (`packs/particles`) is the Landscaper's own and is built into the engine, so ambience works in the demo.

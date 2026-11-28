@@ -13,6 +13,8 @@ game's stock placeables and the shaders an export needs.
   [packs/demo/CREDITS.md](../../packs/demo/CREDITS.md).
 - **Place and Scatter** with the game's stock placeables: trees, rocks, plants and the rest of `placeables.2da`. The page
   fetches a model the first time an area or a panel needs it.
+- **Skies:** the [Preset skies](../PRESET-SKIES.md) pack comes installed, so each look in Sky & fog shows its sky, and the
+  game's own skies are there too. An area with a sky of the pack exports with `ls_skies.hak`.
 - **Check paths**, after each edit or on demand, as on the desktop.
 - **Export** downloads a zip of the module and its haks: put the files of `hak/` in your Neverwinter Nights user folder's
   `hak` folder and the module in its `modules` folder (the zip's README says where those are). It asks for nothing: the
@@ -53,12 +55,13 @@ too big for this browser; the Landscaper on your computer has no such limit.
 ## Browsers
 
 A current Chrome, Edge, Firefox or Safari, with WebGL. The first visit takes a few seconds more than the next ones: it
-prepares the textures once and keeps them. The engine and the stock models it fetched are kept too, until a release changes them.
+prepares the textures and skies once and keeps them. The engine and the stock models it fetched are kept too, until a release changes them.
 
 ## Credits
 
-The stock placeables, their textures and the tile shaders are Neverwinter Nights: Enhanced Edition's, by Beamdog and
-BioWare. The demo's ground textures are credited in [packs/demo/CREDITS.md](../../packs/demo/CREDITS.md).
+The stock placeables, the game's skies, their textures and the tile shaders are Neverwinter Nights: Enhanced Edition's, by
+Beamdog and BioWare. Most Preset skies pictures are from Savant1974's
+[Real Skies](https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version). The demo's ground textures are credited in [packs/demo/CREDITS.md](../../packs/demo/CREDITS.md).
 
 ## Licences
 
@@ -77,9 +80,13 @@ on the site.
 
 The stock placeables come from the `demo-stock` release's `demo-stock.zip`, which `landscaper demo-stock` makes on a computer
 with the game (the workflow has none): each model, its walkmesh and its textures as the game has them, `placeables.2da`,
-`surfacemat.2da`, the three shaders, and the Place panel's lists. Without that release (or `NWN_ROOT`, when the script runs
-on a computer with the game) the page is built without them, draws every placeable as a box, and asks for the game folder at
-Export for the shaders.
+`surfacemat.2da`, `skyboxes.2da` and the game's skies, the three shaders, and the Place panel's lists. Without that release
+(or `NWN_ROOT`, when the script runs on a computer with the game) the page is built without them, draws every placeable as a
+box, and asks for the game folder at Export for the shaders.
+
+The sky packs are those the `texture-packs` release's `index.json` lists, each zip checked against it and put in `try/skies/`;
+the page installs them into its engine on the first visit, as `landscaper skies get` does. They need the stock files'
+`skyboxes.2da`, so a page without the stock files has none.
 
 The browser keeps the engine and the stock files it fetched in its Cache Storage, in caches named by their SHA-256 in
 `try/site.json` (`engineSha256`, and `stockSha256` of `demo-stock.zip`): a later visit fetches neither, and a new engine or

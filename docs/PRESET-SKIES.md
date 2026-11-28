@@ -3,9 +3,21 @@
 Preset skies is the first [sky pack](SKY-PACKS.md): a sky for each outdoor Sky & fog preset but Clear day (which keeps the game's
 Grass Clear), so an area's sky matches its light. The design is [DESIGN-ambience.md](DESIGN-ambience.md), question 2. Five skies
 re-use the pictures of Savant1974's [Real Skies](https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version) at
-other times of day. Real Skies states no licence, so this repository ships none of its pictures and the pack is not in the
-Landscaper's list of packs: you make it from your own download. Thick mist and Swamp are painted by the script from their presets'
-colours.
+other times of day, with thanks to Savant1974. Thick mist and Swamp are painted by the script from their presets' colours.
+
+## Installing it
+
+It is in the Landscaper's list of packs. With the module's haks set, as for any sky pack:
+
+```sh
+landscaper skies get preset-skies
+```
+
+Its seven skies take the first free rows of the module's `skyboxes.2da` from 32 up. The browser page at
+[/try/](https://landscaper.layonara.com/try/) has it installed.
+
+The list offers 1.0.1, which is 1.0.0 with only its description reworded: the same skies, pictures and models. A Landscaper with
+1.0.0 installed keeps it, and lists 1.0.1 as available; `skies get preset-skies` then replaces it, each sky keeping its row.
 
 ## The skies
 
@@ -34,7 +46,9 @@ re-used skies keep Real Skies' band mesh and its pictures at 8,192 by 1,024, as 
 
 The pack has 34 files, 60 MB: 11 pictures of 5.6 MB, 6 small gradients and 17 models.
 
-## Making and installing it
+## Making it
+
+For maintainers: how the published pack is made, for a new version.
 
 1. Download the **EE hak version** of Real Skies (`real_skies_1.02.7z`) and unpack it with 7-Zip, as for
    [REAL-SKIES.md](REAL-SKIES.md).
@@ -47,8 +61,9 @@ The pack has 34 files, 60 MB: 11 pictures of 5.6 MB, 6 small gradients and 17 mo
 
    The first argument is `Real_Skies.hak` or the folder it was unpacked into; the second, the folder to write. `--jobs` sets how
    many pictures are re-encoded at once (default 4, about 150 MB of memory each).
-3. Install it as any sky pack, with the module's haks set: `landscaper skies get dist/preset-skies-1.0.0.zip`. Its seven skies
-   take the first free rows of the module's `skyboxes.2da` from 32 up.
+3. Try it before publishing: `landscaper skies get dist/preset-skies-1.0.1.zip`.
+4. Publish it as an asset of the `texture-packs` release with its entry in that release's `index.json` (`skies pack --index`
+   writes the entry), as [texture packs](TEXTURE-PACKS.md) are.
 
 From then on each preset in the editor's Sky & fog panel picks its sky from the pack, and the Sky row lists the seven
 ([Atmosphere and skies](handbook/atmosphere.md)). Without the pack, a preset picks the game's sky nearest to it.

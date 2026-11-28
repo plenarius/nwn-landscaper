@@ -171,12 +171,11 @@ fn pack_list(files: &[String]) -> serde_json::Value {
         .collect();
     json!({
         "id": "preset-skies",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "name": "Preset skies",
         "description": "A sky for each Sky & fog preset that shows one. Golden haze, Dusk, Overcast, Starry night and Dawn haze \
-            re-use Real Skies' pictures, made from your own download of it; Thick mist and Swamp are painted from their presets' \
-            colours.",
-        "licence": "Real Skies' pictures: Savant1974's, no licence stated. Thick mist and Swamp: GPL-3.0-or-later",
+            re-use the pictures of Savant1974's Real Skies; Thick mist and Swamp are painted from their presets' colours.",
+        "licence": "Real Skies' pictures: Savant1974's. Thick mist and Swamp: GPL-3.0-or-later",
         "credits": ["Savant1974: Real Skies", "The Landscaper: Thick mist and Swamp"],
         "homepage": "https://neverwintervault.org/project/nwnee/hakpak/real-skies-hak-version",
         "prefix": PREFIX,

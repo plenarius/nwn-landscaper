@@ -172,7 +172,7 @@ The documents below, with a step-by-step handbook for builders, are also a site:
 - [docs/DEBUGGING.md](docs/DEBUGGING.md): the `LS_*` debugging switches.
 - [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): texture packs: installing them, their format, the index, making one.
 - [docs/REAL-SKIES.md](docs/REAL-SKIES.md): Savant1974's Real Skies made fit for NWSync, for any module.
-- [docs/PRESET-SKIES.md](docs/PRESET-SKIES.md): the first sky pack, a sky for each preset, made from your Real Skies download.
+- [docs/PRESET-SKIES.md](docs/PRESET-SKIES.md): the first sky pack, a sky for each preset, from Savant1974's Real Skies.
 - [MOONGLOW.md](MOONGLOW.md): the Moonglow version the Landscaper is pinned to, and how to move it.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each version.
 - [SECURITY.md](SECURITY.md): reporting a security problem.
