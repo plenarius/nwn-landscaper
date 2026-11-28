@@ -17,8 +17,9 @@
 //!
 //! - `GET /api/canvas-cut?name=`: the canvas cut, nothing built: `{ canvas, pieces: [{ name, id, things, objects, entrances,
 //!   water } | { name, id, refused }], crossings: [...], warnings }` (`crate::cut`).
-//! - `POST /api/canvas-check?name=&pieces=a,b` and `POST /api/canvas-export?name=&pieces=a,b`: each piece (`pieces` left out:
-//!   all of them) checked, or exported into one module named after the canvas, then the route check across the canvas:
+//! - `POST /api/canvas-check?name=&pieces=a,b` and `POST /api/canvas-export?name=&pieces=a,b` (or `/api/canvas-export/job`, as
+//!   the builder's export job: `GET /api/export/job` follows it, its `area` naming the piece under way): each piece (`pieces`
+//!   left out: all of them) checked, or exported into one module named after the canvas, then the route check across the canvas:
 //!   `{ canvas, module, pieces: [{ name, report }], crossings, routes: { start, reached, problems }, warnings }`.
 //!
 //! - `GET /api/canvas-changes?name=`: the pieces changed since the last publish and why (`crate::canvas_publish::changes`).
@@ -37,7 +38,7 @@ use base64::Engine;
 use tiny_http::Method;
 
 use super::areas::{Denied, area_exists, guard_assignment, guard_new_name, imports_in};
-use super::{Answer, Ask, fail, json_response, read_body, response_header};
+use super::{Answer, Ask, json_response, read_body, response_header};
 use crate::canvas::{self, BlockId, Canvas, Damaged, Moved, NoCanvas, Seam};
 use crate::cut;
 
@@ -88,26 +89,16 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             Err(e) => answer_error(&e),
         },
         (Method::Post, p @ ("/api/canvas-export" | "/api/canvas-check")) => {
-            let check = p == "/api/canvas-check";
-            let name = query.text("name");
-            let only: Vec<String> = query.text("pieces").split(',').filter(|s| !s.is_empty()).map(str::to_string).collect();
-            let done = {
-                let _job = super::job();
-                export(&name, &only, check)
-            };
-            if !check {
-                crate::quota::forget();
-                crate::audit::log(
-                    "canvas_export",
-                    Some(&name),
-                    done.is_ok(),
-                    &done.as_ref().map_or_else(|e| format!("{e:#}"), |_| String::new()),
-                );
+            let (status, v) = export_answer(&query.text("name"), &listed(query), p == "/api/canvas-check", &|| true, &|_| {});
+            json_response(status, &v)
+        }
+        // The export as the builder's export job (`/api/export/job` follows it): its label says which piece it is on.
+        (Method::Post, "/api/canvas-export/job") => {
+            if cfg!(target_family = "wasm") {
+                return Some(super::refuse(501, "the browser's engine exports a canvas with /api/canvas-export"));
             }
-            match done {
-                Ok(v) => json_response(200, &v),
-                Err(e) => answer_error(&e),
-            }
+            let (name, only) = (query.text("name"), listed(query));
+            super::export::start_job(cx, &name.clone(), move |turn| export_answer(&name, &only, false, turn, &super::export::job_label))
         }
         (Method::Get, "/api/canvas-changes") => match changes(&query.text("name")) {
             Ok(v) => json_response(200, &v),
@@ -191,13 +182,21 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
 /// for [`ExportFirst`], 404 for [`NoCanvas`], 403 for an assignment, 413 for a full workspace, 500 for a [`Damaged`] file, 400
 /// for the rest.
 fn answer_error(e: &anyhow::Error) -> Answer {
+    let (status, v) = error_json(e);
+    json_response(status, &v)
+}
+
+/// [`answer_error`]'s status and JSON; `cancelled` when an export job was cancelled.
+fn error_json(e: &anyhow::Error) -> (u16, serde_json::Value) {
+    let error = crate::workspace::scrub(&format!("{e:#}"));
     if let Some(m) = e.downcast_ref::<Moved>() {
-        let error = crate::workspace::scrub(&format!("{e:#}"));
-        return json_response(409, &serde_json::json!({ "error": error, "moved": m.moved, "version": m.version }));
+        return (409, serde_json::json!({ "error": error, "moved": m.moved, "version": m.version }));
     }
     if let Some(f) = e.downcast_ref::<ExportFirst>() {
-        let error = crate::workspace::scrub(&format!("{e:#}"));
-        return json_response(409, &serde_json::json!({ "error": error, "exportFirst": f.0 }));
+        return (409, serde_json::json!({ "error": error, "exportFirst": f.0 }));
+    }
+    if e.downcast_ref::<crate::generator::Cancelled>().is_some() {
+        return (400, serde_json::json!({ "error": error, "cancelled": true }));
     }
     let status = if e.downcast_ref::<NoCanvas>().is_some() {
         404
@@ -212,7 +211,24 @@ fn answer_error(e: &anyhow::Error) -> Answer {
     } else {
         400
     };
-    fail(status, e)
+    (status, serde_json::json!({ "error": error }))
+}
+
+/// Checks or exports canvas `name`'s pieces `only` ([`export`]) once the heavy jobs before it are done (`turn`; false: cancelled
+/// meanwhile), each piece named to `piece` as it starts; the answer's status and JSON, recorded when an export.
+fn export_answer(name: &str, only: &[String], check: bool, turn: &dyn Fn() -> bool, piece: &dyn Fn(&str)) -> (u16, serde_json::Value) {
+    let done = {
+        let _job = super::job();
+        if turn() { export(name, only, check, piece) } else { Err(crate::generator::Cancelled.into()) }
+    };
+    if !check {
+        crate::quota::forget();
+        crate::audit::log("canvas_export", Some(name), done.is_ok(), &done.as_ref().map_or_else(|e| format!("{e:#}"), |_| String::new()));
+    }
+    match done {
+        Ok(v) => (200, v),
+        Err(e) => error_json(&e),
+    }
 }
 
 /// Canvas `name` of the workspace, its name checked.
@@ -409,7 +425,7 @@ fn cut_summary(name: &str) -> Result<serde_json::Value> {
 /// the canvas, then checks the routes across them. Every piece is cut before any is built, so a refused one (a trigger across a
 /// cut) stops the export before anything is written. The start piece goes first: the module starts in the first area exported
 /// into it.
-pub(crate) fn export(name: &str, only: &[String], check: bool) -> Result<serde_json::Value> {
+pub(crate) fn export(name: &str, only: &[String], check: bool, piece: &dyn Fn(&str)) -> Result<serde_json::Value> {
     let c = canvas(name)?;
     let (header, ground) = {
         let lock = canvas::lock(&c.dir);
@@ -442,7 +458,9 @@ pub(crate) fn export(name: &str, only: &[String], check: bool) -> Result<serde_j
     let imports = imports_in(&palette, &header.json);
     let mut reports = std::collections::BTreeMap::new();
     let mut rows = Vec::new();
-    for a in areas {
+    let total = areas.len();
+    for (k, a) in areas.into_iter().enumerate() {
+        piece(&format!("{name}: {} (piece {} of {total})", a.name, k + 1));
         let mut report = super::export::export_area(&a.name, a.header, &a.heights, &a.materials, &a.blend, &imports, check)
             .with_context(|| format!("piece {}", a.name))?;
         for key in ["module", "installed_module"] {

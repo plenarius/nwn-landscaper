@@ -524,7 +524,8 @@ and a real publish or a trial refuses a stale piece (a dry run warns). `POST /ap
 crossings with them differ (`send_too`); Package and Try on dev take every piece unless told. Exporting some pieces cuts the
 neighbours they share crossings with and compares each one's crossings with them against its last export; any that differ
 (or were never exported into the canvas's module) stop the export with 409 and `exportFirst`, and a check lists them as
-warnings. Nothing changes for the review service. Tried against a stand-in service on the step-4 trial canvas; not tried on
+warnings. A canvas export also runs as the builder's export job (`/api/canvas-export/job`), its label naming the piece
+under way. Nothing changes for the review service. Tried against a stand-in service on the step-4 trial canvas; not tried on
 Layonara's review service or dev server. Not yet: a package download doesn't record a publish, so a team without a review
 service always sees every piece as never published.
 

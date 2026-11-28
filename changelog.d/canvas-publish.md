@@ -11,3 +11,6 @@
 - **Exporting some pieces of a canvas** checks that the neighbours they cross into were exported with the same crossings, and
   names the ones to export first (409 with `exportFirst`) instead of leaving a crossing that leads nowhere. Its route check
   no longer says a piece has no way in when the pieces leading into it weren't part of that export.
+- **A canvas exports as an export job** (`POST /api/canvas-export/job`), followed like an area's (`GET /api/export/job`,
+  cancel with `/api/export/job/cancel`): the job's `area` says which piece is under way ("rivl02 (piece 2 of 3)"), and its
+  progress is that piece's.

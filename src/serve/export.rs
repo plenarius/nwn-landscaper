@@ -286,6 +286,13 @@ pub(super) fn start_job(
     json_response(202, &export_jobs()[&user].json())
 }
 
+/// Names what the acting builder's running export job is on (a canvas export: its piece), shown as the job's `area`.
+pub(super) fn job_label(label: &str) {
+    if let Some(j) = export_jobs().get_mut(&crate::workspace::acting_user()).filter(|j| j.running) {
+        j.area = label.to_string();
+    }
+}
+
 /// Each builder's export job, by user.
 fn export_jobs() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, ExportJob>> {
     static JOBS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, ExportJob>>> =
