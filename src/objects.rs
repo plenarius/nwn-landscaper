@@ -219,34 +219,71 @@ pub fn instances(game: &mg_rules::GameData) -> Result<Vec<mg_gff::Struct>> {
     Ok(out)
 }
 
+/// A triangle's corner: its position and texture coordinates.
+type Corner = ([f32; 3], [f32; 2]);
+
+/// A triangle and its corners' texture coordinates.
+pub type Piece = ([[f32; 3]; 3], [[f32; 2]; 3]);
+
+/// Where edge a-b crosses the plane `p[axis] = at`, on the plane exactly. The edge is taken from its lower end whichever way it is
+/// walked, so the two pieces on either side of a cut get the same point, bit for bit.
+fn crossing(a: &Corner, b: &Corner, axis: usize, at: f32) -> Corner {
+    let (a, b) = if a.0 <= b.0 { (a, b) } else { (b, a) };
+    let t = (at - a.0[axis]) / (b.0[axis] - a.0[axis]);
+    let mut p = [0.0; 3];
+    for k in 0..3 {
+        p[k] = a.0[k] + (b.0[k] - a.0[k]) * t;
+    }
+    p[axis] = at;
+    (p, [a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t])
+}
+
+/// The part of polygon `poly` where `(p[axis] - at) * sign >= 0`.
+fn keep(poly: &[Corner], axis: usize, at: f32, sign: f32) -> Vec<Corner> {
+    let f = |v: &Corner| (v.0[axis] - at) * sign;
+    let mut out = Vec::new();
+    for k in 0..poly.len() {
+        let (a, b) = (&poly[k], &poly[(k + 1) % poly.len()]);
+        let (fa, fb) = (f(a), f(b));
+        if fa >= 0.0 {
+            out.push(*a);
+        }
+        // (A corner on the plane is kept as it is, not crossed again.)
+        if (fa > 0.0 && fb < 0.0) || (fa < 0.0 && fb > 0.0) {
+            out.push(crossing(a, b, axis, at));
+        }
+    }
+    out
+}
+
+/// A convex polygon as triangles (a fan from its first corner).
+fn fan(poly: &[Corner]) -> Vec<Piece> {
+    (1..poly.len().saturating_sub(1)).map(|k| ([poly[0].0, poly[k].0, poly[k + 1].0], [poly[0].1, poly[k].1, poly[k + 1].1])).collect()
+}
+
 /// Clips a triangle (positions and UVs) to the square [x0, x1] x [y0, y1]; the pieces as triangles.
-pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1: f32) -> Vec<([[f32; 3]; 3], [[f32; 2]; 3])> {
-    type V = ([f32; 3], [f32; 2]);
-    let mut poly: Vec<V> = (0..3).map(|k| (tri[k], uv[k])).collect();
-    // Keep the side where f(p) >= 0, for each edge of the square.
-    let planes: [(usize, f32, f32); 4] = [(0, x0, 1.0), (0, x1, -1.0), (1, y0, 1.0), (1, y1, -1.0)];
-    for (axis, at, sign) in planes {
+pub fn clip(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], x0: f32, x1: f32, y0: f32, y1: f32) -> Vec<Piece> {
+    let mut poly: Vec<Corner> = (0..3).map(|k| (tri[k], uv[k])).collect();
+    for (axis, at, sign) in [(0, x0, 1.0), (0, x1, -1.0), (1, y0, 1.0), (1, y1, -1.0)] {
         if poly.is_empty() {
             break;
         }
-        let f = |v: &V| (v.0[axis] - at) * sign;
-        let mut out = Vec::new();
-        for k in 0..poly.len() {
-            let (a, b) = (&poly[k], &poly[(k + 1) % poly.len()]);
-            let (fa, fb) = (f(a), f(b));
-            if fa >= 0.0 {
-                out.push(*a);
-            }
-            if (fa >= 0.0) != (fb >= 0.0) {
-                let t = fa / (fa - fb);
-                let lerp3 = |p: [f32; 3], q: [f32; 3]| [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
-                let lerp2 = |p: [f32; 2], q: [f32; 2]| [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
-                out.push((lerp3(a.0, b.0), lerp2(a.1, b.1)));
-            }
-        }
-        poly = out;
+        poly = keep(&poly, axis, at, sign);
     }
-    (1..poly.len().saturating_sub(1)).map(|k| ([poly[0].0, poly[k].0, poly[k + 1].0], [poly[0].1, poly[k].1, poly[k + 1].1])).collect()
+    fan(&poly)
+}
+
+/// Splits a triangle at height `z`: the pieces below and those above. A triangle on one side is that side's whole; the pieces of
+/// one that crosses share their cut edge's points exactly, so nothing opens between them.
+pub fn split_at_height(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], z: f32) -> (Vec<Piece>, Vec<Piece>) {
+    if tri.iter().all(|p| p[2] <= z) {
+        return (vec![(tri, uv)], Vec::new());
+    }
+    if tri.iter().all(|p| p[2] >= z) {
+        return (Vec::new(), vec![(tri, uv)]);
+    }
+    let poly: Vec<Corner> = (0..3).map(|k| (tri[k], uv[k])).collect();
+    (fan(&keep(&poly, 2, z, -1.0)), fan(&keep(&poly, 2, z, 1.0)))
 }
 
 #[cfg(test)]
