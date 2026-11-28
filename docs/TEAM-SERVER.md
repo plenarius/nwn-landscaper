@@ -161,6 +161,28 @@ start). When the service stops answering:
   area, exporting, checking and importing are refused with "the module's area list isn't available": a new area's name can't
   be checked against the module's.
 
+## Canvases
+
+A canvas ([the design](DESIGN-canvas-cut.md), [the handbook](handbook/canvases.md)) is one more item of a builder's workspace,
+next to their areas: `workspaces/<user>/canvases/<name>/`, a header (`canvas.json`) and its ground in blocks of 16 by 16 tiles.
+
+- **The same rules as an area.** It counts as one item, by its size on disk, against the quota; an admin viewing another
+  workspace reads it without changing it. Its name (1 to 7 characters) can't be an area's or a canvas's in the workspace, nor
+  an existing area's of the module.
+- **Assignments:** making, saving, checking and exporting a canvas need the builder's assignment of every existing area it is
+  built from (the imports its paint and objects use), and of every existing area a piece is named like, since its publish would
+  replace that area.
+- **Make a canvas from this area** names the first piece as the area, so a canvas made from an assigned area needs that
+  assignment to stand, as the area does; the area's working copy is not changed.
+- **Saves** send the header and only the blocks that changed, each with the version it started from, up to 48 MB a save (a
+  whole 128 by 128 canvas). A save is refused whole (409) when another tab saved any of them since. A block file that is
+  damaged stops whatever needs it, names the file, and is never written over.
+- **Export and check** (`POST /api/canvas-export`, `POST /api/canvas-check`) build each piece into one module named after the
+  canvas, in the builder's `nwn/`, as an area's export does, and take turns with the other heavy jobs.
+- **Publish, Package and Try on dev** (`/api/canvas-publish`, `/api/canvas-package`, `/api/canvas-trial`) send the pieces
+  together as one `publish-module` request, under the same assignment checks; Publish sends the pieces changed since the last
+  publish unless others are named. The editor's buttons for a canvas come next.
+
 ## Audit log, hidden mark, notices
 
 - **Audit log:** one JSON line per event in `audit/<year>-<month>.jsonl`: when, who, the client address (the last

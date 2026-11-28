@@ -8,7 +8,8 @@ needs the toolset.
 1. **Start.** *New area* (size, a start from flat, hills, a cave or an interior, or a sample descending crypt, dungeon or cave to
    look at and change) or *Import* an existing area to rework, or upload your own `.mod` or `.erf` and import areas from it.
    Several areas can share a module. Areas are 3 to 32 tiles (10 m each) a side; a bigger one can't be imported. A new area
-   never replaces one of the same name without asking.
+   never replaces one of the same name without asking. For a landscape larger than one area, start a canvas (*Canvases*,
+   below).
 2. **Shape and paint the ground.** Raise, Lower, Smooth, Flatten, Paint, Water, Chasm (a bottomless drop, see *Chasms* below),
    Entrance (cave mouths), Scatter and Place (props and baked scenery), and for caves and interiors Dig and Room (passages and
    chambers cut out of the rock), Ramp (a ramp or stairs between two levels) and Descent (a whole switchback descent at once); see
@@ -19,6 +20,29 @@ needs the toolset.
 6. **Export to NWN.** This builds the area into a module and hak in your NWN user folder (on a team server, your workspace) that
    you can open in the toolset or the game.
 7. **Hand it over:** *Publish* (pull requests, with a review service) or *Package for your module* (a zip to commit yourself).
+
+## Canvases
+
+A canvas is one landscape larger than an area, up to 128 by 128 tiles, sculpted and painted whole and cut into areas, the
+*pieces* ([the design](DESIGN-canvas-cut.md); [the handbook's page](handbook/canvases.md)).
+
+- **File → New canvas** (a name of 1 to 7 characters, a size, a start of hills or flat ground) or **File → Make a canvas from
+  this area**. A canvas's name can't be an area's.
+- **Make a canvas from this area** puts the open outdoor area on a new canvas as its first piece, named as the area and where
+  it was, with room round it (8 tiles a side unless you change it, 5 at least: the band's width). The band becomes the canvas's
+  ground round the piece and its outer edge carries on past it; the soft paint's second texture and weight, the water, objects,
+  things, entrances, ambience, lights, settings and atmosphere all come along, and the canvas keeps the area's name as the
+  start of its tags, so doors keep their tags. Exporting that piece builds the same area. The area itself is not changed. A
+  cave or an interior can't become a canvas.
+- Every sculpting and painting tool works on a canvas, with undo. It is drawn at full detail round the camera and at a quarter
+  beyond (**Full detail near** turns that off), and saves send only the 16 by 16 tile blocks a change reached.
+- **Pieces** cuts it: drag across it to cut out a piece, drag a cut to move it, join two pieces, lay a grid, leave gaps, rename.
+  A piece is 3 to 32 tiles a side; the panel lists what changes piece while you drag, and tags never change with it. **Open
+  this piece** edits one piece at full detail with its neighbours' ground round it, and **Check paths (all pieces)** checks
+  every piece and whether each can be walked into through the crossings.
+- **Not in the editor yet:** Export and Publish for a canvas. Until then they are off while a canvas is open;
+  `landscaper canvas-export <canvas>` exports its pieces into one module named after it, with transitions along the cuts, and
+  `--check` checks them and the routes across them.
 
 ## Chasms
 

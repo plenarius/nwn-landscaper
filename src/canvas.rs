@@ -381,6 +381,12 @@ impl Header {
             Value::Null => 0.0,
             v => v.as_f64().filter(|g| g.is_finite() && g.abs() < 1e6).context("ground: a height in metres")? as f32,
         };
+        if let Some(p) = json.get("tagPrefix").filter(|p| !p.is_null()) {
+            let ok = p.as_str().is_some_and(|p| {
+                (1..=9).contains(&p.len()) && p.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
+            });
+            ensure!(ok, "tagPrefix {p}: 1 to 9 lower case letters, digits or _");
+        }
         let size = Size { tiles_x, tiles_y };
         check_pieces(&json, size)?;
         Ok(Header { json, size, ground, version })
