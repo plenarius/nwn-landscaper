@@ -226,7 +226,7 @@ impl Crossing {
 }
 
 /// The ids crossings' things take: from here up, the editor's never reach them, and still a game int (the `ls_thing` mark).
-const CROSSING_IDS: u32 = 1_000_000_000;
+pub const CROSSING_IDS: u32 = 1_000_000_000;
 
 /// A cut between two pieces: `a` west of (or south of) `b`, on tile line `at`, shared from tile `lo` to `hi`.
 struct Cut<'a> {
@@ -665,12 +665,15 @@ pub fn canvas_routes(pieces: &[Piece], crossings: &[Crossing], reports: &BTreeMa
         }
     }
     let checked = |p: &str| reports.contains_key(p);
+    // (Some pieces only: crossings from the others are in their last exports, which the export checks match the cut; a walk
+    // from a start piece left out proves nothing.)
+    let start_checked = start.as_deref().is_some_and(checked);
     let mut problems = Vec::new();
     for p in pieces.iter().filter(|p| checked(&p.name)) {
-        let ins: Vec<&Crossing> = crossings.iter().filter(|c| c.to == p.name && checked(&c.from)).collect();
+        let ins: Vec<&Crossing> = crossings.iter().filter(|c| c.to == p.name).collect();
         if Some(&p.name) != start.as_ref() && !ins.iter().any(|c| walk.contains(&(p.name.clone(), c.waypoint.clone()))) {
             problems.push(json!({ "kind": "no_way_in", "piece": p.name, "why": format!("no crossing leads into {}", p.name) }));
-        } else if Some(&p.name) != start.as_ref() && !reached.iter().any(|(q, _)| *q == p.name) {
+        } else if start_checked && Some(&p.name) != start.as_ref() && !reached.iter().any(|(q, _)| *q == p.name) {
             problems.push(json!({ "kind": "unreached", "piece": p.name,
                 "why": format!("a player can't walk to {} from {}", p.name, start.clone().unwrap_or_default()) }));
         }
@@ -968,5 +971,9 @@ mod tests {
         reports.insert("rivl03".into(), report("rivl03", &off, true));
         let r = canvas_routes(&list, &all, &reports, Some("rivl01"));
         assert!(r["problems"].as_array().unwrap().iter().any(|p| p["kind"] == "no_way_in" && p["piece"] == "rivl03"), "{r}");
+        // The middle piece exported alone: its neighbours' crossings into it count, and no walk from the start is claimed.
+        let alone: BTreeMap<String, Value> = [("rivl02".to_string(), report("rivl02", &[], true))].into_iter().collect();
+        let r = canvas_routes(&list, &all, &alone, Some("rivl01"));
+        assert_eq!(r["problems"], json!([]), "{r}");
     }
 }

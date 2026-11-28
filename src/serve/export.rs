@@ -763,8 +763,15 @@ fn package_areas(name: &str, whole: bool, dry: bool) -> Result<(Vec<String>, Vec
         vec![name.to_string()]
     };
     anyhow::ensure!(!names.is_empty(), "no area has been exported");
+    let findings = checked_areas(&names, dry)?;
+    Ok((names, findings))
+}
+
+/// Each of `names` checked as a publish checks it (name guard, assignment, the pre-publish findings, each named when there are
+/// several). Errors stop it unless `dry`.
+pub(super) fn checked_areas(names: &[String], dry: bool) -> Result<Vec<crate::validate::Finding>> {
     let mut findings = Vec::new();
-    for n in &names {
+    for n in names {
         guarded_export(n)?;
         for mut f in crate::publish::findings(n)? {
             if names.len() > 1 {
@@ -774,7 +781,7 @@ fn package_areas(name: &str, whole: bool, dry: bool) -> Result<(Vec<String>, Vec
         }
     }
     refuse_errors(&findings, dry)?;
-    Ok((names, findings))
+    Ok(findings)
 }
 
 /// What a package of `name` (or its module) would hold, and what the check found.
