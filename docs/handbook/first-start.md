@@ -59,5 +59,9 @@ The data folder holds your areas, workspaces, the texture library, `settings.jso
 The app, the program in the archive and the command line share it, so each opens the areas the others saved. Exports go into
 your user folder's `hak` and `modules`, whichever you use.
 
+Its `cache` folder keeps the ground pictures and shadows an export baked, so the next export of the same ground doesn't bake
+them again: up to 1 GB of ground and 128 MB of shadows, each picture removed after 30 days unused. Deleting it is safe; the
+next export bakes them again.
+
 The editor's own preferences, which a browser keeps for each page, are the window's own in the app: it starts with the
 defaults even if you used the editor in a browser before.

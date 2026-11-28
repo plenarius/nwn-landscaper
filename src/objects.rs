@@ -35,9 +35,33 @@ pub struct Placed {
     pub halo: bool,
     /// Its model and placement, for the shadow cache.
     pub what: String,
+    /// A digest of its model's triangles, texture coordinates and textures ([`model_digest`]), for the shadow cache: the same
+    /// name may be another model after a hak changes.
+    pub model: [u8; 20],
 }
 
-fn place(o: &Object, f: &Flat) -> Placed {
+/// A digest of what of model `f` casts a shadow: its triangles, their texture coordinates, and each group's texture and
+/// transparency.
+pub fn model_digest(f: &Flat) -> [u8; 20] {
+    use sha1::Digest;
+    let mut h = sha1::Sha1::new();
+    for p in f.positions.iter().flatten() {
+        h.update(p.to_le_bytes());
+    }
+    for u in f.uvs.iter().flatten() {
+        h.update(u.to_le_bytes());
+    }
+    for ((texture, first, count), hint) in f.groups.iter().zip(&f.transparency) {
+        h.update(texture.as_bytes());
+        h.update([0]);
+        for v in [*first as u64, *count as u64, u64::from(*hint)] {
+            h.update(v.to_le_bytes());
+        }
+    }
+    h.finalize().into()
+}
+
+fn place(o: &Object, f: &Flat, model: [u8; 20]) -> Placed {
     let (s, c) = o.bearing.sin_cos();
     let at = |p: [f32; 3]| {
         let (x, y, z) = (p[0] * o.scale, p[1] * o.scale, p[2] * o.scale);
@@ -64,7 +88,7 @@ fn place(o: &Object, f: &Flat) -> Placed {
         .collect();
     let groups = f.groups.iter().zip(&f.transparency).map(|((t, a, n), h)| (t.clone(), *a, *n, *h)).collect();
     let what = format!("{}:{}:{}:{}:{}:{}", o.model, o.x, o.y, o.z, o.bearing, o.scale);
-    Placed { positions, uvs: f.uvs.clone(), groups, glow: f.glow.clone(), footprint, min, max, baked: o.baked, halo: false, what }
+    Placed { positions, uvs: f.uvs.clone(), groups, glow: f.glow.clone(), footprint, min, max, baked: o.baked, halo: false, what, model }
 }
 
 /// The current terrain's objects placed, and an index of their footprints.
@@ -126,6 +150,9 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2], halo: bool) -> Scene 
     let mut objects = Vec::new();
     let mut missing = std::collections::BTreeSet::new();
     let mut cells: std::collections::HashMap<(i32, i32), Vec<[[f32; 2]; 3]>> = Default::default();
+    // (Each model's digest once: a forest places a few models thousands of times. The model is held, so its address isn't
+    // another's later.)
+    let mut digests: std::collections::HashMap<*const Flat, ([u8; 20], Arc<Flat>)> = Default::default();
     for o in list {
         let flat = match game.as_ref().map_err(|e| anyhow::anyhow!("{e:#}")).and_then(|g| models::flat(g, &o.model)) {
             Ok(f) => f,
@@ -136,7 +163,8 @@ fn build(list: &[Object], serial: u64, [aw, ah]: [f32; 2], halo: bool) -> Scene 
                 Arc::new(Flat::default())
             }
         };
-        let mut p = place(o, &flat);
+        let model = digests.entry(Arc::as_ptr(&flat)).or_insert_with(|| (model_digest(&flat), flat.clone())).0;
+        let mut p = place(o, &flat, model);
         if p.positions.is_empty() {
             (p.min, p.max) = ([o.x, o.y, o.z], [o.x, o.y, o.z]);
         }
@@ -289,6 +317,31 @@ pub fn split_at_height(tri: [[f32; 3]; 3], uv: [[f32; 2]; 3], z: f32) -> (Vec<Pi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_s_digest_changes_with_what_casts_its_shadow() {
+        let f = Flat {
+            mesh: nwn_bake::Flat {
+                positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 2.0]],
+                uvs: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+                groups: vec![("leaves".into(), 0, 1)],
+                transparency: vec![0],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let base = model_digest(&f);
+        assert_eq!(base, model_digest(&f.clone()));
+        let changed = |change: &dyn Fn(&mut Flat)| {
+            let mut g = f.clone();
+            change(&mut g);
+            model_digest(&g)
+        };
+        assert_ne!(base, changed(&|g| g.positions[2][2] = 3.0), "a corner moved");
+        assert_ne!(base, changed(&|g| g.uvs[1][0] = 0.5), "its texture coordinates");
+        assert_ne!(base, changed(&|g| g.groups[0].0 = "bark".into()), "its texture");
+        assert_ne!(base, changed(&|g| g.transparency[0] = 1), "its transparency");
+    }
 
     #[test]
     fn an_object_whose_model_can_t_be_read_stands_with_no_triangles_and_blocks_nothing() {
