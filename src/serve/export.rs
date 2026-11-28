@@ -224,9 +224,6 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
         samples * 4,
         body.len()
     );
-    // On a team server: a new area can't take an existing area's name, and
-    // anything built from an existing area needs the assignment to stand.
-    guard_new_name(&name)?;
     let palette: Vec<String> = match extra.get("palette").filter(|p| !p.is_null()) {
         Some(p) => serde_json::from_value(p.clone()).context("palette: a list of texture ids")?,
         None => Vec::new(),
@@ -239,50 +236,15 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
         }
         None => Vec::new(),
     };
-    // (guard_assignment also refuses an import named with anything but a plain name.)
-    guard_assignment(&name, &imports_in(&palette, &extra))?;
-    let dir = if check { exports_dir().join(".check") } else { exports_dir() };
-    std::fs::create_dir_all(&dir)?;
-    // The ground the installed module was last built on, so its objects can follow the terrain's changes.
-    let old = previous_heights(&dir, &name);
-    // The last export's header, a check's too: the scratch copy is only the last check's, by which an entrance undone and
-    // redone between checks looked like a taken-out entrance's id given again.
-    // (Freshly imported, not exported since: the installed module has never had this light, whatever the header says.)
-    // (One that can't be read stops the export: taken as none, the area's entrance ids would start again, and a door's tag
-    // could be given twice.)
-    let old_header = match crate::atomic::read(&exports_dir().join(format!("{name}.json"))) {
-        Ok(d) => Some(serde_json::from_slice::<serde_json::Value>(&d).with_context(|| {
-            format!("{name}'s last export ({name}.json in its exports) doesn't parse: nothing was exported; restore it, or remove it to export afresh")
-        })?),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => anyhow::bail!("{name}'s last export ({name}.json in its exports) can't be read ({e}): nothing was exported; fix or restore it"),
-    };
-    let just_imported = old_header.as_ref().is_some_and(|h| h["imported"].as_bool() == Some(true));
-    // The entrances (each with its id) and the area's next entrance id, which never goes down: an id is never given twice.
-    let entrances = extra.get("entrances").cloned().unwrap_or_default();
-    let entrance_next = crate::heightmap::next_entrance_id(&entrances, old_header.as_ref())?;
-    let old_settings = old_header.as_ref().filter(|_| !just_imported).map(|h| h["settings"].clone());
-    let old_originals = old_header.as_ref().map(|h| h["originals"].clone()).filter(serde_json::Value::is_object);
-    let old_atmosphere = old_header.filter(|_| !just_imported).map(|h| h["atmosphere"].clone());
-    // (A check works in its own folder and never installs anything: nothing of it needs putting back.)
-    let rollback = (!check).then(|| Rollback::of(&dir, &name));
-    crate::atomic::write(&dir.join(format!("{name}.f32")), heights)?;
+    // (Anything built from an existing area: its imports are named in the paint's palette and in its objects.)
+    let imports = imports_in(&palette, &extra);
     let mut header = serde_json::json!({
-        "name": name, "tiles": tiles, "tilesY": tiles_y, "spacing": 0.625, "width": nx, "height": ny, "data": format!("{name}.f32"),
+        "name": name, "tiles": tiles, "tilesY": tiles_y, "spacing": 0.625, "width": nx, "height": ny,
     });
     if halo > 0 {
         header["halo"] = halo.into();
     }
     if !materials.is_empty() {
-        crate::atomic::write(&dir.join(format!("{name}.materials")), materials)?;
-        header["materials"] = format!("{name}.materials").into();
-        // (All weights 0 is no layer: the export is the same as without one.)
-        if !blend.is_empty() {
-            crate::atomic::write(&dir.join(format!("{name}.blend")), blend.as_flattened())?;
-            header["blend"] = format!("{name}.blend").into();
-        } else {
-            let _ = std::fs::remove_file(dir.join(format!("{name}.blend")));
-        }
         header["palette"] = palette.into();
     }
     if let Some(v) = query.number::<f64>("shadow") {
@@ -309,10 +271,9 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
             header[key] = v.clone();
         }
     }
-    if !entrances.is_null() {
-        header["entrances"] = entrances;
+    if let Some(entrances) = extra.get("entrances").filter(|e| !e.is_null()) {
+        header["entrances"] = entrances.clone();
     }
-    header["entranceNextId"] = entrance_next.into();
     // (The editor gives the water's samples and the chasm's in the area's own grid; with a halo the header counts them in the
     // larger one.)
     if let Some(water) = extra.get("water") {
@@ -324,8 +285,75 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
             header[key] = if key == "chasm" { into_halo_chasm(v, nx, ny, halo)? } else { v.clone() };
         }
     }
+    if let Some(a) = extra.get("atmosphere") {
+        header["atmosphere"] = a.clone();
+    }
+    export_area(&name, header, heights, materials, blend.as_flattened(), &imports, check)
+}
+
+/// Exports (or with `check`, only analyses) area `name` from its `header` as the engine reads it (grids counted with its halo,
+/// without its file names, which this gives), its `heights`, `materials` (empty: unpainted) and `blend` layer (two bytes a
+/// sample, empty: none): the editor's export of one area, and each piece of a canvas's. `imports` are the existing areas it is built from, whose assignments must stand.
+pub(super) fn export_area(
+    name: &str,
+    mut header: serde_json::Value,
+    heights: &[u8],
+    materials: &[u8],
+    blend: &[u8],
+    imports: &[String],
+    check: bool,
+) -> Result<serde_json::Value> {
+    // On a team server: a new area can't take an existing area's name, and
+    // anything built from an existing area needs the assignment to stand.
+    guard_new_name(name)?;
+    // (guard_assignment also refuses an import named with anything but a plain name.)
+    guard_assignment(name, imports)?;
+    let dir = if check { exports_dir().join(".check") } else { exports_dir() };
+    std::fs::create_dir_all(&dir)?;
+    // The ground the installed module was last built on, so its objects can follow the terrain's changes.
+    let old = previous_heights(&dir, name);
+    // The last export's header, a check's too: the scratch copy is only the last check's, by which an entrance undone and
+    // redone between checks looked like a taken-out entrance's id given again.
+    // (Freshly imported, not exported since: the installed module has never had this light, whatever the header says.)
+    // (One that can't be read stops the export: taken as none, the area's entrance ids would start again, and a door's tag
+    // could be given twice.)
+    let old_header = match crate::atomic::read(&exports_dir().join(format!("{name}.json"))) {
+        Ok(d) => Some(serde_json::from_slice::<serde_json::Value>(&d).with_context(|| {
+            format!("{name}'s last export ({name}.json in its exports) doesn't parse: nothing was exported; restore it, or remove it to export afresh")
+        })?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => anyhow::bail!("{name}'s last export ({name}.json in its exports) can't be read ({e}): nothing was exported; fix or restore it"),
+    };
+    let just_imported = old_header.as_ref().is_some_and(|h| h["imported"].as_bool() == Some(true));
+    // The entrances (each with its id) and the area's next entrance id, which never goes down: an id is never given twice.
+    let entrance_next = crate::heightmap::next_entrance_id(&header["entrances"], old_header.as_ref())?;
+    let old_settings = old_header.as_ref().filter(|_| !just_imported).map(|h| h["settings"].clone());
+    let old_originals = old_header.as_ref().map(|h| h["originals"].clone()).filter(serde_json::Value::is_object);
+    let old_atmosphere = old_header.filter(|_| !just_imported).map(|h| h["atmosphere"].clone());
+    // (A check works in its own folder and never installs anything: nothing of it needs putting back.)
+    let rollback = (!check).then(|| Rollback::of(&dir, name));
+    crate::atomic::write(&dir.join(format!("{name}.f32")), heights)?;
+    header["data"] = format!("{name}.f32").into();
+    if materials.is_empty() {
+        if let Some(h) = header.as_object_mut() {
+            h.remove("palette");
+        }
+    } else {
+        crate::atomic::write(&dir.join(format!("{name}.materials")), materials)?;
+        header["materials"] = format!("{name}.materials").into();
+    }
+    // (All weights 0 is no layer: the export is the same as without one.)
+    if !materials.is_empty() && blend.chunks(2).any(|p| p[1] > 0) {
+        crate::atomic::write(&dir.join(format!("{name}.blend")), blend)?;
+        header["blend"] = format!("{name}.blend").into();
+    } else {
+        let _ = std::fs::remove_file(dir.join(format!("{name}.blend")));
+    }
+    header["entranceNextId"] = entrance_next.into();
     // Without one (an export not from the editor), the last one carries on.
-    if let Some(a) = extra.get("atmosphere").or(old_atmosphere.as_ref().filter(|a| a.is_object())) {
+    if header["atmosphere"].is_null()
+        && let Some(a) = old_atmosphere.as_ref().filter(|a| a.is_object())
+    {
         header["atmosphere"] = a.clone();
     }
     let json = dir.join(format!("{name}.json"));
@@ -339,7 +367,7 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
         settings: old_settings,
         originals: old_originals,
         just_imported,
-        things: extra.get("things").is_some_and(serde_json::Value::is_array),
+        things: header["things"].is_array(),
     };
     let report = crate::generator::export(&json, &before)?;
     if let Some(r) = rollback {

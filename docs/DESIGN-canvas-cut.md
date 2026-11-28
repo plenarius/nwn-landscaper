@@ -1,6 +1,6 @@
 # Design: cut into pieces
 
-Status: design; step 2 (the halo, its edge scenery and `tagPrefix`) is built. Written 2026-11-25 for the maintainer's review before
+Status: design; steps 1 to 4 are built (see each step's "as built" note). Written 2026-11-25 for the maintainer's review before
 any code.
 
 A builder sets up one big canvas (100 by 100 tiles, say), sculpts and paints it as one landscape, then cuts it into rectangles.
@@ -327,6 +327,29 @@ each ring of band samples (as far out as each other) is averaged along itself ov
 softened across the rings, the two rings by the edge kept, water beds kept; extruded, a hilly edge ran out as 50 m ridges and
 the showcase forest's band, whose rows had each run out on their own, as steps up to 3 m. A band saved as the old first fill
 left it is filled again when opened; any other band is kept.
+
+**Step 4 as built (2026-11-28).** The export puts the canvas's blocks together and floods its water on the whole canvas, then cuts
+each piece out with a 5-tile halo (past the canvas's own border, its edge samples carried outward, today's extruded edge) and
+gives it one seed for each part of that water in its grid, bounded by the part's extent, at the body's own level: flooding from
+those seeds reaches the same samples, so the water matches at every cut (a unit test refloods each piece and compares). The
+paint's soft-paint `blend` layer is cut out with the paint. Objects go by their origin and also onto every neighbour whose halo
+they stand on; things and ambience by their place, a trigger or encounter by its whole outline; a point on a cut belongs to the
+piece east or north of it. Crossings are found on the canvas's ground: a cut sample is open when it and 7 samples (4.4 m) each
+side are walkable (no chasm, water at most 0.5 m deep, slope within the walkmesh's) and no solid object stands within its scale in
+metres; stretches of at least 3 samples are split into crossings of at most 32. A crossing's trigger and waypoint are things of
+the piece (plain blueprints, `nw_g0_transition` on enter), with ids from 1,000,000,000 up taken from their place (still a game
+int), so a re-export finds its own. Each piece's check routes between its waypoints, transition triggers, entrance mouths and
+start point (`fixed` in the report, single areas too), nearest first and never between two already joined, since a 32-tile piece
+can have over a hundred; the canvas check joins them into one graph and walks it from the module's start point. The pieces export
+one after the other into `<canvas>.mod`, the start piece first. Not yet: a crossing the plan made unwalkable is reported by the
+canvas check (off the walkmesh) rather than shifted; the export of one piece doesn't check its neighbours were exported since
+their last cut change. The trial (3 pieces of 16 by 16 tiles, a road over both cuts, a stream seeded in the north piece) found 34
+crossings, the stream leaving a gap, and exported in 38 s on 48 cores. In the game client (single player, software rendering) a
+scripted player ran through three crossings, east, back west and north over the stream's cut, arriving each time on the waypoint,
+facing on; the ground, the road and the water met at each cut with no step or gap. It showed one thing: the halo's 128 px
+pictures, right at a cut, read as a soft band beside the tiles. **Changed with step 4:** the ring of halo tiles touching the area
+is baked at the area's own size (512 px), the rest stays at 128; that ring is seen as close as the tiles, and with it the cut no
+longer shows. A 16 by 16 piece's hak grew 11 MB.
 
 ### 4. Tile levels and path nodes
 

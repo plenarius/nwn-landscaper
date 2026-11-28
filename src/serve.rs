@@ -282,6 +282,12 @@ pub fn open_browser(url: &str) {
 
 /// Heavy jobs (a check, an export, an import) take turns: they keep the area they work on in process-wide state and are heavy on the
 /// machine. Everything else (searching, listing, loading, saving) goes on meanwhile.
+/// Checks or exports a canvas of the workspace, as `POST /api/canvas-export` does (the command line's `canvas-export`).
+pub(crate) fn canvas_export(name: &str, pieces: &[String], check: bool) -> Result<serde_json::Value> {
+    let _job = job();
+    canvases::export(name, pieces, check)
+}
+
 fn job() -> std::sync::MutexGuard<'static, ()> {
     static JOB: std::sync::Mutex<()> = std::sync::Mutex::new(());
     JOB.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -667,10 +673,11 @@ fn meta_policy(html: &str) -> Option<String> {
     None
 }
 /// What the editor may send while an admin views another builder's workspace (the `ls_as` cookie): reads, going back to their
-/// own workspace (`/api/view-as`), and checking paths (`/api/check`, which writes nothing). The editor's `api()` sends nothing
-/// else then; anything else is refused with 403.
+/// own workspace (`/api/view-as`), and checking paths (`/api/check` and `/api/canvas-check`, which install nothing). The
+/// editor's `api()` sends nothing else then; anything else is refused with 403.
 fn read_only_allows(method: &Method, path: &str) -> bool {
-    matches!(method, Method::Get | Method::Head) || (*method == Method::Post && matches!(path, "/api/view-as" | "/api/check"))
+    matches!(method, Method::Get | Method::Head)
+        || (*method == Method::Post && matches!(path, "/api/view-as" | "/api/check" | "/api/canvas-check"))
 }
 
 /// [`answer`] without the security headers.

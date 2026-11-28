@@ -332,6 +332,8 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         }
     }
     lap("long routes");
+    let fixed = fixed_routes(&hm, &area, &plan, &wide, &conn, aw, ah);
+    lap("fixed places");
     // One warning per tile with crossings over the limit: one of them and how many. Each search stops at the limit.
     let all: Vec<usize> = (0..tiles_x() * tiles_y()).collect();
     let mut per_tile: std::collections::BTreeMap<usize, ((f32, f32), (f32, f32), usize)> = Default::default();
@@ -373,6 +375,7 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         "coverage": covered as f32 / truly.max(1) as f32,
         "routes": { "ok": ok, "total": total, "long": long_routes.len() },
         "long_routes": long_routes,
+        "fixed": fixed,
         "start": start_point(),
         "warnings": warnings,
         "ambience": ambience.report(),
@@ -393,6 +396,104 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
         out.join("report.json").display()
     );
     Ok(report)
+}
+
+/// The places a player comes in and goes out by: waypoints, transition triggers (a canvas's crossings), cave entrances' mouths
+/// and the start point, by tag. A trigger is taken 2 m in from the area's edge at most, where a route to it ends.
+fn fixed_places(hm: &heightmap::Heightmap, aw: f32, ah: f32) -> Vec<(String, (f32, f32))> {
+    let mut out = Vec::new();
+    for t in &hm.things {
+        let tag = t.tag.clone().unwrap_or_else(|| format!("thing {}", t.id));
+        match t.kind {
+            mg_rules::ObjectKind::Waypoint => out.push((tag, (t.x, t.y))),
+            mg_rules::ObjectKind::Trigger
+                if !t.outline.is_empty() && t.fields.iter().any(|(k, v)| k == "Type" && v.as_i64() == Some(1)) =>
+            {
+                let n = t.outline.len() as f32;
+                let (x, y) = (t.outline.iter().map(|q| q[0]).sum::<f32>() / n, t.outline.iter().map(|q| q[1]).sum::<f32>() / n);
+                out.push((tag, (x.clamp(2.0, aw - 2.0), y.clamp(2.0, ah - 2.0))));
+            }
+            _ => {}
+        }
+    }
+    for e in &hm.entrances {
+        out.push((super::entrance::door_tag(e.id), (e.x - 2.0 * e.dir.cos(), e.y - 2.0 * e.dir.sin())));
+    }
+    // (Where the module starts, if this is its first area: a canvas's check walks from there.)
+    let s = start_point();
+    out.push((START.to_string(), (s[0], s[1])));
+    out
+}
+
+/// The name [`fixed_places`] gives the area's start point.
+pub(crate) const START: &str = "start";
+
+/// Which of the [`fixed_places`] a player can walk between (a canvas's per-piece check, docs/DESIGN-canvas-cut.md question 5):
+/// each place, whether it is on the walkmesh, and routes that join them, in one click or in shorter ones. Walking joins are
+/// transitive, so this routes in rounds, each place to its nearest one not joined to it yet, and lists the routes that worked:
+/// a forest whose trees are the places a player can walk between. A 32-tile piece open on every side has over a hundred places,
+/// whose every pair would be thousands of routes.
+fn fixed_routes(
+    hm: &heightmap::Heightmap,
+    area: &sim::Area,
+    plan: &(Vec<super::Walk>, Vec<(char, u8)>),
+    wide: &oracle::Reach,
+    conn: &seams::Connectivity,
+    aw: f32,
+    ah: f32,
+) -> serde_json::Value {
+    let places = fixed_places(hm, aw, ah);
+    let at = |k: usize| places[k].1;
+    let on: Vec<bool> = places.iter().map(|(_, (x, y))| conn.component(*x, *y).is_some() && wide.at(*x, *y) >= 0).collect();
+    let mut set: Vec<usize> = (0..places.len()).collect();
+    fn root(set: &mut [usize], k: usize) -> usize {
+        let mut r = k;
+        while set[r] != r {
+            r = set[r];
+        }
+        set[k] = r;
+        r
+    }
+    let mut tried = std::collections::BTreeSet::new();
+    let mut joined = Vec::new();
+    loop {
+        let mut batch: Vec<(usize, usize)> = Vec::new();
+        for a in (0..places.len()).filter(|&a| on[a]) {
+            let near = (0..places.len())
+                .filter(|&b| b != a && on[b] && wide.at(at(a).0, at(a).1) == wide.at(at(b).0, at(b).1))
+                .filter(|&b| !tried.contains(&(a.min(b), a.max(b))) && root(&mut set, a) != root(&mut set, b))
+                .min_by(|&b, &c| {
+                    let d = |q: usize| (at(q).0 - at(a).0).hypot(at(q).1 - at(a).1);
+                    d(b).total_cmp(&d(c))
+                });
+            if let Some(b) = near
+                && tried.insert((a.min(b), a.max(b)))
+            {
+                batch.push((a, b));
+            }
+        }
+        if batch.is_empty() {
+            break;
+        }
+        let ends: Vec<_> = batch.iter().map(|&(a, b)| (at(a), at(b))).collect();
+        let routes = simulate_all(area, plan_digest(&plan.0, &plan.1), &ends, i64::MAX);
+        let missed: Vec<usize> =
+            (0..batch.len()).filter(|&k| (routes[k].end.0 - ends[k].1.0).hypot(routes[k].end.1 - ends[k].1.1) >= 1.5).collect();
+        let clicks =
+            in_parallel(&missed.iter().map(|&k| ends[k]).collect::<Vec<_>>(), |(from, to)| super::hops::hops(area, wide, conn, from, to));
+        let failed: std::collections::BTreeSet<usize> = missed.iter().zip(clicks).filter(|(_, c)| c.is_none()).map(|(k, _)| *k).collect();
+        for (k, &(a, b)) in batch.iter().enumerate() {
+            let (ra, rb) = (root(&mut set, a), root(&mut set, b));
+            if !failed.contains(&k) && ra != rb {
+                set[ra] = rb;
+                joined.push(serde_json::json!([places[a].0, places[b].0]));
+            }
+        }
+    }
+    serde_json::json!({
+        "points": places.iter().zip(&on).map(|((tag, (x, y)), on)| serde_json::json!({ "tag": tag, "at": [x, y], "walkmesh": on })).collect::<Vec<_>>(),
+        "joined": joined,
+    })
 }
 
 #[cfg(test)]

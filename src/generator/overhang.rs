@@ -8,7 +8,8 @@
 //! - **Ground:** a vertex every 2.5 m, no walkmesh. A 2.5 m cell a shore runs through, or whose ground the coarse grid misses by
 //!   more than [`MISS`] (a road's groove, a ditch, a bank), is drawn at the samples' 0.625 m. Cells meet without cracks: an edge takes
 //!   the finer side's vertices, and an edge on the area's border takes every vertex of the tile's own outline.
-//! - **Its texture:** one [`HALO_BAKE`] pixel picture a halo tile, the paint and the baked shade in it.
+//! - **Its texture:** one [`HALO_BAKE`] pixel picture a halo tile, the paint and the baked shade in it; the ring touching the area
+//!   at the area's own bake size, since a player standing at a canvas's cut sees it as close as the tile beside it.
 //! - **Water:** the halo's wet samples as rectangles at their level.
 //! - **Trees:** the halo's baked objects, each drawn by the boundary tile nearest it. A tree [`CARD_FROM`] or more past the edge is
 //!   cards (`cards`), the rest their models.
@@ -32,6 +33,13 @@ const COARSE: f32 = 2.5;
 const FINE: usize = 4;
 /// The picture of a halo tile (pixels a side): its paint and shade.
 pub(super) const HALO_BAKE: u32 = 128;
+/// The picture size of halo tile (i, j) round an `nx` by `ny` area: the area's own bake for the ring touching it (seen from the
+/// edge as close as its own tiles: at 128 px a canvas's cut showed as a line where the ground went soft), [`HALO_BAKE`] beyond.
+fn halo_bake(i: i64, j: i64, nx: i64, ny: i64) -> u32 {
+    let ring = |v: i64, n: i64| if v < 0 { -v } else { v - n + 1 };
+    if ring(i, nx).max(ring(j, ny)) <= 1 { super::painter::bake_size() } else { HALO_BAKE }
+}
+
 /// A coarse cell whose ground the 2.5 m grid misses by more than this (m) is drawn at the samples' spacing.
 const MISS: f32 = 0.25;
 
@@ -228,9 +236,10 @@ impl Overhang {
                 let s = |a: usize, b: usize| shade[b * SHADE + a];
                 (s(a, b) * (1.0 - tx) + s(a + 1, b) * tx) * (1.0 - ty) + (s(a, b + 1) * (1.0 - tx) + s(a + 1, b + 1) * tx) * ty
             };
-            let colour = painter.map(|p| p.bake_square(ox, oy, HALO_BAKE));
-            let picture = paint::picture(HALO_BAKE, HALO_BAKE, |px, py| {
-                let (u, v) = ((px as f32 + 0.5) / HALO_BAKE as f32, (py as f32 + 0.5) / HALO_BAKE as f32);
+            let size = halo_bake(i, j, nx, ny);
+            let colour = painter.map(|p| p.bake_square(ox, oy, size));
+            let picture = paint::picture(size, size, |px, py| {
+                let (u, v) = ((px as f32 + 0.5) / size as f32, (py as f32 + 0.5) / size as f32);
                 let c = colour.as_ref().map_or([0.30, 0.38, 0.18], |c| {
                     let p = c.pixel(px, py);
                     [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]
@@ -625,6 +634,17 @@ mod tests {
         let mesh = Mesh { fine: &fine, outline: &outline, size: [40.0, 40.0] };
         let (verts, faces) = mesh.tile(-1, 0);
         (verts, faces, west)
+    }
+
+    #[test]
+    fn the_ring_touching_the_area_is_baked_as_sharp_as_its_tiles() {
+        let full = super::super::painter::bake_size();
+        for (i, j) in [(-1, -1), (-1, 3), (4, 0), (2, -1), (4, 4)] {
+            assert_eq!(halo_bake(i, j, 4, 4), full, "({i}, {j})");
+        }
+        for (i, j) in [(-2, 0), (5, 2), (0, -5), (-2, -2), (5, 5)] {
+            assert_eq!(halo_bake(i, j, 4, 4), HALO_BAKE, "({i}, {j})");
+        }
     }
 
     #[test]

@@ -122,6 +122,18 @@ pub enum Command {
         id: String,
     },
 
+    /// Export a canvas of the workspace (docs/DESIGN-canvas-cut.md): every piece into one module named after it
+    #[command(hide = true)]
+    CanvasExport {
+        /// The canvas's name
+        name: String,
+        /// Only check the pieces and the routes across them
+        #[arg(long)]
+        check: bool,
+        /// Only these pieces (by name)
+        pieces: Vec<String>,
+    },
+
     // The research commands: listed in RESEARCH above.
     #[command(hide = true)]
     Generate { out: Option<PathBuf> },

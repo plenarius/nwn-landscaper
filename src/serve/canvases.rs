@@ -15,6 +15,12 @@
 //! - `DELETE /api/canvas?name=` with `{ base, blocks }`, the versions the tab holds of the header and of every block it has
 //!   loaded or saved (one left out is `none`).
 //!
+//! - `GET /api/canvas-cut?name=`: the canvas cut, nothing built: `{ canvas, pieces: [{ name, id, things, objects, entrances,
+//!   water } | { name, id, refused }], crossings: [...], warnings }` (`crate::cut`).
+//! - `POST /api/canvas-check?name=&pieces=a,b` and `POST /api/canvas-export?name=&pieces=a,b`: each piece (`pieces` left out:
+//!   all of them) checked, or exported into one module named after the canvas, then the route check across the canvas:
+//!   `{ canvas, module, pieces: [{ name, report }], crossings, routes: { start, reached, problems }, warnings }`.
+//!
 //! On a team server a canvas is one more item of the builder's workspace, as an area is (the same quota, an admin reads it
 //! without changing it). A builder needs, as for an area, an assignment that still stands for every existing area the canvas
 //! is built from: its name's import, the imports its paint and objects use, and any piece named like an existing area.
@@ -26,6 +32,7 @@ use tiny_http::Method;
 use super::areas::{Denied, area_exists, guard_assignment, guard_new_name, imports_in};
 use super::{Answer, Ask, fail, json_response, read_body, response_header};
 use crate::canvas::{self, BlockId, Canvas, Damaged, Moved, NoCanvas, Seam};
+use crate::cut;
 
 /// Answers the canvas routes; `None` for any other request.
 pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
@@ -66,6 +73,32 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
                 Ok(v) => {
                     json_response(200, &serde_json::json!({ "saved": crate::assignments::now(), "version": v.version, "blocks": v.blocks }))
                 }
+                Err(e) => answer_error(&e),
+            }
+        }
+        (Method::Get, "/api/canvas-cut") => match cut_summary(&query.text("name")) {
+            Ok(v) => json_response(200, &v),
+            Err(e) => answer_error(&e),
+        },
+        (Method::Post, p @ ("/api/canvas-export" | "/api/canvas-check")) => {
+            let check = p == "/api/canvas-check";
+            let name = query.text("name");
+            let only: Vec<String> = query.text("pieces").split(',').filter(|s| !s.is_empty()).map(str::to_string).collect();
+            let done = {
+                let _job = super::job();
+                export(&name, &only, check)
+            };
+            if !check {
+                crate::quota::forget();
+                crate::audit::log(
+                    "canvas_export",
+                    Some(&name),
+                    done.is_ok(),
+                    &done.as_ref().map_or_else(|e| format!("{e:#}"), |_| String::new()),
+                );
+            }
+            match done {
+                Ok(v) => json_response(200, &v),
                 Err(e) => answer_error(&e),
             }
         }
@@ -294,4 +327,56 @@ fn delete(name: &str, body: &[u8]) -> Result<String> {
     crate::quota::prune_deleted(&deleted, name);
     crate::quota::forget();
     Ok(crate::workspace::shown(&aside))
+}
+
+/// Canvas `name` cut, nothing built ([`cut::summary`]).
+fn cut_summary(name: &str) -> Result<serde_json::Value> {
+    let c = canvas(name)?;
+    let lock = canvas::lock(&c.dir);
+    let _turn = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    cut::summary(&c)
+}
+
+/// Checks (`check`) or exports canvas `name`'s pieces (those named in `only`, else all), each as an area of the module named after
+/// the canvas, then checks the routes across them. Every piece is cut before any is built, so a refused one (a trigger across a
+/// cut) stops the export before anything is written. The start piece goes first: the module starts in the first area exported
+/// into it.
+pub(crate) fn export(name: &str, only: &[String], check: bool) -> Result<serde_json::Value> {
+    let c = canvas(name)?;
+    let (header, ground) = {
+        let lock = canvas::lock(&c.dir);
+        let _turn = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let header = c.header()?;
+        guard(name, &header.json)?;
+        let ground = cut::Ground::load(&c, &header)?;
+        (header, ground)
+    };
+    let list = cut::pieces(&header);
+    anyhow::ensure!(!list.is_empty(), "canvas {name} has no pieces yet: cut it into pieces first");
+    let start = header.json["startPiece"].as_str();
+    let mut chosen = cut::chosen(&list, only)?;
+    chosen.sort_by_key(|p| Some(p.name.as_str()) != start);
+    let (crossings, mut warnings) = cut::crossings(name, &header, &ground, &list);
+    warnings.extend(cut::in_gaps(&header, &list));
+    let areas = chosen.iter().map(|p| cut::area(name, &header, &ground, p, &crossings, cut::HALO)).collect::<Result<Vec<_>>>()?;
+    let palette: Vec<String> = serde_json::from_value(header.json["palette"].clone()).unwrap_or_default();
+    let imports = imports_in(&palette, &header.json);
+    let mut reports = std::collections::BTreeMap::new();
+    let mut rows = Vec::new();
+    for a in areas {
+        let mut report = super::export::export_area(&a.name, a.header, &a.heights, &a.materials, &a.blend, &imports, check)
+            .with_context(|| format!("piece {}", a.name))?;
+        for key in ["module", "installed_module"] {
+            if let Some(path) = report[key].as_str().map(std::path::PathBuf::from) {
+                report[key] = crate::workspace::shown(&path).into();
+            }
+        }
+        rows.push(serde_json::json!({ "name": a.name, "report": report }));
+        reports.insert(a.name, report);
+    }
+    let routes = cut::canvas_routes(&list, &crossings, &reports, start);
+    Ok(serde_json::json!({
+        "canvas": name, "module": name, "pieces": rows, "crossings": cut::crossings_json(&crossings), "routes": routes,
+        "warnings": warnings,
+    }))
 }
