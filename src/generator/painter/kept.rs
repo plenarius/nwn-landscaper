@@ -129,7 +129,7 @@ fn prune(dir: &Path, max: u64, max_age: Duration) {
         if !meta.is_file() {
             continue;
         }
-        // (A file system without modification times: as if just used.)
+        // (A file system without modification times: as if used now.)
         let used = meta.modified().unwrap_or(now);
         let path = e.path();
         let tmp = path.extension().is_some_and(|x| x == "tmp");
