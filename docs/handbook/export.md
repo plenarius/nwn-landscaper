@@ -38,17 +38,18 @@ not blocked and has no marker; the report says how many there are and how many c
 
 ## What stops an export
 
-An object, thing or entrance more than 10 m outside the area, an object scaled outside 0.1 to 5, or an entrance wider or deeper
-than the area stops the export, with a message naming it. Move it or take it out, and export again.
+A thing or entrance more than 10 m outside the area, an object past the band, an object scaled outside 0.1 to 5, or an entrance
+wider or deeper than the area stops the export, with a message naming it. Move it or take it out, and export again.
 
 ## Past the edge in the game
 
 The game draws scenery for 50 m past an area's edge. An outdoor area's export builds that scenery from
 [the band round the area](terrain.md#the-band-round-the-area): its ground, its paint and its water, as you shaped them, fading
 into the area's fog colour from 25 m out. Trees standing past the edge are drawn there too: their own models within 25 m of
-the edge, and farther out as cards, two crossed pictures of the tree. (The editor doesn't place objects in the band yet.) Nothing
-past the edge is walked, and the path check sends no route there. Caves and interiors have no band, so their export draws
-nothing past the edge.
+the edge, and farther out as cards, two crossed pictures of the tree ([Scatter and Place](scatter.md#past-the-edge) put them
+there). They cast their shade and block nothing. Nothing past the edge is walked, and the path check sends no route there. The
+report counts the objects on the band: scenery past the edge, not objects outside the area. Caves and interiors have no band, so
+their export draws nothing past the edge.
 
 ## What goes into the game
 

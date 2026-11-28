@@ -313,9 +313,20 @@ models 11,800, 18 as cards 180), exported in 6 s on 48 cores.
 area's samples copied into its middle, saved with the area. A new area, and an old one when it is opened, gets the first fill:
 each band sample takes its nearest edge sample's height and paint, which is the extruded edge the game showed before. Raise,
 Lower, Smooth, Flatten and Paint stamp it where the brush reaches past the edge, with undo; the area's water floods on into it
-as the engine floods the halo. It is drawn at full detail in place of the old skirt. Not yet in the band: the texture mix, chasms,
-digging and objects. A cave or an interior has no band, as it has no edge scenery. The export sends the band's grids with `halo`;
-the engine moves the water's seeds and the chasm's runs, which the editor keeps in the area's own grid, into the larger one.
+as the engine floods the halo. It is drawn at full detail in place of the old skirt. Not yet in the band: chasms and digging.
+A cave or an interior has no band, as it has no edge scenery. The export sends the band's grids with `halo`; the engine moves
+the water's seeds and the chasm's runs, which the editor keeps in the area's own grid, into the larger one.
+
+**Step 2c as built (2026-11-27).** The band takes the texture mix and baked objects, with no change to the engine: the mix
+stamps the band with the area's patches (a patch is a function of area metres), so they run on across the edge; Scatter and
+Place reach the band's outer edge, standing objects on the band's ground and keeping Scatter off its steep ground and water;
+placeables, things, entrances and particles stay in the area. *Carry the scenery outward* fills the band from the objects within
+25 m of the nearest point on the edge: their density (per square metre of the area that window covers) and a copy of one of
+them at each kept try, thinning to 65% at the rim, topping up to that density when pressed again. The first fill is eased:
+each ring of band samples (as far out as each other) is averaged along itself over a tent half as wide as it is far out, then
+softened across the rings, the two rings by the edge kept, water beds kept; extruded, a hilly edge ran out as 50 m ridges and
+the showcase forest's band, whose rows had each run out on their own, as steps up to 3 m. A band saved as the old first fill
+left it is filled again when opened; any other band is kept.
 
 ### 4. Tile levels and path nodes
 
