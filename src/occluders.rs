@@ -417,6 +417,7 @@ mod tests {
         let n = positions.len();
         Placed {
             uvs: vec![[0.0, 0.0]; n],
+            normals: Vec::new(),
             groups: vec![("solid".into(), 0, n / 3, 0)],
             glow: Vec::new(),
             footprint: Vec::new(),

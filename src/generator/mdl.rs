@@ -99,47 +99,62 @@ fn lit(props: &str) -> &'static str {
     if props.contains("  diffuse ") { "" } else { "  ambient 1 1 1\n  diffuse 1 1 1\n" }
 }
 
-/// A trimesh of the triangles listed (three vertices each, with their own texture coordinates), as copied from another model.
-/// Corners at the same place with the same texture coordinates are one vertex: lsforest's tile 0000 has 141,924 corners and
-/// 26,957 such vertices, so its text is a fifth as long to write and to compile. Its faces are in smoothing group 0, so each
-/// keeps its own flat normal as when every corner was a vertex of its own, and the model draws the same.
-pub(super) fn trimesh_listed(out: &mut String, name: &str, root: &str, bitmap: &str, props: &str, verts: &[[f32; 3]], uvs: &[[f32; 2]]) {
+/// A trimesh of the triangles listed (three corners each, with their own texture coordinates), as copied from another model.
+/// `normals`, one a corner, when the model gave them: written as the mesh's normals, so it shades as the model does. Without, each
+/// face keeps its own flat normal (smoothing group 0). Corners at the same place with the same texture coordinates (and normal)
+/// are one vertex.
+pub(super) fn trimesh_listed(
+    out: &mut String,
+    name: &str,
+    root: &str,
+    bitmap: &str,
+    props: &str,
+    verts: &[[f32; 3]],
+    uvs: &[[f32; 2]],
+    normals: Option<&[[f32; 3]]>,
+) {
+    let normals = normals.filter(|n| n.len() == verts.len());
+    let (corners, vertex) = merged(verts, uvs, normals);
+    let faces: Vec<[u32; 3]> = corners.as_chunks::<3>().0.to_vec();
+    let pick = |list: &[[f32; 3]]| vertex.iter().map(|&k| list[k]).collect::<Vec<_>>();
+    let (v, t) = (pick(verts), vertex.iter().map(|&k| uvs[k]).collect::<Vec<_>>());
+    if let Some(n) = normals {
+        write_node(out, name, root, bitmap, props, &v, Some(&pick(n)), &t, None, None, &faces, &faces, &[]);
+        return;
+    }
     let _ = writeln!(
         out,
         "node trimesh {name}\n  parent {root}\n{}  specular 0 0 0\n  shininess 1\n  shadow 0\n{props}  bitmap {bitmap}",
         lit(props)
     );
-    let (corners, vertex) = merged(verts, uvs);
-    let _ = writeln!(out, "  verts {}", vertex.len());
-    for &k in &vertex {
-        let v = verts[k];
-        let _ = writeln!(out, "    {} {} {}", num(v[0]), num(v[1]), num(v[2]));
+    let _ = writeln!(out, "  verts {}", v.len());
+    for p in &v {
+        let _ = writeln!(out, "    {} {} {}", num(p[0]), num(p[1]), num(p[2]));
     }
-    let _ = writeln!(out, "  tverts {}", vertex.len());
-    for &k in &vertex {
-        let t = uvs[k];
+    let _ = writeln!(out, "  tverts {}", t.len());
+    for t in &t {
         let _ = writeln!(out, "    {} {} 0", num(t[0]), num(t[1]));
     }
-    let _ = writeln!(out, "  faces {}", corners.len() / 3);
-    for c in corners.as_chunks::<3>().0 {
-        let [a, b, c] = *c;
+    let _ = writeln!(out, "  faces {}", faces.len());
+    for [a, b, c] in faces {
         let _ = writeln!(out, "    {a} {b} {c} 0 {a} {b} {c} 0");
     }
     let _ = writeln!(out, "endnode");
 }
 
-/// The corners `verts` and `uvs` (one each a corner) as vertices: each corner's vertex, and the corner each vertex is first
-/// listed at. Equal as the compiler compares them: exactly, -0 as 0.
-fn merged(verts: &[[f32; 3]], uvs: &[[f32; 2]]) -> (Vec<u32>, Vec<usize>) {
+/// The corners `verts`, `uvs` and `normals` (one each a corner) as vertices: each corner's vertex, and the corner each vertex is
+/// first listed at. Equal as the compiler compares them: exactly, -0 as 0.
+fn merged(verts: &[[f32; 3]], uvs: &[[f32; 2]], normals: Option<&[[f32; 3]]>) -> (Vec<u32>, Vec<usize>) {
     let bits = |x: f32| if x == 0.0 { 0 } else { x.to_bits() };
-    let mut index: HashMap<([u32; 3], [u32; 2]), u32> = HashMap::with_capacity(verts.len());
+    let mut index: HashMap<([u32; 3], [u32; 2], [u32; 3]), u32> = HashMap::with_capacity(verts.len());
     let mut first = Vec::new();
     let corners = verts
         .iter()
         .zip(uvs)
         .enumerate()
         .map(|(k, (v, t))| {
-            *index.entry((v.map(bits), t.map(bits))).or_insert_with(|| {
+            let n = normals.map_or([0; 3], |n| n[k].map(bits));
+            *index.entry((v.map(bits), t.map(bits), n)).or_insert_with(|| {
                 first.push(k);
                 first.len() as u32 - 1
             })
@@ -442,7 +457,7 @@ mod tests {
         let model =
             |node: &str| format!("newmodel m\nbeginmodelgeom m\nnode dummy m\n  parent NULL\nendnode\n{node}endmodelgeom m\ndonemodel m\n");
         let mut node = String::new();
-        trimesh_listed(&mut node, "o", "m", "tex", "", &verts, &uvs);
+        trimesh_listed(&mut node, "o", "m", "tex", "", &verts, &uvs, None);
         // (Two corners share both place and texture coordinates with an earlier one; -0 is 0.)
         assert_eq!((list(&node, "verts").len(), list(&node, "tverts").len(), list(&node, "faces").len()), (6, 6, 3));
         // As it was written before: a vertex a corner, smoothing group 1.
@@ -479,5 +494,33 @@ mod tests {
             })
             .collect();
         assert_ne!(drawn(&smoothed).1, drawn(&old).1, "the test can tell smoothing apart");
+    }
+
+    #[test]
+    fn listed_corners_with_normals_keep_them_and_merge_only_where_they_match() {
+        // Two triangles of a bent quad sharing an edge: smooth along it (the same normal at both ends), apart elsewhere.
+        let verts = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.5], [0.0, 0.0, 0.0], [1.0, 1.0, 0.5], [0.0, 1.0, 0.0]];
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        let shared = [0.0, -h * 0.6, 0.8];
+        let mut normals = [shared, [0.6, 0.0, 0.8], [0.0, 0.0, 1.0], shared, [0.0, 0.0, 1.0], [-0.6, 0.0, 0.8]];
+        let mut node = String::new();
+        trimesh_listed(&mut node, "o", "m", "tex", "", &verts, &uvs, Some(&normals));
+        assert_eq!((list(&node, "verts").len(), list(&node, "normals").len(), list(&node, "faces").len()), (4, 4, 2));
+        // The compiled mesh has the normals given, a vertex each.
+        let model = format!("newmodel m\nbeginmodelgeom m\nnode dummy m\n  parent NULL\nendnode\n{node}endmodelgeom m\ndonemodel m\n");
+        let compiled = mg_mdl::compile::compile(model.as_bytes(), &Default::default()).unwrap().binary;
+        let m = mg_mdl::Model::read(&compiled).unwrap();
+        let mesh = m.nodes.iter().find_map(mg_mdl::Node::mesh).unwrap();
+        assert_eq!(mesh.vertices.len(), 4);
+        for (v, n) in mesh.vertices.iter().zip(&mesh.normals) {
+            let k = verts.iter().position(|p| p == v).unwrap();
+            assert!((0..3).all(|i| (n[i] - normals[k][i]).abs() < 1e-5), "{v:?}: {n:?} against {:?}", normals[k]);
+        }
+        // A corner at the same place with another normal is a vertex of its own: a hard edge stays hard.
+        normals[3] = [0.0, 0.0, 1.0];
+        let mut node = String::new();
+        trimesh_listed(&mut node, "o", "m", "tex", "", &verts, &uvs, Some(&normals));
+        assert_eq!(list(&node, "verts").len(), 5);
     }
 }
