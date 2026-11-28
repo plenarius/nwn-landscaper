@@ -13,6 +13,8 @@
 //!   `pieces[k].atmosphere`, over the canvas's);
 //! - `crossingsOff`: stretches the builder turned off, by their key `x<i>_<j>` (the stretch's middle sample);
 //! - `startPiece`: the piece a player comes in by, for the canvas route check (else the first piece).
+//! - `tagPrefix`: what the engine's tags start with in every piece (else the canvas's name): a canvas made from an area keeps
+//!   that area's name here, so the doors and objects it had keep their tags.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -74,6 +76,12 @@ impl Piece {
         let [w, s, e, n] = self.metres();
         (w..=e).contains(&x) && (s..=n).contains(&y)
     }
+}
+
+/// What the tags of canvas `canvas`'s pieces start with: its header's `tagPrefix` (a canvas made from an area keeps that area's,
+/// so its doors keep their tags), else its name.
+fn tag_prefix<'a>(canvas: &'a str, header: &'a Header) -> &'a str {
+    header.json["tagPrefix"].as_str().unwrap_or(canvas)
 }
 
 /// The pieces in `header`, as `crate::canvas::check_pieces` checked them.
@@ -264,6 +272,7 @@ fn cuts(pieces: &[Piece]) -> Vec<Cut<'_>> {
 /// waypoints on both sides, and no solid object stands, becomes crossings of at most 2 tiles, one each way. Stretches in
 /// `crossingsOff` are left out. Also the warnings: solid objects players walk through from the other side of a cut.
 pub fn crossings(canvas: &str, header: &Header, g: &Ground, pieces: &[Piece]) -> (Vec<Crossing>, Vec<Value>) {
+    let prefix = tag_prefix(canvas, header);
     let off: BTreeSet<&str> = header.json["crossingsOff"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
     let solid: Vec<(f32, f32, f32, String)> = header.json["objects"]
         .as_array()
@@ -353,8 +362,8 @@ pub fn crossings(canvas: &str, header: &Header, g: &Ground, pieces: &[Piece]) ->
                         _ => std::f32::consts::PI,
                     };
                     out.push(Crossing {
-                        tag: format!("{canvas}_x{i}_{j}{dir}"),
-                        waypoint: format!("{canvas}_w{i}_{j}{dir}"),
+                        tag: format!("{prefix}_x{i}_{j}{dir}"),
+                        waypoint: format!("{prefix}_w{i}_{j}{dir}"),
                         key: key.clone(),
                         from: from.name.clone(),
                         to: to.name.clone(),
@@ -399,7 +408,7 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
         if materials.is_empty() || g.blend.is_empty() { Vec::new() } else { src.iter().flat_map(|&k| g.blend[k]).collect() };
     let mut h = json!({
         "name": p.name, "tiles": p.w, "tilesY": p.h, "spacing": SPACING, "width": nx, "height": ny,
-        "tagPrefix": canvas, "module": canvas,
+        "tagPrefix": tag_prefix(canvas, header), "module": canvas,
     });
     if halo > 0 {
         h["halo"] = halo.into();
@@ -426,6 +435,17 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
     let [west, south, east, north] = p.metres();
     let canvas_m = [header.size.tiles_x as f32 * TILE_M, header.size.tiles_y as f32 * TILE_M];
     let shift = |x: f32, y: f32| [x - west, y - south];
+    // What the builder placed moves in f64, to the nanometre: in f32 a point 90 m out moves 2 µm, enough to tip an object's
+    // footprint over a walkmesh cell, so a piece that is a whole area would not give that area back.
+    let moved = |v: &Value| {
+        let at = |q: &Value, o: f32| q.as_f64().map_or(0.0, |x| ((x - f64::from(o)) * 1e9).round() / 1e9);
+        [at(&v[0], west), at(&v[1], south)]
+    };
+    let place = |v: &mut Value| {
+        let [x, y] = moved(&json!([v["x"], v["y"]]));
+        v["x"] = x.into();
+        v["y"] = y.into();
+    };
     let f = |v: &Value, k: &str| v[k].as_f64().map(|x| x as f32);
     // Objects: those standing in it, and those on its halo (drawn only in its edge scenery).
     let reach = halo as f32 * SPACING;
@@ -435,9 +455,7 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
         let on_halo = x >= west - reach && x <= east + reach && y >= south - reach && y <= north + reach;
         if p.holds(x, y, canvas_m) || (on_halo && !p.covers(x, y)) {
             let mut o = o.clone();
-            let [lx, ly] = shift(x, y);
-            o["x"] = lx.into();
-            o["y"] = ly.into();
+            place(&mut o);
             objects.push(o);
         }
     }
@@ -464,11 +482,9 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
         };
         if mine {
             let mut t = t.clone();
-            let [lx, ly] = shift(x, y);
-            t["x"] = lx.into();
-            t["y"] = ly.into();
+            place(&mut t);
             if !outline.is_empty() {
-                t["outline"] = json!(outline.iter().map(|q| shift(q[0], q[1])).collect::<Vec<_>>());
+                t["outline"] = json!(t["outline"].as_array().into_iter().flatten().map(moved).collect::<Vec<_>>());
             }
             things.push(t);
         }
@@ -514,9 +530,7 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
             bail!("entrance {}'s cave crosses the edge of piece {}: move it inside one piece", e["id"], p.name);
         }
         let mut e = e.clone();
-        let [lx, ly] = shift(x, y);
-        e["x"] = lx.into();
-        e["y"] = ly.into();
+        place(&mut e);
         entrances.push(e);
     }
     if !entrances.is_empty() {
@@ -529,9 +543,7 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
         .filter(|a| f(a, "x").zip(f(a, "y")).is_some_and(|(x, y)| p.holds(x, y, canvas_m)))
         .map(|a| {
             let mut a = a.clone();
-            let [lx, ly] = shift(f(&a, "x").unwrap_or(0.0), f(&a, "y").unwrap_or(0.0));
-            a["x"] = lx.into();
-            a["y"] = ly.into();
+            place(&mut a);
             a
         })
         .collect();
@@ -551,6 +563,10 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
                 .map(|(x, ty)| lights[ty * tx + x].clone())
                 .collect::<Vec<_>>()
         );
+    }
+    // An imported area's own objects as the editor changed them, in its own metres: the piece made from it carries them.
+    if let Some(o) = p.json.get("originals").filter(|o| o.is_object()) {
+        h["originals"] = o.clone();
     }
     for key in ["settings", "atmosphere"] {
         if let Some(v) = p.json.get(key).or(header.json.get(key)).filter(|v| v.is_object()) {
@@ -975,5 +991,21 @@ mod tests {
         let alone: BTreeMap<String, Value> = [("rivl02".to_string(), report("rivl02", &[], true))].into_iter().collect();
         let r = canvas_routes(&list, &all, &alone, Some("rivl01"));
         assert_eq!(r["problems"], json!([]), "{r}");
+    }
+
+    #[test]
+    fn a_canvas_made_from_an_area_tags_its_pieces_and_crossings_with_that_area_s_prefix() {
+        let mut j = base(20, 10, json!([piece(1, 0, 0, 10, 10), piece(2, 10, 0, 10, 10)]));
+        j["tagPrefix"] = "lsplains".into();
+        let h = header(j.clone());
+        let g = flat(h.size, &Value::Null);
+        let list = pieces(&h);
+        let (all, _) = crossings("rivl", &h, &g, &list);
+        assert!(all.iter().all(|c| c.tag.starts_with("lsplains_x") && c.waypoint.starts_with("lsplains_w")));
+        let a = area("rivl", &h, &g, &list[0], &all, 0).unwrap();
+        assert_eq!(a.header["tagPrefix"], "lsplains");
+        assert_eq!(a.header["module"], "rivl");
+        j["tagPrefix"] = "Not-one".into();
+        assert!(Header::parse("rivl", j, String::new()).is_err());
     }
 }

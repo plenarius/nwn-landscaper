@@ -19,6 +19,8 @@ The order follows the work on an area:
 10. **[Texture packs](texture-packs.md):** more textures to paint with.
 11. **[Export](export.md):** the area into the game, and the path check.
 12. **[Publish and teams](publish.md):** hand the area over, alone or on a team server.
+13. **[Canvases](canvases.md):** a landscape larger than one area, cut into pieces that become areas; a canvas made from an
+    area.
 
 [The whole path](../BUILDER-WORKFLOW.md) is the same work on one page, with every rule and limit. To try the editor without
 installing anything, [try it in your browser](try.md); for the command line or a server, use

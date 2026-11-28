@@ -106,6 +106,7 @@ nav:
       - Texture packs: handbook/texture-packs.md
       - Export: handbook/export.md
       - Publish and teams: handbook/publish.md
+      - Canvases: handbook/canvases.md
       - The whole path: BUILDER-WORKFLOW.md
   - Showcase: showcase.md
   - Running it:
