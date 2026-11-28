@@ -1,0 +1,58 @@
+[
+    {
+        "title": "A lake valley at nightfall",
+        "text": "Over the south ridge and down to a lakeside camp as night falls and the fireflies come out.",
+        "still": "lake-valley-camp-night.webp",
+        "clip": "clips/lake-valley-dusk-to-night.mp4",
+        "area": "areas/lsvale.json"
+    },
+    {
+        "title": "A canyon in golden light",
+        "text": "Up the canyon floor between its walls in golden haze, rising toward the rim.",
+        "still": "canyon-glide.webp",
+        "clip": "clips/canyon-floor-to-rim-golden.mp4",
+        "area": "areas/lscanyon.json"
+    },
+    {
+        "title": "A dune desert at sunset",
+        "text": "A low pass over the crests with sand drifting off them, rising at the end.",
+        "still": "dunes-sunset.webp",
+        "clip": "clips/dunes-low-pass.mp4",
+        "area": "areas/lsdunes.json"
+    },
+    {
+        "title": "A snowy mountain pass at dawn",
+        "text": "Up the saddle between the cliffs along a gravel trail, snow falling through the pines.",
+        "still": "snowy-pass-cliffs.webp",
+        "clip": "clips/snowy-pass-up-the-saddle.mp4",
+        "area": "areas/lspass.json"
+    },
+    {
+        "title": "A cave descent",
+        "text": "Down the ramp past a brazier into the cold blue bottom hall, then along the torchlit hall.",
+        "still": "cave-ramp-brazier.webp",
+        "clip": "clips/cave-down-the-halls.mp4",
+        "area": "areas/lsdescent.json"
+    },
+    {
+        "title": "A forest stream",
+        "text": "Along a dirt path beside a stream through old misty woods, past rapids and a small fall, out over a glade.",
+        "still": "forest-stream.webp",
+        "clip": "clips/forest-up-the-stream.mp4",
+        "area": "areas/lsforest.json"
+    },
+    {
+        "title": "A gloomy swamp",
+        "text": "Low over dark water between drowned trees and reed beds, rising once to the hut on its island.",
+        "still": "swamp-channel.webp",
+        "clip": "clips/swamp-channel.mp4",
+        "area": "areas/lsswamp.json"
+    },
+    {
+        "title": "Rolling grassland",
+        "text": "Up a stony track through the game's own grass, over the crest to a pond and a stone circle.",
+        "still": "plains-crest.webp",
+        "clip": "clips/plains-over-the-crest.mp4",
+        "area": "areas/lsplains.json"
+    }
+]

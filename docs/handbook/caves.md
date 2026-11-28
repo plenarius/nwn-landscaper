@@ -1,7 +1,7 @@
 # Caves and interiors
 
 A cave or an interior starts as solid rock. You cut rooms and passages out of it, and what is left is the wall. Start one with
-**New area**, *Cave* or *Interior*, or with a sample descent to change.
+**New area**, *Cave* or *Interior*, or with the *Descending cave* starter landscape to change.
 
 ![The sample descending cave: halls stepping down, joined by ramps](../assets/handbook/cave.webp)
 

@@ -53,6 +53,8 @@ if [[ ! -x "$work/editor/scripts/try-site.sh" ]]; then
     exit 1
 fi
 "$work/editor/scripts/try-site.sh" "$out" "$(realpath "$wasm")" "$PWD/packs/demo"
+# The showcase areas, beside the editor (File, Open a showcase).
+scripts/pack-showcase.sh "$out"
 
 # The game's stock placeables (src/demostock.rs): the "demo-stock" release's demo-stock.zip, made once with the game on a
 # machine that has it (`landscaper demo-stock DIR`, then DIR zipped), since Actions has no game; else made here when
@@ -128,8 +130,8 @@ fi
 cp "$work/landscaper-wasm/LICENSE" "$out/try/LICENSE-engine.txt"
 cp "$work/landscaper-wasm/README.md" "$out/try/NOTICE-engine.md"
 
-# GitHub Pages takes a site of up to 1 GB; this page is about 14 MB, 290 MB with the stock placeables and skies, and 350 MB
-# with the sky packs. Much more means something that shouldn't be there.
+# GitHub Pages takes a site of up to 1 GB; this page is about 22 MB (8 MB of it the showcase), 300 MB with the stock
+# placeables and skies, and 360 MB with the sky packs. Much more means something that shouldn't be there.
 size=$(du -sm "$out" | cut -f1)
 limit=$([[ -d "$out/try/stock" ]] && echo 450 || echo 40)
 if ((size > limit)); then

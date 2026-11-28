@@ -4,18 +4,19 @@
 
 - Links from a page to a file outside docs/ (the README, packs/) point at that file on GitHub, so the documents keep the
   relative links that work on GitHub and lychee checks, and the strict build still fails on a link that leads nowhere.
-- The showcase page's `<!-- showcase -->` marker becomes a gallery of cards drawn from docs/showcase.yml.
+- The showcase page's `<!-- showcase -->` marker becomes a gallery of cards drawn from docs/assets/showcase/index.json (the
+  editor's File, Open a showcase reads the same list).
 """
 
 import html
+import json
 import os
 import re
 import urllib.parse
 
-import yaml
-
 LINK = re.compile(r"\]\((?!https?:|mailto:|#)([^)\s]+)\)")
 VIDEO = (".mp4", ".webm", ".mov")
+SHOWCASE = "assets/showcase"
 
 
 def on_page_markdown(markdown, page, config, files):
@@ -34,10 +35,15 @@ def on_page_markdown(markdown, page, config, files):
 
     markdown = LINK.sub(outside, markdown)
     if "<!-- showcase -->" in markdown:
-        with open(os.path.join(docs, "showcase.yml"), encoding="utf-8") as f:
-            entries = yaml.safe_load(f) or []
+        with open(os.path.join(docs, SHOWCASE, "index.json"), encoding="utf-8") as f:
+            entries = [site_paths(e) for e in json.load(f)]
         markdown = markdown.replace("<!-- showcase -->", gallery(entries, "../" * page.url.count("/")))
     return markdown
+
+
+def site_paths(e):
+    """Entry `e` of the showcase's index.json with its paths (relative to that folder) as paths from the site's root."""
+    return {k: f"{SHOWCASE}/{v}" if k in ("still", "clip", "area") and v and not re.match(r"[a-z]+:", v) else v for k, v in e.items()}
 
 
 def gallery(entries, up):
