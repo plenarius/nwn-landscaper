@@ -452,7 +452,8 @@ jobs:
           mkdir dist keys
           # Each signature is checked against the key it was made with: on a version tag, the key in the app.
           for p in windows-x86_64 macos-universal linux-x86_64; do
-            mv "artifacts/app-$p/updater.pub" "keys/$p.pub"
+            # (Windows' jq writes CRLF.)
+            tr -d '\r' < "artifacts/app-$p/updater.pub" > "keys/$p.pub" && rm "artifacts/app-$p/updater.pub"
             [ -z "$TAG" ] || [ "$(cat "keys/$p.pub")" = "$(jq -r .plugins.updater.pubkey app/tauri.conf.json)" ]
           done
           # The app's installers and update files.
