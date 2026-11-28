@@ -470,6 +470,28 @@ fn a_failed_export_leaves_the_last_exports_files_as_they_were() {
 }
 
 #[test]
+fn a_checkout_of_the_editor_gets_the_source_trees_showcase_and_a_packed_one_its_own() {
+    let s = Server::start("showcase", &[], false);
+    let host = format!("127.0.0.1:{}", s.port);
+    let get = |path: &str| s.exchange("GET", path, &[("Host", &host)], b"");
+    // A checkout has no showcase/: the source tree's docs/assets/showcase answers (`cargo run`, the tests' own build).
+    let ours = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/assets/showcase/index.json")).unwrap();
+    let (status, _, body) = get("/showcase/index.json");
+    assert_eq!((status, body.as_str()), (200, ours.as_str()));
+    let entries: serde_json::Value = serde_json::from_str(&ours).unwrap();
+    let still = entries[0]["still"].as_str().unwrap();
+    let (status, head, _) = get(&format!("/showcase/{still}"));
+    assert_eq!(status, 200);
+    assert!(head.contains("content-type: image/webp"), "{head}");
+    assert_eq!(get("/showcase/../Cargo.toml").0, 403, "nothing outside the showcase");
+    // A packed editor's own showcase/ wins (scripts/pack-showcase.sh put it there).
+    std::fs::create_dir_all(s.root.join("web/showcase")).unwrap();
+    std::fs::write(s.root.join("web/showcase/index.json"), "[]").unwrap();
+    assert_eq!(get("/showcase/index.json").2, "[]");
+    assert_eq!(get(&format!("/showcase/{still}")).0, 404, "never half of one and half of the other");
+}
+
+#[test]
 fn the_gate_refuses_other_sites_and_names_and_lets_the_editor_in() {
     let s = Server::start("gate", &[], false);
     let host = format!("127.0.0.1:{}", s.port);

@@ -19,8 +19,9 @@ WORKDIR /src
 COPY . .
 RUN cargo build --release --locked -p landscaper
 # The editor: a copy of nwn-landscaper-web in this repository's root if there is one (a private fork, or a version you are
-# testing), else cloned.
-RUN if [ -f /src/landscaper-web/index.html ]; then cp -r /src/landscaper-web /web; else git clone --depth 1 --branch "$WEB_REF" "$WEB_REPO" /web; fi && rm -rf /web/.git
+# testing), else cloned; with this repository's showcase areas (File, Open a showcase).
+RUN if [ -f /src/landscaper-web/index.html ]; then cp -r /src/landscaper-web /web; else git clone --depth 1 --branch "$WEB_REF" "$WEB_REPO" /web; fi && rm -rf /web/.git \
+ && scripts/pack-showcase.sh /web
 RUN curl -sSfL -o /tmp/nim.zip "https://github.com/niv/neverwinter.nim/releases/download/${NWN_NIM}/neverwinter-x86_64-linux-gnu.zip" \
  && echo "${NWN_NIM_SHA256}  /tmp/nim.zip" | sha256sum -c - \
  && unzip -q -j /tmp/nim.zip nwn_gff -d /usr/local/bin && chmod +x /usr/local/bin/nwn_gff

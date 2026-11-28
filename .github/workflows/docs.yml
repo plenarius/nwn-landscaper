@@ -6,10 +6,10 @@ name: docs
 on:
   pull_request:
     branches: [master]
-    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, packs/demo/**, .github/workflows/docs.yml]
+    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, scripts/pack-showcase.sh, packs/demo/**, .github/workflows/docs.yml]
   push:
     branches: [master]
-    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, packs/demo/**, .github/workflows/docs.yml]
+    paths: [docs/**, mkdocs.yml, requirements-docs.txt, scripts/mkdocs_hooks.py, scripts/try-page.sh, scripts/pack-showcase.sh, packs/demo/**, .github/workflows/docs.yml]
   # A published release brings a new landscaper-wasm.zip for /try/. Its Release run ends while the release is still a draft,
   # which /try/ can't see, so publishing it starts a build of master (the job "republish", below).
   release:

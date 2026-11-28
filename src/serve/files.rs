@@ -3,7 +3,8 @@
 
 //! The editor's own files (landscaper-web) and the texture library (`/textures/`), for any GET no API route answered; any
 //! other method that reached no route is refused with 405. `/changelog.d/` lists the editor's changelog entries waiting for
-//! its next release, by which it says `+dev` beside its version (its js/version.js).
+//! its next release, by which it says `+dev` beside its version (its js/version.js). `/showcase/` is the editor's copy of the
+//! showcase areas (File, Open a showcase); a checkout of the editor has none, so this repository's own is served instead.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -24,7 +25,12 @@ pub(super) fn route(cx: &mut Ask<'_>, web: &Path) -> Answer {
                     let waiting = crate::version::fragments(&web.join("changelog.d"));
                     return json_response(200, &serde_json::json!({ "fragments": waiting }));
                 }
-                None => (web.to_path_buf(), PathBuf::from(rel)),
+                None => match rel.strip_prefix("showcase/") {
+                    Some(s) if !web.join("showcase").is_dir() => {
+                        (showcase_source().unwrap_or_else(|| web.join("showcase")), PathBuf::from(s))
+                    }
+                    _ => (web.to_path_buf(), PathBuf::from(rel)),
+                },
             };
             // Only plain relative paths inside the web folder / texture library, and no dot files (a clone's `.git`).
             if rel.as_os_str().is_empty()
@@ -60,6 +66,12 @@ pub(super) fn route(cx: &mut Ask<'_>, web: &Path) -> Answer {
     }
 }
 
+/// This source tree's showcase (docs/assets/showcase), when the program runs from it: release packing copies it into the
+/// editor's `showcase/` (scripts/pack-showcase.sh), but `cargo run` serves a plain checkout of the editor.
+fn showcase_source() -> Option<PathBuf> {
+    Some(Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/assets/showcase")).filter(|d| d.join("index.json").is_file())
+}
+
 /// The `Content-Type` of a file of the editor, by its extension.
 fn content_type(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
@@ -70,6 +82,7 @@ fn content_type(path: &Path) -> &'static str {
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "jpg" => "image/jpeg",
+        "webp" => "image/webp",
         _ => "application/octet-stream",
     }
 }

@@ -35,12 +35,17 @@ Two other ways in:
 - **Module:** the game module it goes into. Leave it empty for a module of its own, or name another area's module to link the two
   (a cave beside its surface).
 - **Size:** 3 to 32 tiles each way; a tile is 10 m.
-- **Start from:** flat ground, gentle or rough hills, a cave or an interior (solid rock to cut rooms from), a sample descending
-  crypt, dungeon or cave, or a sample landscape: a canyon, a snowy mountain pass, a dune desert or a valley with a lake. The
-  samples come painted, lit and with their weather, and come out different each time.
-- **Start height:** start high (a plateau) to dig valleys down into it.
+- **Start from:** a card each, with a picture of what it makes; hover over one, or pick it, for a line on it. The arrow keys move
+  between them. **Blank** is flat ground, gentle or rough hills, a cave or an interior (solid rock to cut passages or rooms
+  out of). **Starter landscapes** are a canyon, a snowy mountain pass, a dune desert, a valley with a lake and a descending
+  cave; they come painted, lit and with their weather, and come out different each time.
+- **Start height** (flat ground and hills only): start high (a plateau) to dig valleys down into it.
 
 ![The New area dialog](../assets/handbook/new-area.webp)
+
+**File > Open a showcase** opens a copy of one of the [showcase](../showcase.md)'s finished areas: the forest, swamp, plains,
+lake valley, canyon, mountain pass, dunes or cave descent, to look round and change. The copy is a new area of yours, under the
+showcase's name (`lsforest`) or, when you have an area of that name, the next free one (`lsforest2`); it never replaces an area.
 
 **File > Open** (`O`) opens another of your areas, or imports one: from your module's source, or from a `.mod` or `.erf` you
 upload. An imported area keeps its tileset's own textures, and its placeables, creatures, doors and scripts come with it on
