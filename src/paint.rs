@@ -100,21 +100,25 @@ pub struct Texture {
     pub vary: f32,
 }
 
-/// How a texture's edge meets another's in a baked tile ([`crate::generator`]'s soft paint): where two meet, broken wins.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How a texture's edge meets another's in a baked tile ([`crate::generator`]'s soft paint): where two meet, the softer wins
+/// (the order here).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Edge {
     /// A sharp line: laid surfaces (cobbles, flagstones, floors, planks).
     Crisp,
     /// A sharp line ragged by noise and by the textures' own light and dark (gravel poking into snow): natural ground.
     Broken,
+    /// A gradient as wide as the weights' ramp: a wash, as a soft brush lays it.
+    Soft,
 }
 
 impl Edge {
-    /// The catalog's `edge` ("crisp" or "broken"); else what the category's name suggests ([`edge_for`]).
+    /// The catalog's `edge` ("crisp", "broken" or "soft"); else what the category's name suggests ([`edge_for`]).
     pub fn from_entry(entry: &serde_json::Value) -> Edge {
         match entry["edge"].as_str() {
             Some("crisp") => Edge::Crisp,
             Some("broken") => Edge::Broken,
+            Some("soft") => Edge::Soft,
             _ => edge_for(entry["category"].as_str().unwrap_or("")),
         }
     }
@@ -124,6 +128,7 @@ impl Edge {
         match self {
             Edge::Crisp => "crisp",
             Edge::Broken => "broken",
+            Edge::Soft => "soft",
         }
     }
 }
@@ -521,7 +526,8 @@ mod tests {
         assert_eq!(Edge::from_entry(&json!({"category": "Earth", "edge": "crisp"})), Edge::Crisp);
         assert_eq!(Edge::from_entry(&json!({"category": "Walls", "edge": "broken"})), Edge::Broken);
         // (A value it doesn't know: the category's.)
-        assert_eq!(Edge::from_entry(&json!({"category": "Cobbles", "edge": "soft"})), Edge::Crisp);
+        assert_eq!(Edge::from_entry(&json!({"category": "Cobbles", "edge": "soft"})), Edge::Soft);
+        assert_eq!(Edge::from_entry(&json!({"category": "Cobbles", "edge": "wavy"})), Edge::Crisp);
         for (c, e) in [("Grass", Edge::Broken), ("Snow", Edge::Broken), ("Rock", Edge::Broken), ("Wooden planks", Edge::Crisp)] {
             assert_eq!(edge_for(c), e, "{c}");
         }

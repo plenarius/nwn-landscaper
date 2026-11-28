@@ -7,6 +7,9 @@ Paint the ground with one texture, or with a mix of several in patches, so a mea
 1. Pick **Paint** (`5`). The panel lists the texture library by category.
 2. Keep **One texture** on and click a texture.
 3. Drag over the ground. **Strength** sets how much each stroke covers.
+4. **Softness** sets how far the texture fades out towards the brush's rim. At 0 the brush paints hard, one texture a point, as
+   before. Above it, each point under the fade keeps the new texture and the old one by weight, and the edge lies where the fade
+   is half way: between the points, where the brush put it, not on their 0.625 m grid.
 
 Click a category's heading to fold it away, or use **Collapse all** and **Expand all**. A folded category still shows the
 texture you paint with.
@@ -38,7 +41,7 @@ The mix brush paints a blend of textures in patches: grass with dry patches and 
 3. Each texture in the mix has a slider: its share of the mix. Set **Patch size**: how large each texture's patches are.
 4. Drag over the ground. The strength slider becomes **Cover**: how much of the ground under the brush the mix paints.
 
-- **Soft edge** thins the mix out toward the brush's rim, so a stroke has no hard edge.
+- **Soft edge** fades the mix in by weight towards the brush's rim, so a stroke has no hard edge.
 - **Reshuffle** lays the patches out anew for the next strokes.
 - **Clear** takes every texture out of the mix.
 
@@ -46,12 +49,17 @@ The mix brush paints a blend of textures in patches: grass with dry patches and 
 
 ## Edges in the game
 
-Where two textures meet, the export doesn't draw the paint's grid (a point every 0.625 m): it smooths each texture's paint over
-about 1.5 m and draws the edge along that. Natural ground gets a ragged edge, gravel poking into snow; laid surfaces such as
-cobbles, flagstones, floors and planks get a sharp one. Where a laid surface meets natural ground, the ragged edge wins.
+Where two textures meet, the export doesn't draw the paint's grid (a point every 0.625 m). Hard paint is smoothed over about
+1.5 m and the edge drawn along that; soft paint's edge lies where its weights are half and half, wherever the brush put it.
+Natural ground gets a ragged edge, gravel poking into snow, more ragged the softer the brush; laid surfaces such as cobbles,
+flagstones, floors and planks get a sharp one. A texture whose `edge` in `catalog.json` is `soft` blends into its neighbour as
+wide as the brush faded. Where two styles meet, the softer wins: soft, then ragged, then sharp.
 
-- A line of paint one point wide, or a patch of up to about two points by two (the mix brush's soft edge makes them), is
-  smoothed away. Paint lines at least two points wide.
+- Each point holds two textures at most. Painting a third over one keeps the two that weigh most there; the third goes. That
+  only happens where three textures meet, and moves the meeting point by centimetres.
+- A line of hard paint one point wide, or a patch of up to about two points by two, is smoothed away. Paint narrow lines with
+  some Softness, or at least two points wide.
+- The sample landscapes write their edges by weight too: the snowy pass's snow ends where the slope passes about 60 degrees.
 - The editor draws the same edges, so what you paint is what the game shows.
 
 ## How large a texture is drawn

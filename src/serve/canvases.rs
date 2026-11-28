@@ -8,9 +8,9 @@
 //! - `POST /api/canvas-new?name=` with the header as the body: the canvas, every block flat at its `ground`. Answers the versions.
 //! - `GET /api/canvas?name=`: `{ header, version, blocks: { b03_02: version } }` (blocks without a file left out: `none`).
 //! - `GET /api/canvas-block?name=&block=b03_02`: the block file (see `crate::canvas`), its version in `X-Landscaper-Version`.
-//! - `PUT /api/canvas-save?name=` with `{ header?, base?, blocks: [{ block, base, heights, paint, chasm? }] }`: `header` with
-//!   `base`, the version it started from; each block with its `base` and its heights (f32), paint and chasm mask (bytes) in
-//!   base64. Answers `{ saved, version, blocks }`: the header's version and each saved block's. 409 with `moved` when a base
+//! - `PUT /api/canvas-save?name=` with `{ header?, base?, blocks: [{ block, base, heights, paint, chasm?, blend? }] }`: `header`
+//!   with `base`, the version it started from; each block with its `base` and its heights (f32), paint, chasm mask and blend
+//!   layer (bytes, two a sample: soft paint's second texture and weight) in base64. Answers `{ saved, version, blocks }`: the header's version and each saved block's. 409 with `moved` when a base
 //!   is not the version there now: `{ moved: { canvas.json | b03_02: version there now }, version }`.
 //! - `DELETE /api/canvas?name=` with `{ base, blocks }`, the versions the tab holds of the header and of every block it has
 //!   loaded or saved (one left out is `none`).
@@ -216,6 +216,8 @@ struct BlockBody {
     paint: String,
     #[serde(default)]
     chasm: Option<String>,
+    #[serde(default)]
+    blend: Option<String>,
 }
 
 /// Saves what `body` changes of canvas `name`: all of it or, when a base is stale, a block damaged, a shared row would
@@ -239,7 +241,10 @@ fn save(name: &str, body: &[u8]) -> Result<canvas::Versions> {
         anyhow::ensure!(heights.len() == w * h * 4, "block {}: {} bytes of heights, {} expected", b.block, heights.len(), w * h * 4);
         let heights = heights.as_chunks::<4>().0.iter().map(|q| f32::from_le_bytes(*q)).collect();
         let chasm = b.chasm.as_deref().map(|s| bytes("chasm mask", s)).transpose()?;
-        let block = canvas::Block::new(w, h, heights, bytes("paint", &b.paint)?, chasm).with_context(|| format!("block {}", b.block))?;
+        let blend = b.blend.as_deref().map(|s| bytes("blend layer", s)).transpose()?;
+        let block = canvas::Block::new(w, h, heights, bytes("paint", &b.paint)?, chasm)
+            .and_then(|b| b.with_blend(blend.as_deref()))
+            .with_context(|| format!("block {}", b.block))?;
         blocks.push((id, b.base, block));
     }
     let header = match sent.header {

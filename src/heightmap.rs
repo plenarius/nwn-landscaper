@@ -15,6 +15,10 @@
 //! Painted textures, optional: `"materials": "riverbend.materials"` holds one byte a sample in the same order, an index into
 //! `"palette": ["grassMedium", "dirt", ...]` (texture library ids).
 //!
+//! Blend, optional (soft paint's stage 2, with `materials`): `"blend": "riverbend.blend"` holds two bytes a sample in the same
+//! order, a second palette index and its weight (0 to 255, its share of the sample); weight 0: no second texture, the paint is
+//! smoothed at bake time (generator/soft.rs). An engine older than it ignores it.
+//!
 //! Water, optional: `"water": [{ "i": 40, "j": 12, "level": 6.5 }, ...]`, bodies of water each filled from a sample (i, j) to a level:
 //! every sample joined to it (4-connected) through samples lower than the level is under water. The editor floods them the same
 //! way. A sample under less than [`WET_DEPTH`] is dry ground to walk and paint ([`Heightmap::water_level`]), but the water's
@@ -174,6 +178,8 @@ pub struct Heightmap {
     pub materials: Vec<u8>,
     /// The texture ids `materials` indexes.
     pub palette: Vec<String>,
+    /// Each sample's second texture and its weight (see the module comment); empty when the area has none.
+    pub blend: Vec<[u8; 2]>,
     /// Each sample's water level (NaN: dry), from the water bodies, the shallows under [`WET_DEPTH`] included.
     pub water: Vec<f32>,
     /// Cave entrances, from the editor.
@@ -232,6 +238,8 @@ pub struct Halo {
     pub data: Vec<f32>,
     /// Each sample's paint (palette index); empty when unpainted.
     pub materials: Vec<u8>,
+    /// Each sample's second texture and weight; empty when none.
+    pub blend: Vec<[u8; 2]>,
     /// Each sample's water level (NaN: dry), the shallows included; empty: no water.
     pub water: Vec<f32>,
     /// Each sample's chasm rim; empty: no chasm.
@@ -247,6 +255,7 @@ struct Grids<'a> {
     height: usize,
     data: &'a [f32],
     materials: &'a [u8],
+    blend: &'a [[u8; 2]],
     water: &'a [f32],
     rim: &'a [f32],
     ceiling: &'a [f32],
@@ -371,6 +380,14 @@ pub(crate) fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
             bail!("material {bad} is past the palette's {} textures", palette.len());
         }
     }
+    let blend = match j["blend"].as_str().filter(|_| !materials.is_empty()) {
+        Some(file) => {
+            let path = json_path.parent().unwrap_or(Path::new(".")).join(file);
+            let bytes = crate::atomic::read(&path).with_context(|| format!("reading {}", path.display()))?;
+            blend_of(&bytes, fw * fh, palette.len()).with_context(|| path.display().to_string())?
+        }
+        None => Vec::new(),
+    };
     // A chasm: its samples dropped under their rims (after the ceiling: a chasm is open ground).
     // (fitted with the halo in view: a rim near the edge may be the neighbour's ground, and both pieces of a cut fit it alike)
     let chasm = chasm_of(&j["chasm"], fw * fh)?;
@@ -400,13 +417,15 @@ pub(crate) fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         height: fh,
         data: data.clone(),
         materials: materials.clone(),
+        blend: blend.clone(),
         water: water.clone(),
         rim: rim.clone(),
         ceiling: ceiling.clone(),
     });
-    let (data, materials, water, rim, ceiling) = (
+    let (data, materials, blend, water, rim, ceiling) = (
         cut_out(&data, n, width, height),
         cut_out(&materials, n, width, height),
+        cut_out(&blend, n, width, height),
         cut_out(&water, n, width, height),
         cut_out(&rim, n, width, height),
         cut_out(&ceiling, n, width, height),
@@ -423,6 +442,7 @@ pub(crate) fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
         data,
         materials,
         palette,
+        blend,
         atmosphere: j.get("atmosphere").filter(|a| a.is_object()).cloned(),
         things: j["things"]
             .as_array()
@@ -467,6 +487,17 @@ pub(crate) fn read(json_path: &Path) -> Result<Arc<Heightmap>> {
     });
     in_range(&hm)?;
     Ok(hm)
+}
+
+/// The blend layer in `bytes` (two a sample, see the module comment) for `samples` samples of a `palette`-entry palette,
+/// checked; empty when no sample has a second texture, so such an area reads as one without.
+pub fn blend_of(bytes: &[u8], samples: usize, palette: usize) -> Result<Vec<[u8; 2]>> {
+    anyhow::ensure!(bytes.len() == samples * 2, "blend: {} bytes, expected {} (two a sample)", bytes.len(), samples * 2);
+    let pairs = bytes.as_chunks::<2>().0;
+    if let Some(k) = pairs.iter().position(|p| p[1] > 0 && p[0] as usize >= palette) {
+        bail!("blend: sample {k}'s second texture {} is past the palette's {palette} textures", pairs[k][0]);
+    }
+    Ok(if pairs.iter().any(|p| p[1] > 0) { pairs.to_vec() } else { Vec::new() })
 }
 
 /// How far outside the area (metres) a placed object, thing or entrance may stand: the editor keeps them inside (it clamps a
@@ -765,6 +796,7 @@ impl Heightmap {
                 height: h.height,
                 data: &h.data,
                 materials: &h.materials,
+                blend: &h.blend,
                 water: &h.water,
                 rim: &h.rim,
                 ceiling: &h.ceiling,
@@ -775,6 +807,7 @@ impl Heightmap {
                 height: self.height,
                 data: &self.data,
                 materials: &self.materials,
+                blend: &self.blend,
                 water: &self.water,
                 rim: &self.rim,
                 ceiling: &self.ceiling,
@@ -869,6 +902,12 @@ impl Heightmap {
     pub fn material(&self, i: i64, j: i64) -> u8 {
         let g = self.grids();
         g.materials.get(Self::index(&g, i, j)).copied().unwrap_or(0)
+    }
+
+    /// Sample (i, j)'s second texture and its weight, clamped (the halo's beyond the area); [0, 0] where there is none.
+    pub fn blend(&self, i: i64, j: i64) -> [u8; 2] {
+        let g = self.grids();
+        g.blend.get(Self::index(&g, i, j)).copied().unwrap_or([0, 0])
     }
 
     /// Whether the area has paint: an unpainted one takes the default textures.
@@ -1198,6 +1237,7 @@ mod tests {
             height: 3,
             data: vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 4.0, 5.0, 6.0],
             materials: vec![],
+            blend: vec![],
             palette: vec![],
             atmosphere: None,
             things: vec![],
@@ -1293,6 +1333,7 @@ mod tests {
             height: 3,
             data: vec![0.0; 9],
             materials: vec![],
+            blend: vec![],
             palette: vec![],
             atmosphere: None,
             things: vec![],
@@ -1420,6 +1461,36 @@ mod tests {
             header[k] = v.clone();
         }
         read(&area(tag, header, Some(heights))).unwrap()
+    }
+
+    #[test]
+    fn a_blend_layer_is_read_with_the_halo_and_checked() {
+        // A 3 by 3 tile area with a halo of 16: 81 x 81 samples, painted 0 and 1, a second texture (2) on every seventh.
+        let full = 81 * 81;
+        let write = |tag: &str, blend: &[u8]| {
+            let path = area(tag, serde_json::json!({}), None);
+            let dir = path.parent().unwrap().to_path_buf();
+            std::fs::write(dir.join("t.materials"), (0..full).map(|k| (k % 2) as u8).collect::<Vec<u8>>()).unwrap();
+            std::fs::write(dir.join("t.blend"), blend).unwrap();
+            serde_json::json!({ "halo": 16, "materials": "t.materials", "palette": ["a", "b", "c"], "blend": "t.blend" })
+        };
+        let blend: Vec<u8> = (0..full).flat_map(|k| if k % 7 == 0 { [2, (k % 250) as u8 + 1] } else { [0, 0] }).collect();
+        let hm = haloed("blend", write("blend", &blend), |_, _| 1.0);
+        // Sample (i, j) of the area is (i + 16, j + 16) of the grid, the halo's beyond.
+        for (i, j) in [(0i64, 0i64), (5, 9), (-16, -3), (48, 64), (20, 20)] {
+            let k = ((j + 16) * 81 + i + 16) as usize;
+            assert_eq!(hm.blend(i, j), [blend[2 * k], blend[2 * k + 1]], "({i}, {j})");
+        }
+        assert_eq!(hm.blend.len(), 49 * 49);
+        // All weights 0: no layer.
+        let none = haloed("blend-none", write("blend-none", &[1u8, 0].repeat(full)), |_, _| 1.0);
+        assert!(none.blend.is_empty() && none.halo.as_ref().unwrap().blend.is_empty());
+        // Past the palette, or the wrong size: refused.
+        let mut bad = blend.clone();
+        bad[2 * 7] = 3;
+        for (tag, bytes) in [("blend-past", bad), ("blend-short", blend[2..].to_vec())] {
+            assert!(read(&area(tag, write(tag, &bytes), Some(vec![1.0; full]))).is_err(), "{tag}");
+        }
     }
 
     #[test]

@@ -1,7 +1,8 @@
 # Design: soft paint
 
-Status: design, not built. Written 2026-11-27 for the maintainer's review before any code. The spike behind it is on the
-branch [`spike/soft-paint`](https://github.com/plenarius/nwn-landscaper/tree/spike/soft-paint) (not for merge).
+Status: steps 1 and 2 built; step 3 built in the engine (see "Step 3 as built"), its editor side under way. Written
+2026-11-27 for the maintainer's review before any code. The spike behind it is on the branch
+[`spike/soft-paint`](https://github.com/plenarius/nwn-landscaper/tree/spike/soft-paint) (not for merge).
 
 Painted edges in exported areas look bad in the game. A gravel trail through the snowy pass sample landscape shows a hard
 sawtooth all along both sides, one tooth every 0.625 m. Editor issue
@@ -235,6 +236,31 @@ maintainer's time is review and testing. "Client" marks a check in the game clie
 
 About 29 hours of agent time beyond the spike and 3.5 hours of the maintainer's, of which about 30 minutes in the client. Steps
 1 and 2 go together (one release); 3 needs 1; 4 needs 2 and 3.
+
+## Step 3 as built
+
+The engine side of step 3, 2026-11-28. The editor's side (the layer in the editor, the Softness brush) builds to the same
+format.
+
+- **The layer.** `blend`: two bytes a sample, the paint's order and grid (halo included): a second palette index, then its
+  weight (0 to 255, its share of the sample). Weight 0 is no second texture there, and that sample is smoothed as in step 1. A
+  second equal to the paint pins the sample to the paint alone (the brush's fully covered core). Writers keep the heavier
+  texture in the paint, so an engine or editor that ignores the layer shows the nearest texture.
+- **Where it goes.** The area file and the export's body carry it as base64 (`"blend"`, in the body's JSON, where an older
+  engine ignores it); the exported header names a `.blend` file beside the `.materials`; a canvas block holds it after its
+  chasm mask (flag 2), and shared rows must match in it too. A layer of all zero weights is no layer: such an area or block has
+  today's bytes. An engine older than this one refuses a block that holds a layer, as damaged: the block file has nowhere it
+  could skip it.
+- **The bake.** Each sample's two textures and the second's share (`soft.rs`, step 2) come from its own weights where it has a
+  layer, else from the smoothed paint; the smoothing still reads the paint alone. Everything after (the bilinear mix, the edge
+  styles, noise) is step 1's. The bake cache's key already reads those per-sample values, so a changed weight misses it.
+- **`soft`** is a third edge style in the catalog: a point with a soft texture among its entries blends them by weight, with
+  no noise. The softest style at a point wins: soft, then broken, then crisp.
+- **Checked.** The snowy pass without a layer exports byte for byte as master (hak, module, minimap, shadows). With the spike's
+  trail weights (a round brush along the trail's centreline, falling off over 1 m, `research/soft-paint/brush.py` on
+  `spike/soft-paint`, written as a layer) the client draws the trail as the spike's E, F and G did:
+
+![The trail from the report's angle as built: master's smoothed paint, and the brush's weights drawn soft, crisp and broken](soft-paint-8-as-built.webp)
 
 ## What this design could not check
 

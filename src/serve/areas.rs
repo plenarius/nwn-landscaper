@@ -422,7 +422,7 @@ fn delete_area(name: &str, base: Option<&str>) -> Result<String> {
     // What can be made again: the copy before the last save, the last export and the Check's scratch copy.
     let _ = std::fs::remove_file(areas.join(format!("{name}.json.bak")));
     for dir in [exports.clone(), exports.join(".check")] {
-        for ext in ["json", "f32", "materials", "import.png"] {
+        for ext in ["json", "f32", "materials", "blend", "import.png"] {
             let file = format!("{name}.{ext}");
             let _ = std::fs::remove_file(dir.join(&file));
             let _ = std::fs::remove_file(dir.join(format!(".{file}.rollback")));
@@ -606,6 +606,9 @@ fn load_area(name: &str) -> Result<(Vec<u8>, String)> {
     h["heights"] = b64.encode(crate::atomic::read(&dir.join(format!("{name}.f32")))?).into();
     if let Ok(m) = crate::atomic::read(&dir.join(format!("{name}.materials"))) {
         h["materials"] = b64.encode(m).into();
+    }
+    if let Some(f) = h["blend"].as_str().map(str::to_string) {
+        h["blend"] = crate::atomic::read(&dir.join(f)).map_or(serde_json::Value::Null, |b| b64.encode(b).into());
     }
     if h["palette"].is_null() {
         h["palette"] = serde_json::json!(["grassMedium"]);
