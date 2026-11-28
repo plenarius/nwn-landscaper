@@ -19,6 +19,7 @@ mod blueprints;
 mod canvas;
 mod cli;
 mod config;
+mod cut;
 mod dds;
 mod demostock;
 mod devpack;
@@ -302,6 +303,10 @@ fn run(cli: cli::Cli) -> Result<()> {
     match cli.command {
         C::Serve(s) => serve_command(s)?,
         C::Import { source, name, dir } => import::run(&source, &name, dir.as_deref())?,
+        C::CanvasExport { name, check, pieces } => {
+            let report = serve::canvas_export(&name, &pieces, check)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         C::Export { area } => {
             generator::export(&area, &generator::Before::default())?;
         }

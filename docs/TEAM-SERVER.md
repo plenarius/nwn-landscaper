@@ -42,8 +42,8 @@ own workspace, never there. Two things are worth knowing:
   SameSite=Strict) that applies only to reads, so the editor is read-only there (no autosave, export, check or import) with a
   "Back to mine" button. The engine holds that too: while the cookie names another workspace, it answers 403 ("`<user>`'s
   workspace is read-only here: nothing was changed") to every request but reads (`GET`, `HEAD`), going back (`POST
-  /api/view-as`) and checking paths (`POST /api/check`), whatever client sends it. Admins also read the activity log, manage
-  assignments, and may write scripts.
+  /api/view-as`) and checking paths (`POST /api/check`, `POST /api/canvas-check`), whatever client sends it. Admins also read
+  the activity log, manage assignments, and may write scripts.
 
 ## Requests from other sites
 
