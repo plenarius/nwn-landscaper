@@ -26,12 +26,16 @@
 //! |---|---|
 //! | 4 | `LSCB` |
 //! | 2 | format, 1 |
-//! | 2 | flags: 1 when a chasm mask follows |
+//! | 2 | flags: 1 when a chasm mask follows, 2 when a blend layer does |
 //! | 2, 2 | width and height in samples |
 //! | 4 a sample | heights in metres (f32), rows from the south, each west to east |
 //! | 1 a sample | paint: an index into the header's `palette` |
 //! | 1 a sample | the chasm mask, 0 or 1, only with flag 1 (a block without chasm has none) |
+//! | 2 a sample | the blend layer (soft paint: a second palette index and its weight, see heightmap.rs), only with flag 2 |
 //! | 8 | the FNV-1a hash (64 bits) of every byte before it |
+//!
+//! A block whose blend weights are all 0 has no layer and today's bytes: only a block that holds one is unreadable to an engine
+//! older than the layer (which refuses flag 2 as damaged; it has nowhere to skip it).
 //!
 //! **Versions.** The header's version is the FNV-1a hash of `canvas.json`, as an area's is of its working copy; a block's is
 //! the hash its file ends with, or `none` for a block with no file. Each is 16 hex digits. Every load says the versions of what
@@ -150,13 +154,15 @@ pub struct Block {
     pub paint: Vec<u8>,
     /// The chasm mask, 0 or 1 a sample; None: no chasm in this block.
     pub chasm: Option<Vec<u8>>,
+    /// The blend layer, [second, weight] a sample; None: no sample has a second texture.
+    pub blend: Option<Vec<[u8; 2]>>,
 }
 
 impl Block {
     /// Flat ground at `ground`, unpainted and without chasm: a block that was never saved.
     pub fn flat(width: usize, height: usize, ground: f32) -> Block {
         let n = width * height;
-        Block { width, height, heights: vec![ground; n], paint: vec![0; n], chasm: None }
+        Block { width, height, heights: vec![ground; n], paint: vec![0; n], chasm: None, blend: None }
     }
 
     /// A block from its parts, checked: each part one value a sample, heights numbers, the chasm mask 0 or 1. A mask without
@@ -173,7 +179,22 @@ impl Block {
             ensure!(c.iter().all(|v| *v <= 1), "the chasm mask holds 0 or 1 a sample");
         }
         let chasm = chasm.filter(|c| c.contains(&1));
-        Ok(Block { width, height, heights, paint, chasm })
+        Ok(Block { width, height, heights, paint, chasm, blend: None })
+    }
+
+    /// The block with blend layer `bytes` (two a sample), checked. A sample of weight 0 is stored as [0, 0] and a layer with
+    /// none above 0 is dropped, so the same ground always has the same bytes and version.
+    pub fn with_blend(mut self, bytes: Option<&[u8]>) -> Result<Block> {
+        self.blend = match bytes {
+            None => None,
+            Some(b) => {
+                let n = self.width * self.height;
+                ensure!(b.len() == n * 2, "{} blend bytes for a {} by {} block: {} expected", b.len(), self.width, self.height, n * 2);
+                let pairs: Vec<[u8; 2]> = b.as_chunks::<2>().0.iter().map(|p| if p[1] == 0 { [0, 0] } else { *p }).collect();
+                pairs.iter().any(|p| p[1] > 0).then_some(pairs)
+            }
+        };
+        Ok(self)
     }
 
     /// The block file's bytes (see the module comment).
@@ -182,7 +203,8 @@ impl Block {
         let mut out = Vec::with_capacity(HEAD_BYTES + n * 6 + TRAILER_BYTES);
         out.extend_from_slice(MAGIC);
         out.extend_from_slice(&FORMAT.to_le_bytes());
-        out.extend_from_slice(&u16::from(self.chasm.is_some()).to_le_bytes());
+        let flags = u16::from(self.chasm.is_some()) | u16::from(self.blend.is_some()) << 1;
+        out.extend_from_slice(&flags.to_le_bytes());
         for side in [self.width, self.height] {
             out.extend_from_slice(&u16::try_from(side).unwrap_or(u16::MAX).to_le_bytes());
         }
@@ -192,6 +214,9 @@ impl Block {
         out.extend_from_slice(&self.paint);
         if let Some(c) = &self.chasm {
             out.extend_from_slice(c);
+        }
+        if let Some(b) = &self.blend {
+            out.extend_from_slice(b.as_flattened());
         }
         let hash = fnv(&out);
         out.extend_from_slice(&hash.to_le_bytes());
@@ -207,7 +232,7 @@ impl Block {
         let u16_at = |k: usize| usize::from(u16::from_le_bytes([body[k], body[k + 1]]));
         ensure!(u16_at(4) == usize::from(FORMAT), "format {} (this engine reads {FORMAT})", u16_at(4));
         let flags = u16_at(6);
-        ensure!(flags <= 1, "unknown flags {flags}");
+        ensure!(flags <= 3, "unknown flags {flags}");
         ensure!(
             (u16_at(8), u16_at(10)) == (width, height),
             "{} by {} samples where the canvas has {width} by {height}",
@@ -215,19 +240,31 @@ impl Block {
             u16_at(10)
         );
         let n = width * height;
-        ensure!(body.len() == HEAD_BYTES + n * (5 + flags), "{} bytes, {} expected", bytes.len(), HEAD_BYTES + n * (5 + flags) + 8);
+        let (has_chasm, has_blend) = (flags & 1 == 1, flags & 2 == 2);
+        let want = HEAD_BYTES + n * (5 + usize::from(has_chasm) + 2 * usize::from(has_blend));
+        ensure!(body.len() == want, "{} bytes, {} expected", bytes.len(), want + TRAILER_BYTES);
         let (heights, rest) = body[HEAD_BYTES..].split_at(n * 4);
-        let (paint, chasm) = rest.split_at(n);
+        let (paint, rest) = rest.split_at(n);
+        let (chasm, blend) = rest.split_at(if has_chasm { n } else { 0 });
         let heights = heights.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
-        let chasm = (flags == 1).then(|| chasm.to_vec());
+        let chasm = has_chasm.then(|| chasm.to_vec());
         ensure!(chasm.as_ref().is_none_or(|c| c.contains(&1)), "a chasm mask without a chasm sample");
-        Block::new(width, height, heights, paint.to_vec(), chasm)
+        let block = Block::new(width, height, heights, paint.to_vec(), chasm)?.with_blend(has_blend.then_some(blend))?;
+        ensure!(!has_blend || block.blend.is_some(), "a blend layer without a weight above 0");
+        Ok(block)
     }
 
     /// The samples along one side: `West`'s column 0, `East`'s last column, `South`'s row 0, `North`'s last row. Each as
-    /// (height bits, paint, chasm), so two sides compare exactly.
-    fn side(&self, side: Side) -> Vec<(u32, u8, u8)> {
-        let at = |k: usize| (self.heights[k].to_bits(), self.paint[k], self.chasm.as_ref().map_or(0, |c| c[k]));
+    /// (height bits, paint, chasm, blend), so two sides compare exactly.
+    fn side(&self, side: Side) -> Vec<(u32, u8, u8, [u8; 2])> {
+        let at = |k: usize| {
+            (
+                self.heights[k].to_bits(),
+                self.paint[k],
+                self.chasm.as_ref().map_or(0, |c| c[k]),
+                self.blend.as_ref().map_or([0, 0], |b| b[k]),
+            )
+        };
         let (w, h) = (self.width, self.height);
         match side {
             Side::West => (0..h).map(|j| at(j * w)).collect(),
@@ -481,9 +518,10 @@ impl Canvas {
             };
             let (w, h) = header.size.samples(id);
             let len = f.metadata().map_err(|e| self.damaged(&file, e))?.len();
-            let sizes = [HEAD_BYTES + w * h * 5 + TRAILER_BYTES, HEAD_BYTES + w * h * 6 + TRAILER_BYTES];
+            // (Without and with a chasm mask, then the same with a blend layer.)
+            let sizes = [5, 6, 7, 8].map(|b| HEAD_BYTES + w * h * b + TRAILER_BYTES);
             if !sizes.iter().any(|s| *s as u64 == len) {
-                return Err(self.damaged(&file, format!("{len} bytes, {} or {} expected", sizes[0], sizes[1])));
+                return Err(self.damaged(&file, format!("{len} bytes, one of {sizes:?} expected")));
             }
             let mut tail = [0u8; TRAILER_BYTES];
             f.seek(SeekFrom::End(-(TRAILER_BYTES as i64))).and_then(|_| f.read_exact(&mut tail)).map_err(|e| self.damaged(&file, e))?;
@@ -788,6 +826,22 @@ mod tests {
         assert_eq!(plain.chasm, None);
         assert_eq!(plain.encode().len(), HEAD_BYTES + 17 * 33 * 5 + TRAILER_BYTES);
         assert_eq!(plain.encode(), Block::new(17, 33, b.heights.clone(), b.paint.clone(), None).unwrap().encode());
+        // A blend layer, with and without the chasm mask: after them, read back; weight-0 samples stored as [0, 0].
+        let mut layer = [9u8, 0].repeat(17 * 33);
+        layer[2 * 50..2 * 50 + 2].copy_from_slice(&[1, 200]);
+        for chasm in [b.chasm.clone(), None] {
+            let blended = Block::new(17, 33, b.heights.clone(), b.paint.clone(), chasm.clone()).unwrap().with_blend(Some(&layer)).unwrap();
+            let bytes = blended.encode();
+            assert_eq!(bytes.len(), HEAD_BYTES + 17 * 33 * (7 + usize::from(chasm.is_some())) + TRAILER_BYTES);
+            let back = Block::decode(&bytes, 17, 33).unwrap();
+            assert_eq!(back, blended);
+            let bl = back.blend.unwrap();
+            assert_eq!((bl[50], bl[51]), ([1, 200], [0, 0]));
+        }
+        // All weights 0: no layer, today's bytes.
+        let zero = plain.clone().with_blend(Some(&[9u8, 0].repeat(17 * 33))).unwrap();
+        assert_eq!(zero.encode(), plain.encode());
+        assert!(plain.clone().with_blend(Some(&[1, 2, 3])).is_err());
     }
 
     #[test]
@@ -897,6 +951,24 @@ mod tests {
         let north = BlockId { x: 0, y: 1 };
         let e = c.plan(Save { header: None, blocks: vec![(north, NONE.into(), block_from(size, north, |_, _| 7.0))] }).err().unwrap();
         assert!(e.downcast_ref::<Seam>().is_some(), "{e:#}");
+        // A blend layer on the shared column in one block only: a seam too; inside the block, saved and read back.
+        let blended = |k: usize| {
+            let b = block_from(size, a, hill);
+            let mut layer = vec![0u8; b.width * b.height * 2];
+            layer[2 * k..2 * k + 2].copy_from_slice(&[0, 90]);
+            b.with_blend(Some(&layer)).unwrap()
+        };
+        let edge = blended(size.samples(a).0 - 1);
+        let e = c.plan(Save { header: None, blocks: vec![(a, saved.blocks["b00_00"].clone(), edge)] }).err().unwrap();
+        assert!(e.downcast_ref::<Seam>().is_some(), "{e:#}");
+        let inner = blended(5);
+        let again =
+            c.write(c.plan(Save { header: None, blocks: vec![(a, saved.blocks["b00_00"].clone(), inner.clone())] }).unwrap()).unwrap();
+        assert_eq!(c.block(&h, a).unwrap(), (inner, again.blocks["b00_00"].clone()));
+        assert_eq!(c.block_versions(&h).unwrap()["b00_00"], again.blocks["b00_00"]);
+        // (Back to the hill alone: the same bytes, so the same version as before.)
+        let back = c.plan(Save { header: None, blocks: vec![(a, again.blocks["b00_00"].clone(), block_from(size, a, hill))] }).unwrap();
+        assert_eq!(c.write(back).unwrap().blocks["b00_00"], saved.blocks["b00_00"]);
         // A stale base for one block refuses the whole save, and says the version there now.
         let e = c
             .plan(Save {

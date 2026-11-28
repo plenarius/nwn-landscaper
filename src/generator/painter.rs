@@ -216,7 +216,7 @@ impl Painter {
     }
 
     /// A digest of everything [`Painter::bake`] reads for tile (tx, ty): where it is, the smoothed paint under it (which reads the
-    /// paint a few samples beyond) and the heights around it (they give the slope its textures are drawn by), the textures that
+    /// paint a few samples beyond, and holds the blend layer's own weights where a sample has them) and the heights around it (they give the slope its textures are drawn by), the textures that
     /// paint names and their edges, and the decals on it.
     fn bake_key(&self, tx: usize, ty: usize, size: u32) -> [u8; 20] {
         use sha1::Digest;
@@ -839,6 +839,18 @@ mod tests {
         assert_ne!(base, key(&painter(|_, t| t[0].metres = 8.0)), "how far its texture repeats");
         assert_ne!(base, key(&painter(|_, t| t[0].vary = 1.5)), "its texture's repeat varied");
         assert_ne!(base, key(&painter(|_, t| t[0].edge = paint::Edge::Crisp)), "its texture's edge");
+        assert_ne!(base, key(&painter(|_, t| t[0].edge = paint::Edge::Soft)), "its texture's soft edge");
+        // Soft paint's blend layer: a weight in the tile, and that weight changed, each miss.
+        let weighed = |q: u8| {
+            move |hm: &mut heightmap::Heightmap, _: &mut Vec<paint::Texture>| {
+                hm.blend = vec![[0, 0]; hm.width * hm.height];
+                hm.blend[9 + 2] = [1, q];
+            }
+        };
+        let with_weight = key(&painter(weighed(60)));
+        assert_ne!(base, with_weight, "a weight in the tile");
+        assert_eq!(with_weight, key(&painter(weighed(60))), "the same weights: a hit");
+        assert_ne!(with_weight, key(&painter(weighed(61))), "a weight changed");
         assert_ne!(base, key(&painter(|hm, _| hm.palette[0] = "moss".into())), "its texture's id, which seeds the edge's noise");
         assert_ne!(base, painter(|_, _| {}).bake_key(0, 0, 256), "LS_BAKE");
         assert_ne!(base, painter(|_, _| {}).bake_key(1, 0, 512), "another tile");

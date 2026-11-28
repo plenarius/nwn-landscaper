@@ -161,12 +161,13 @@ pub fn remove_imports_of(user: &str, area: &str) -> anyhow::Result<Vec<String>> 
             format!("{name}.json"),
             format!("{name}.f32"),
             format!("{name}.materials"),
+            format!("{name}.blend"),
         ] {
             let _ = std::fs::remove_file(ws.join("exports").join(f));
         }
         let _ = std::fs::remove_dir_all(ws.join("exports").join(format!("{name}_nwn")));
         // The scratch copies the path checks leave.
-        for f in [format!("{name}.json"), format!("{name}.f32"), format!("{name}.materials")] {
+        for f in [format!("{name}.json"), format!("{name}.f32"), format!("{name}.materials"), format!("{name}.blend")] {
             let _ = std::fs::remove_file(ws.join("exports").join(".check").join(f));
         }
         let _ = std::fs::remove_dir_all(ws.join("exports").join(".check").join(format!("{name}_nwn")));

@@ -62,7 +62,7 @@ pub struct PackTexture {
     pub category: String,
     /// The `surfacemat.2da` row ground painted with it walks as.
     pub surface: u32,
-    /// How its edge meets another texture's, `crisp` or `broken` (unset: what the category suggests, [`paint::edge_for`]).
+    /// How its edge meets another texture's, `crisp`, `broken` or `soft` (unset: what the category suggests, [`paint::edge_for`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge: Option<String>,
     /// Its pictures.
@@ -135,7 +135,11 @@ pub fn validate(m: &Manifest) -> Result<()> {
         ensure!(crate::packs::plain_text(&t.name, 80), "{}: its name is empty or too long", t.id);
         ensure!(crate::packs::plain_text(&t.category, 40), "{}: its category is empty or too long", t.id);
         ensure!(t.surface <= 255, "{}: surface {} is not a surfacemat.2da row", t.id, t.surface);
-        ensure!(t.edge.as_deref().is_none_or(|e| e == "crisp" || e == "broken"), "{}: edge is \"crisp\" or \"broken\"", t.id);
+        ensure!(
+            t.edge.as_deref().is_none_or(|e| ["crisp", "broken", "soft"].contains(&e)),
+            "{}: edge is \"crisp\", \"broken\" or \"soft\"",
+            t.id
+        );
         for (f, want) in [(&t.files.render, format!("{}.png", t.id)), (&t.files.swatch, format!("{}_128.png", t.id))] {
             ensure!(f.path == want, "{}: its picture is {}; a pack names it {want}", t.id, f.path);
             ensure!(crate::packs::valid_sha256(&f.sha256), "{}: a bad sha256", f.path);
@@ -400,21 +404,28 @@ pub fn areas_using(ids: &[String]) -> Vec<String> {
 
 /// The texture ids an area's ground is painted with: the entries of its `palette` that some sample's material names. A working
 /// copy carries its materials as base64, an export's header names its `.materials` file beside it; without materials that read,
-/// every entry of the palette counts. (The editor's palette only grows: a texture painted over stays in it.)
-fn painted_ids(dir: &Path, palette: &[Value], materials: Option<&str>) -> Vec<String> {
+/// every entry of the palette counts. (The editor's palette only grows: a texture painted over stays in it.) A blend layer's
+/// second textures (`blend`, the same way) count where their weight isn't 0.
+fn painted_ids(dir: &Path, palette: &[Value], materials: Option<&str>, blend: Option<&str>) -> Vec<String> {
     use base64::Engine;
     let names: Vec<&str> = palette.iter().map(|p| p.as_str().unwrap_or("")).collect();
-    let bytes = materials.and_then(|m| {
-        if m.ends_with(".materials") && plain_name(m) {
+    let read = |m: &str, ext: &str| {
+        if m.ends_with(ext) && plain_name(m) {
             crate::atomic::read(&dir.join(m)).ok()
         } else {
             base64::engine::general_purpose::STANDARD.decode(m).ok()
         }
-    });
+    };
+    let bytes = materials.and_then(|m| read(m, ".materials"));
     let Some(bytes) = bytes.filter(|b| !b.is_empty()) else { return names.into_iter().map(str::to_string).collect() };
     let mut seen = [false; 256];
     for b in bytes {
         seen[usize::from(b)] = true;
+    }
+    for p in blend.and_then(|b| read(b, ".blend")).unwrap_or_default().as_chunks::<2>().0 {
+        if p[1] > 0 {
+            seen[usize::from(p[0])] = true;
+        }
     }
     names.iter().enumerate().filter(|(k, _)| seen.get(*k).copied().unwrap_or(false)).map(|(_, n)| (*n).to_string()).collect()
 }
@@ -426,14 +437,17 @@ fn areas_using_in(roots: &[(String, PathBuf)], ids: &[String]) -> Vec<String> {
         palette: Vec<Value>,
         #[serde(default)]
         materials: Option<String>,
+        #[serde(default)]
+        blend: Option<String>,
     }
     if ids.is_empty() {
         return Vec::new();
     }
     let ids: HashSet<&str> = ids.iter().map(String::as_str).collect();
     crate::packs::areas_where(roots, |dir, bytes| {
-        serde_json::from_slice::<Uses>(bytes)
-            .is_ok_and(|u| painted_ids(dir, &u.palette, u.materials.as_deref()).iter().any(|p| ids.contains(p.as_str())))
+        serde_json::from_slice::<Uses>(bytes).is_ok_and(|u| {
+            painted_ids(dir, &u.palette, u.materials.as_deref(), u.blend.as_deref()).iter().any(|p| ids.contains(p.as_str()))
+        })
     })
 }
 

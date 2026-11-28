@@ -176,7 +176,8 @@ const IN_BODY: [&str; 4] = ["palette", "water", "entrances", "atmosphere"];
 ///
 /// The query string has the area's name and its simple settings: `tiles`, `tilesY`, `shadow`, `module`, `kind`, `roof` and
 /// `clearance`. The body is the heights (f32 a sample, rows from the south), then the paint (one byte a sample: an index into the
-/// palette), then JSON: `palette` (the paint's texture ids), `water`, `chasm`, `lights`, `entrances`, `atmosphere`, `objects`,
+/// palette), then JSON: `palette` (the paint's texture ids), `blend` (soft paint's second texture and weight, two bytes a sample
+/// in base64, see heightmap.rs; in the JSON so an older engine ignores it), `water`, `chasm`, `lights`, `entrances`, `atmosphere`, `objects`,
 /// `things`, `settings`, `originals` and `ambience`. A query string that still has one of [`IN_BODY`] (an editor older than this
 /// engine) is refused.
 pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<serde_json::Value> {
@@ -230,6 +231,14 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
         Some(p) => serde_json::from_value(p.clone()).context("palette: a list of texture ids")?,
         None => Vec::new(),
     };
+    let blend = match extra.get("blend").and_then(serde_json::Value::as_str).filter(|b| !b.is_empty() && !materials.is_empty()) {
+        Some(b) => {
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(b).context("blend: not base64")?;
+            crate::heightmap::blend_of(&bytes, samples, palette.len())?
+        }
+        None => Vec::new(),
+    };
     // (guard_assignment also refuses an import named with anything but a plain name.)
     guard_assignment(&name, &imports_in(&palette, &extra))?;
     let dir = if check { exports_dir().join(".check") } else { exports_dir() };
@@ -267,6 +276,13 @@ pub(super) fn export_request(query: &str, body: &[u8], check: bool) -> Result<se
     if !materials.is_empty() {
         crate::atomic::write(&dir.join(format!("{name}.materials")), materials)?;
         header["materials"] = format!("{name}.materials").into();
+        // (All weights 0 is no layer: the export is the same as without one.)
+        if !blend.is_empty() {
+            crate::atomic::write(&dir.join(format!("{name}.blend")), blend.as_flattened())?;
+            header["blend"] = format!("{name}.blend").into();
+        } else {
+            let _ = std::fs::remove_file(dir.join(format!("{name}.blend")));
+        }
         header["palette"] = palette.into();
     }
     if let Some(v) = query.number::<f64>("shadow") {
@@ -349,7 +365,8 @@ struct Rollback {
 
 impl Rollback {
     fn of(dir: &Path, name: &str) -> Rollback {
-        let mut paths: Vec<std::path::PathBuf> = ["json", "f32", "materials"].iter().map(|e| dir.join(format!("{name}.{e}"))).collect();
+        let mut paths: Vec<std::path::PathBuf> =
+            ["json", "f32", "materials", "blend"].iter().map(|e| dir.join(format!("{name}.{e}"))).collect();
         paths.extend(crate::workspace::nwn_user_dir().map(|u| u.join("hak").join(format!("{name}.hak"))));
         Rollback::holding(paths)
     }
@@ -475,6 +492,7 @@ fn previous_heights(dir: &Path, name: &str) -> Option<crate::heightmap::Heightma
         height: ny,
         data: bytes.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect(),
         materials: Vec::new(),
+        blend: Vec::new(),
         palette: Vec::new(),
         atmosphere: None,
         things: Vec::new(),

@@ -1233,6 +1233,24 @@ mod tests {
     }
 
     #[test]
+    fn export_refuses_a_bad_blend_layer_before_writing() {
+        use base64::Engine;
+        let n = 49 * 49;
+        let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+        let mut past = vec![0u8; n * 2];
+        past[2 * 9..2 * 9 + 2].copy_from_slice(&[2, 40]);
+        for (blend, why) in
+            [(b64(&[0u8; 10]), "two a sample"), ("!!".to_string(), "not base64"), (b64(&past), "past the palette's 2 textures")]
+        {
+            let mut body = vec![0u8; n * 4];
+            body.extend(vec![0u8; n]);
+            body.extend(serde_json::to_vec(&serde_json::json!({ "palette": ["a", "b"], "blend": blend })).unwrap());
+            let e = format!("{:#}", export_request("name=blendbad&tiles=3", &body, true).unwrap_err());
+            assert!(e.contains(why), "{why}: {e}");
+        }
+    }
+
+    #[test]
     fn imports_are_found_in_paint_and_objects() {
         let objects = serde_json::json!({ "objects": [
             { "model": "@import:bay2:0302_0" }, { "model": "plc_boulder" }, { "model": "@import:other:0001" },

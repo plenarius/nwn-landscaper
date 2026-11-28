@@ -91,9 +91,10 @@ side, opaque) and `<id>_128.png` (the palette's swatch, at most 128 px). All at 
 - **`surface`:** the `surfacemat.2da` row ground painted with it walks as (footsteps): 1 dirt, 3 grass, 4 stone, 5 wood,
   13 mud, 19 snow, 20 sand.
 - **`edge`** (optional): how its edge meets another texture's in the game, `crisp` (a sharp line: laid surfaces such as cobbles,
-  flagstones, floors and planks) or `broken` (a sharp line ragged by noise and by the textures themselves: natural ground). Left
-  out, a category naming a floor, wall, cobbles, flagstones, paving, planks, wood, bricks, tiles, slabs, carpet, rugs or metal
-  is `crisp` and any other `broken`. Where two textures meet, `broken` wins.
+  flagstones, floors and planks), `broken` (a sharp line ragged by noise and by the textures themselves: natural ground) or
+  `soft` (a gradient as wide as the brush's soft rim: a wash). Left out, a category naming a floor, wall, cobbles, flagstones,
+  paving, planks, wood, bricks, tiles, slabs, carpet, rugs or metal is `crisp` and any other `broken`. Where two textures meet,
+  the softer wins (`soft`, then `broken`).
 
 The catalog keeps a record of each installed pack (`"packs"` in `catalog.json`: its fields, the ids it installed, when, and
 from where), and each of its textures says `"pack": "<id>"`.
