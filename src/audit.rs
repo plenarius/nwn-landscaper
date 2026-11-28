@@ -29,7 +29,7 @@ pub fn set_address(ip: String) {
     IP.with(|i| *i.borrow_mut() = ip);
 }
 
-fn address() -> String {
+pub fn address() -> String {
     IP.with(|i| i.borrow().clone())
 }
 

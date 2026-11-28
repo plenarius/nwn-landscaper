@@ -215,6 +215,11 @@ impl Painter {
         dds
     }
 
+    /// Whether tile (tx, ty)'s baked texture is kept from a past export (an estimate's count: [`super::progress`]).
+    pub(super) fn bake_kept(&self, tx: usize, ty: usize, size: u32) -> bool {
+        BAKES.has(&self.bake_key(tx, ty, size))
+    }
+
     /// A digest of everything [`Painter::bake`] reads for tile (tx, ty): where it is, the smoothed paint under it (which reads the
     /// paint a few samples beyond, and holds the blend layer's own weights where a sample has them) and the heights around it (they give the slope its textures are drawn by), the textures that
     /// paint names and their edges, and the decals on it.
@@ -476,6 +481,11 @@ pub(super) fn shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba 
     let map = draw_shadow_map(tx, ty, strength);
     SHADOWS.put(key, &map.data);
     map
+}
+
+/// Whether tile (tx, ty)'s shadow map is kept from a past export (an estimate's count: [`super::progress`]).
+pub(super) fn shadow_kept(tx: usize, ty: usize, strength: f32) -> bool {
+    shadow_key(tx, ty, strength).is_some_and(|k| SHADOWS.has(&k))
 }
 
 /// The shadow maps of past exports, by [`shadow_key`] (64 KB a tile at the finer size).

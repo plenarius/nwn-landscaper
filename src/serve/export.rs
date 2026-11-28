@@ -29,44 +29,40 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
             if let Err(full) = crate::quota::room(&area, body.len() as u64) {
                 return Some(refuse(413, &full.to_string()));
             }
-            let done = {
-                let _job = job();
-                export_request(query.as_str(), &body, check)
+            let (status, answer) = export_answer(query.as_str(), &body, check, &area, &|| true);
+            json_response(status, &answer)
+        }
+        // The same export as a job (the editor's, with its progress bar): answered at once, its progress asked for after.
+        (Method::Post, "/api/export/job") => {
+            if cfg!(target_family = "wasm") {
+                return Some(refuse(501, "the browser's engine exports with /api/export; its progress comes in its LS_PROGRESS lines"));
+            }
+            let body = match read_body(cx.req, super::body_max::AREA) {
+                Ok(b) => b,
+                Err(refused) => return Some(refused),
             };
-            // (An export writes a module and a hak, of sizes known only now: measured again. A check is measured with the
-            // next walk.)
-            if check {
-                crate::quota::wrote(body.len() as u64);
-            } else {
-                crate::quota::forget();
+            let area = query.text("name");
+            if let Err(full) = crate::quota::room(&area, body.len() as u64) {
+                return Some(refuse(413, &full.to_string()));
             }
-            match done {
-                Ok(mut report) => {
-                    // (Where the module was built and installed, as the builder knows it: crate::workspace::shown.)
-                    for key in ["module", "installed_module"] {
-                        if let Some(path) = report[key].as_str().map(std::path::PathBuf::from) {
-                            report[key] = crate::workspace::shown(&path).into();
-                        }
-                    }
-                    // (Checks run all the time as someone edits: only exports are recorded, their routes counted as the editor
-                    // counts them.)
-                    if !check {
-                        crate::audit::log("export", Some(&area), true, &crate::generator::routes_work(&report));
-                    }
-                    json_response(200, &report)
-                }
-                Err(e) => {
-                    let msg = format!("{e:#}");
-                    eprintln!("export failed: {msg}");
-                    // Being turned away (an ended assignment, a taken name) is recorded either way.
-                    if e.downcast_ref::<super::areas::Denied>().is_some() {
-                        crate::audit::log("denied", Some(&area), false, &format!("{}: {msg}", if check { "check" } else { "export" }));
-                    } else if !check {
-                        crate::audit::log("export", Some(&area), false, &msg);
-                    }
-                    refuse(400, &msg)
-                }
+            let query = query.as_str().to_string();
+            start_job(cx, &area.clone(), move |turn| export_answer(&query, &body, false, &area, turn))
+        }
+        (Method::Get, "/api/export/job") => {
+            let jobs = export_jobs();
+            json_response(200, &jobs.get(&cx.me.user).map_or_else(|| serde_json::json!({ "job": 0, "running": false }), ExportJob::json))
+        }
+        (Method::Post, "/api/export/job/cancel") => {
+            let mut jobs = export_jobs();
+            let Some(j) = jobs.get_mut(&cx.me.user).filter(|j| j.running) else {
+                return Some(refuse(409, "no export of yours is under way"));
+            };
+            // (Waiting for its turn: it never starts. Under way: it stops at its next tile or step.)
+            j.cancelled = true;
+            if j.started {
+                crate::generator::cancel_export();
             }
+            json_response(200, &j.json())
         }
         (Method::Post, "/api/publish") => {
             let name = query.text("name");
@@ -165,6 +161,139 @@ pub(super) fn route(cx: &mut Ask<'_>) -> Option<Answer> {
         _ => return None,
     })
 }
+
+/// An export or a check of area `area` from the editor's request (`query`, `body`), recorded in the activity log: its status and
+/// JSON (the report, or `{ error }`). `turn` is called once the heavy jobs before it are done; false: it was cancelled meanwhile.
+fn export_answer(query: &str, body: &[u8], check: bool, area: &str, turn: &dyn Fn() -> bool) -> (u16, serde_json::Value) {
+    let done = {
+        let _job = job();
+        if turn() { export_request(query, body, check) } else { Err(crate::generator::Cancelled.into()) }
+    };
+    // (An export writes a module and a hak, of sizes known only now: measured again. A check is measured with the next walk.)
+    if check {
+        crate::quota::wrote(body.len() as u64);
+    } else {
+        crate::quota::forget();
+    }
+    match done {
+        Ok(mut report) => {
+            // (Where the module was built and installed, as the builder knows it: crate::workspace::shown.)
+            for key in ["module", "installed_module"] {
+                if let Some(path) = report[key].as_str().map(std::path::PathBuf::from) {
+                    report[key] = crate::workspace::shown(&path).into();
+                }
+            }
+            // (Checks run all the time as someone edits: only exports are recorded, their routes counted as the editor counts them.)
+            if !check {
+                crate::audit::log("export", Some(area), true, &crate::generator::routes_work(&report));
+            }
+            (200, report)
+        }
+        Err(e) => {
+            let msg = format!("{e:#}");
+            eprintln!("export failed: {msg}");
+            // Being turned away (an ended assignment, a taken name) is recorded either way.
+            if e.downcast_ref::<super::areas::Denied>().is_some() {
+                crate::audit::log("denied", Some(area), false, &format!("{}: {msg}", if check { "check" } else { "export" }));
+            } else if !check {
+                crate::audit::log("export", Some(area), false, &msg);
+            }
+            let cancelled = e.downcast_ref::<crate::generator::Cancelled>().is_some();
+            (400, serde_json::json!({ "error": crate::workspace::scrub(&msg), "cancelled": cancelled }))
+        }
+    }
+}
+
+/// A builder's export job under way or last ended (`/api/export/job`). Jobs take turns with every other heavy job (`job()`);
+/// each builder has one at a time.
+#[derive(Default)]
+struct ExportJob {
+    id: u64,
+    area: String,
+    running: bool,
+    /// Its turn came: the export's progress is its own.
+    started: bool,
+    /// Its progress when it ended.
+    progress: Option<serde_json::Value>,
+    error: Option<String>,
+    /// Its builder cancelled it.
+    cancelled: bool,
+    result: Option<serde_json::Value>,
+}
+
+impl ExportJob {
+    fn json(&self) -> serde_json::Value {
+        let progress = match &self.progress {
+            Some(p) => p.clone(),
+            None if self.started => crate::generator::export_progress(),
+            None => serde_json::json!({ "step": "waiting" }),
+        };
+        serde_json::json!({
+            "job": self.id, "area": self.area, "running": self.running, "progress": progress, "error": self.error,
+            "cancelled": self.cancelled, "result": self.result,
+        })
+    }
+}
+
+/// Starts `work` as this builder's export job of `label` (one at a time; refused while theirs runs) on a thread of its own, as
+/// the request's thread would run it: the job's JSON, answered 202. `work` gets the job's turn, which it calls once it holds the
+/// engine's job lock (false: cancelled while waiting), and gives the answer's status and JSON. An export of several areas (a
+/// canvas's pieces) runs the same way, each piece's export reporting its progress in turn.
+pub(super) fn start_job(
+    cx: &Ask<'_>,
+    label: &str,
+    work: impl FnOnce(&dyn Fn() -> bool) -> (u16, serde_json::Value) + Send + 'static,
+) -> Answer {
+    let user = cx.me.user.clone();
+    let n = {
+        let mut jobs = export_jobs();
+        if jobs.get(&user).is_some_and(|j| j.running) {
+            return refuse(409, "an export of yours is under way: wait for it to finish, or cancel it");
+        }
+        let n = NEXT_JOB.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        jobs.insert(user.clone(), ExportJob { id: n, area: label.to_string(), running: true, ..ExportJob::default() });
+        n
+    };
+    let (admin, workspace, address) = (cx.me.admin, crate::workspace::user(), crate::audit::address());
+    let who = user.clone();
+    std::thread::spawn(move || {
+        // (As the request's own thread would: whose workspace, who acts, from where.)
+        crate::workspace::set_user(workspace);
+        crate::workspace::set_acting(&who, admin);
+        crate::audit::set_address(address);
+        // (Its turn comes once the exports before it are done: its progress is the export's from then on.)
+        let turn = || {
+            let mut jobs = export_jobs();
+            let Some(j) = jobs.get_mut(&who).filter(|j| j.id == n) else { return false };
+            j.started = !j.cancelled;
+            crate::generator::reset_progress();
+            j.started
+        };
+        let (status, answer) = work(&turn);
+        if let Some(j) = export_jobs().get_mut(&who).filter(|j| j.id == n) {
+            j.running = false;
+            j.progress = Some(if j.started { crate::generator::export_progress() } else { serde_json::json!({ "step": "failed" }) });
+            if status == 200 {
+                // (A cancel too late: it got through.)
+                j.cancelled = false;
+                j.result = Some(answer);
+            } else {
+                j.error = Some(answer["error"].as_str().unwrap_or("the export failed").to_string());
+                j.cancelled = answer["cancelled"] == true;
+            }
+        }
+    });
+    json_response(202, &export_jobs()[&user].json())
+}
+
+/// Each builder's export job, by user.
+fn export_jobs() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, ExportJob>> {
+    static JOBS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, ExportJob>>> =
+        std::sync::LazyLock::new(Default::default);
+    JOBS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+static NEXT_JOB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// What an export's query string may no longer carry: lists and objects, which come in its body's JSON (see [`export_request`]).
 /// They made the request's line grow with the area (an area's entrances, its water's shores), up to the 1 MB a request's head

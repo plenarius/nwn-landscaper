@@ -171,8 +171,20 @@ fn closed_passages(before: &seams::Connectivity, conn: &seams::Connectivity, aw:
 /// fails, in-tile crossings too expensive for it). Then installs the module in the user folder's `modules/` (see [`super::install`]);
 /// the report says where.
 pub(crate) fn export(json: &std::path::Path, before: &super::install::Before) -> Result<serde_json::Value> {
+    /// Ends the progress as failed unless the export got through (an error or a panic).
+    struct Ends(bool);
+    impl Drop for Ends {
+        fn drop(&mut self) {
+            super::progress::end(self.0);
+        }
+    }
+    super::progress::begin();
+    let mut ends = Ends(false);
     let mut report = super::plan::as_export(|| analyse(json, true))?;
+    // (The last point it can stop at: installing replaces the module.)
+    super::progress::step("installing")?;
     super::install::install(json, before, &mut report)?;
+    ends.0 = true;
     if let Some(m) = report["installed_module"].as_str() {
         println!("  installed {m}");
     }
@@ -203,6 +215,7 @@ fn analyse(json: &std::path::Path, build: bool) -> Result<serde_json::Value> {
     if build {
         std::fs::create_dir_all(&out)?;
         generate(&out, Some(""))?;
+        super::progress::step("routes")?;
     }
     let (aw, ah) = (tiles_x() as f32 * TILE, tiles_y() as f32 * TILE);
     let area = sim_area();

@@ -59,6 +59,7 @@ pub const SWITCHES: &[(&str, &str, Effect)] = {
         ("LS_IMPORT_MATS", "print the walkable area of each surface an import finds", R),
         // Printing what a step did.
         ("LS_TIMING", "print how long each step of an export took", R),
+        ("LS_PROGRESS", "print an export's step, tiles done and time left as `LS_PROGRESS {json}` lines (the browser page's engine)", R),
         ("LS_DEBUG_PLAN", "print the path node plan, round by round", R),
         ("LS_DEBUG_SEAM", "`a,b`: print the walkmesh faces of tiles a and b along their shared edge", R),
         ("LS_DEBUG_TILE", "a tile number: print its path node regions", R),

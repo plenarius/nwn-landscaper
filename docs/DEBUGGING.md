@@ -68,6 +68,7 @@ A switch is on when it is set to anything (`LS_TIMING=1`); one that takes a valu
 | Switch | What it does | Export |
 |---|---|---|
 | `LS_TIMING` | Print how long each step of an export took | the same |
+| `LS_PROGRESS` | Print an export's step, tiles done and time left as `LS_PROGRESS {json}` lines (the browser page's engine) | the same |
 | `LS_DEBUG_PLAN` | Print the path node plan, round by round | the same |
 | `LS_DEBUG_SEAM` | `a,b`: print the walkmesh faces of tiles a and b along their shared edge | the same |
 | `LS_DEBUG_TILE` | A tile number: print its path node regions | the same |

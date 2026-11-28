@@ -14,6 +14,21 @@ module in the toolset or the game.
    - **Orange markers:** a tile whose walkable ground is too winding for the game's search within a tile. Straighten or widen the
      passage.
 
+## How long it takes
+
+As the tiles start, the report box says how long the export should take and how many tiles a past export already made, for
+example **About 3 min · 40 of 256 tiles already cached**. A bar follows it, with the step it is at and the time left:
+**Building the tiles: 120 of 256 · about 1 min 20 s left**, then writing the hak, checking the routes and installing the
+module.
+
+- **What the estimate counts:** each tile's ground to bake and shadows to draw, unless an export kept them from before (an
+  area exported again mostly has the same ground), the placed objects' triangles, and the threads the export works on.
+- **This machine's speed:** each export measures how long those took here and keeps it for the next estimate
+  (`export-speed.json` in the data folder). The first export on a machine goes by the Landscaper's own measurements, so its
+  estimate can be a third out either way; the time left comes closer as the tiles finish.
+- **Cancel export** stops it at the next tile. Nothing changes: the last export's module and hak stay as they were. The page
+  in a browser has no **Cancel**, as its engine can't be reached until the export ends, and counts one thread.
+
 A module already there takes only the new tiles. The module before is kept as `<module>.mod.bak`, and a failed export leaves the
 module and the hak as they were. `report.json`, beside the module, holds the whole report.
 

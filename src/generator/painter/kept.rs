@@ -53,6 +53,12 @@ impl Store {
         Some(file)
     }
 
+    /// Whether a file is kept for `key`, without reading it: what an export's estimate counts before it starts.
+    pub(in crate::generator) fn has(&self, key: &[u8; 20]) -> bool {
+        self.memory.lock().unwrap_or_else(std::sync::PoisonError::into_inner).entries.iter().any(|e| e.0 == *key)
+            || self.dir().join(file_name(SOURCE, key)).is_file()
+    }
+
     /// Keeps `file` for `key`, in memory and on disk. A disk that can't be written to only means it isn't kept there.
     pub(in crate::generator) fn put(&self, key: [u8; 20], file: &[u8]) {
         self.memory.lock().unwrap_or_else(std::sync::PoisonError::into_inner).put(key, file);

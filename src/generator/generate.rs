@@ -13,8 +13,8 @@ use mg_set::Tileset;
 
 use super::{
     MINIMAP, Painter, SHADOW_MAP_FINE, bake_size, baked_name, choose_path_nodes, crlf, edge, entrance, hak_name, in_parallel, minimap,
-    minimap_name, set_file, shadow_map, shadow_name, shadow_strength, start_point, surfaced, tile_level, tile_model, tile_name, tile_wok,
-    tiles_x, tiles_y, tileset_name, walkmesh,
+    minimap_name, progress, set_file, shadow_kept, shadow_map, shadow_name, shadow_strength, start_point, surfaced, tile_level, tile_model,
+    tile_name, tile_wok, tiles_x, tiles_y, tileset_name, walkmesh,
 };
 use crate::{atmosphere, heightmap, import, models, objects, paint, settings, shared, skies, textures, things, workspace};
 
@@ -89,6 +89,25 @@ fn onload_script(walks: &[TestWalk]) -> String {
         "void Assert(int b, string s, string d) { WriteTimestampedLogEntry(\"LSRESULT \" + s + \" \" + IntToString(b) + \" \" + d); \
          }\nvoid AssertValid(object o, string s) {}",
     )
+}
+
+/// What each of `tiles` has to make (its ground and shadows, unless a past export's are kept) and its baked objects' triangles:
+/// the export's estimate, made before the tiles start.
+fn tile_work(tiles: &[(usize, usize)], painter: Option<&Painter>, strength: f32) -> Vec<progress::TileWork> {
+    let (nx, ny) = (tiles_x(), tiles_y());
+    let mut tris = vec![0usize; nx * ny];
+    if let Some(scene) = objects::scene() {
+        // (Each object's triangles on the tile of its middle: most stand inside one.)
+        for o in scene.objects.iter().filter(|o| o.baked && !o.halo) {
+            let at = |lo: f32, hi: f32, n: usize| ((lo + hi) / 2.0 / super::TILE).floor().clamp(0.0, (n - 1) as f32) as usize;
+            tris[at(o.min[1], o.max[1], ny) * nx + at(o.min[0], o.max[0], nx)] += o.positions.len() / 3;
+        }
+    }
+    in_parallel(tiles, |(tx, ty)| progress::TileWork {
+        bake: painter.is_some_and(|p| p.baked(tx, ty) && !p.bake_kept(tx, ty, bake_size())),
+        shadow: strength > 0.0 && !shadow_kept(tx, ty, strength),
+        ktri: tris[ty * nx + tx] as f64 / 1000.0,
+    })
 }
 
 /// One tile's part of the hak, made on its own thread.
@@ -203,11 +222,16 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
     let edges = std::env::var_os("LS_NO_EDGE").is_none() && !underground;
     let overhang = if edges { super::overhang::Overhang::plan(dump.then_some(out_dir))? } else { None };
     lap("planned");
+    // (The browser's engine works on one thread, whatever it is told.)
+    let threads = if cfg!(target_family = "wasm") { 1 } else { crate::config::export_threads() };
+    progress::tiles(tile_work(&tiles, painter.as_ref(), strength), threads);
     let pre_loop = gen_start.elapsed().as_secs_f32();
     let no_surfaces = std::env::var_os("LS_NO_SURFACES").is_some();
     // Thread time of each step, summed over the tiles (LS_TIMING).
     let ph: [std::sync::atomic::AtomicU64; 6] = Default::default();
     let made = in_parallel(&tiles, |(tx, ty)| -> Result<TileFiles> {
+        // (Cancelled: the tiles left go by at once, and the export fails before anything is installed.)
+        progress::check()?;
         let mut mark = std::time::Instant::now();
         let mut phase = |i: usize| {
             ph[i].fetch_add(mark.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
@@ -238,9 +262,12 @@ fn build(out_dir: &std::path::Path, test: Option<&str>) -> Result<()> {
         let wok = crlf(&tile_wok(&name, &w));
         phase(5);
         let text = dump.then_some(text);
+        progress::tile_done(ty * tiles_x() + tx);
         Ok(TileFiles { name, faces, text, mtrs, shadow, shadow_dds, baked, mini, compiled, wok })
     });
     let ph = ph.map(|n| n.into_inner() as f32 / 1e9);
+    progress::tiles_end(f64::from(ph[3]), f64::from(ph[2]), f64::from(ph[0] + ph[1] + ph[4] + ph[5]));
+    progress::step("hak")?;
     for ((tx, ty), tile) in tiles.iter().copied().zip(made) {
         let TileFiles { name, faces, text, mtrs, shadow, shadow_dds, baked: baked_dds, mini, compiled, wok } = tile?;
         walk_faces += faces;
