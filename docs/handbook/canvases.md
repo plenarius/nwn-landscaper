@@ -107,5 +107,28 @@ Each piece exports as an area of one module named after the canvas, with 5 tiles
 its share of the water, what stands in it, and a transition each way wherever open ground meets open ground along a cut. A
 trigger or a cave across a cut is refused by name. The route check then walks the transitions between the pieces.
 
-The editor's Export and Publish for a canvas come next. Until then, `landscaper canvas-export <canvas>` builds every piece,
-`landscaper canvas-export <canvas> <piece>...` only those, and `--check` checks them without building.
+**Export to NWN** with a canvas open exports every piece. The box names the piece under way ("rivl02, piece 2 of 5"), its
+step and the time left; **Cancel export** stops it and leaves the last export as it was. When it ends, the box lists each
+piece's path warnings and whether every piece can be walked into from the start piece. **Check paths** in the top bar checks
+every piece the same way, without building. On the command line, `landscaper canvas-export <canvas> [<piece>...]` builds
+every piece or only those, and `--check` checks them.
+
+## Publish a canvas
+
+**Publish to the team…** sends the canvas for review as one request, so the pieces' crossings and edges match.
+
+- **The ticks:** the pieces that changed since the last publish, with why: their own ground, what stands in them, their edge
+  scenery showing a neighbour's change, their crossings, their settings, or a corner that moved. Tick more, or **Send every
+  piece**.
+- **Export again first:** a piece changed since its last export can't be ticked, as it would send ground you no longer have.
+  **Export again** exports the canvas; open Publish again after it.
+- **Check, then send:** the first click checks the ticked pieces with the review service and their paths across the canvas,
+  and lists what it found: neighbours to send too, because their crossings with these aren't live yet; a moved corner (a
+  script that names a spot by its numbers no longer points at the same place); a path that doesn't work. None of these stop
+  the send; the reviewer sees them. The second click sends. Changing the ticks asks for a new check.
+- **No longer on the canvas:** a published piece that was removed or renamed is listed; the reviewer decides whether its
+  area goes.
+- **Download a package** gives the ticked pieces' module and haks as a zip to add to the module by hand. It doesn't count
+  as a publish, so the same pieces stay ticked.
+- **Try on dev** puts the ticked pieces on the team's dev server together once the check passed, so their crossings lead to
+  each other.
