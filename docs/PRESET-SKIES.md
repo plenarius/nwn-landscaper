@@ -16,6 +16,9 @@ landscaper skies get preset-skies
 Its seven skies take the first free rows of the module's `skyboxes.2da` from 32 up. The browser page at
 [/try/](https://landscaper.layonara.com/try/) has it installed.
 
+The list offers 1.0.1, which is 1.0.0 with only its description reworded: the same skies, pictures and models. A Landscaper with
+1.0.0 installed keeps it, and lists 1.0.1 as available; `skies get preset-skies` then replaces it, each sky keeping its row.
+
 ## The skies
 
 | Sky | Id | Preset | Dawn | Day | Dusk | Night |
@@ -58,7 +61,7 @@ For maintainers: how the published pack is made, for a new version.
 
    The first argument is `Real_Skies.hak` or the folder it was unpacked into; the second, the folder to write. `--jobs` sets how
    many pictures are re-encoded at once (default 4, about 150 MB of memory each).
-3. Try it before publishing: `landscaper skies get dist/preset-skies-1.0.0.zip`.
+3. Try it before publishing: `landscaper skies get dist/preset-skies-1.0.1.zip`.
 4. Publish it as an asset of the `texture-packs` release with its entry in that release's `index.json` (`skies pack --index`
    writes the entry), as [texture packs](TEXTURE-PACKS.md) are.
 
