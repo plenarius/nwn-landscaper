@@ -70,6 +70,11 @@ else
 fi
 if [[ -f "$stock/index.json" ]]; then
     cp -r "$stock" "$out/try/stock"
+    # GitHub Pages compresses a .bin download but not a .tga one: the TGAs go up as <name>.tga.bin, to an editor whose
+    # try/stock.js asks for them so (an older one asks for <name>.tga). The same bytes either way.
+    if grep -q "tga.bin" "$work/editor/try/stock.js"; then
+        find "$out/try/stock/res" -name '*.tga' -exec mv {} {}.bin \;
+    fi
     # site.json's stockSha256 names the browser cache the page keeps these files in: a new bundle, a new cache. The zip's
     # SHA-256, or the files' when they were made here.
     if [[ -f "$work/demo-stock.zip" ]]; then

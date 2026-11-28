@@ -498,12 +498,12 @@ pub fn zip_pack(manifest: &[u8], files: &[(String, Vec<u8>)]) -> Result<Vec<u8>>
     let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let at = zip::DateTime::default();
     let deflated = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).last_modified_time(at);
-    // (PNG and DDS are compressed already.)
+    // (PNG is compressed already; DDS's block compression still deflates to less than half.)
     let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).last_modified_time(at);
     z.start_file("pack.json", deflated)?;
     z.write_all(manifest)?;
     for (name, data) in files {
-        let packed = Path::new(name).extension().is_some_and(|e| e.eq_ignore_ascii_case("png") || e.eq_ignore_ascii_case("dds"));
+        let packed = Path::new(name).extension().is_some_and(|e| e.eq_ignore_ascii_case("png"));
         z.start_file(name, if packed { stored } else { deflated })?;
         z.write_all(data)?;
     }
