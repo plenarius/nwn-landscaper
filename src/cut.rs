@@ -10,7 +10,7 @@
 //!
 //! - `palette` (the blocks' paint and blend layer index it), `water` (`[{ i, j, level, bounds? }]`), `objects`, `things`, `entrances`, `ambience`, `lights` (two a tile over
 //!   the whole canvas, rows from the south), `shadow`, `settings` and `atmosphere` (each piece's own, `pieces[k].settings` and
-//!   `pieces[k].atmosphere`, over the canvas's);
+//!   `pieces[k].atmosphere`, merged over the canvas's);
 //! - `crossingsOff`: stretches the builder turned off, by their key `x<i>_<j>` (the stretch's middle sample);
 //! - `startPiece`: the piece a player comes in by, for the canvas route check (else the first piece).
 
@@ -553,14 +553,31 @@ pub fn area(canvas: &str, header: &Header, g: &Ground, p: &Piece, crossings: &[C
         );
     }
     for key in ["settings", "atmosphere"] {
-        if let Some(v) = p.json.get(key).or(header.json.get(key)).filter(|v| v.is_object()) {
-            h[key] = v.clone();
+        // (merged, not replaced: a piece given its own name keeps the canvas's scripts)
+        let mut v = header.json.get(key).filter(|v| v.is_object()).cloned().unwrap_or(Value::Null);
+        if let Some(own) = p.json.get(key).filter(|v| v.is_object()) {
+            merge(&mut v, own);
+        }
+        if v.is_object() {
+            h[key] = v;
         }
     }
     if let Some(s) = header.json["shadow"].as_f64() {
         h["shadow"] = s.into();
     }
     Ok(Area { name: p.name.clone(), header: h, heights, materials, blend })
+}
+
+/// `over` laid on `base`, object by object: what `over` sets wins, what it leaves out stays.
+fn merge(base: &mut Value, over: &Value) {
+    match (base.as_object_mut(), over.as_object()) {
+        (Some(b), Some(o)) => {
+            for (k, v) in o {
+                merge(b.entry(k.clone()).or_insert(Value::Null), v);
+            }
+        }
+        _ => *base = over.clone(),
+    }
 }
 
 /// One water seed for each part of the canvas's water inside a piece's grid (`src`: each grid sample's canvas sample, `fw`
@@ -794,6 +811,22 @@ mod tests {
         assert_eq!(b.blend.len(), fw * fw * 2);
         let k = 16 * fw + 16;
         assert_eq!(&b.blend[2 * k..2 * k + 2], &[1, ((160) % 7) as u8]);
+    }
+
+    #[test]
+    fn a_pieces_own_settings_are_merged_over_the_canvases() {
+        let mut j = base(20, 10, json!([piece(1, 0, 0, 10, 10), piece(2, 10, 0, 10, 10)]));
+        j["settings"] = json!({ "name": "Riverlands", "scripts": { "OnEnter": "rivl_enter", "OnExit": "rivl_exit" } });
+        j["pieces"][1]["settings"] = json!({ "name": "Riverford", "scripts": { "OnExit": "ford_exit" } });
+        let h = header(j);
+        let g = flat(h.size, &Value::Null);
+        let list = pieces(&h);
+        let a = area("rivl", &h, &g, &list[0], &[], 16).unwrap();
+        assert_eq!(a.header["settings"]["name"], "Riverlands");
+        let b = area("rivl", &h, &g, &list[1], &[], 16).unwrap();
+        assert_eq!(b.header["settings"]["name"], "Riverford");
+        assert_eq!(b.header["settings"]["scripts"]["OnEnter"], "rivl_enter", "the canvas's script stays");
+        assert_eq!(b.header["settings"]["scripts"]["OnExit"], "ford_exit");
     }
 
     fn flat(size: Size, water: &Value) -> Ground {
