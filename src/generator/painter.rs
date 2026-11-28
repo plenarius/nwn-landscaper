@@ -12,6 +12,8 @@ use anyhow::Result;
 use super::{TILE, WALKABLE_NZ, entrance, height, in_void, soft, tile_name, tiles_x, tiles_y};
 use crate::{heightmap, models, objects, paint, shade};
 
+mod kept;
+
 /// The texture an entrance's hood takes: the editor paints its walls with
 /// rock (the palette's rockCliff), else the palette's first texture.
 pub(super) fn entrance_rock(p: &Painter) -> u8 {
@@ -201,15 +203,15 @@ impl Painter {
         self.hm.material((x / sp).round() as i64, (y / sp).round() as i64)
     }
 
-    /// Tile (tx, ty)'s baked texture as a DDS: the last export's when nothing it is made from has changed (an area exported again
+    /// Tile (tx, ty)'s baked texture as a DDS: a past export's when nothing it is made from has changed (an area exported again
     /// mostly has the same ground), else [`Painter::bake`]'s.
     pub(super) fn baked_dds(&self, tx: usize, ty: usize, size: u32) -> Vec<u8> {
         let key = self.bake_key(tx, ty, size);
-        if let Some(dds) = BAKES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
+        if let Some(dds) = BAKES.get(&key) {
             return dds;
         }
         let dds = paint::dds(&self.bake(tx, ty, size));
-        BAKES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).put(key, &dds);
+        BAKES.put(key, &dds);
         dds
     }
 
@@ -367,45 +369,9 @@ fn digest(img: &mg_image::Rgba) -> [u8; 20] {
     h.finalize().into()
 }
 
-/// The baked textures of the last exports, by [`Painter::bake_key`].
-/// (Enough for a 32 by 32 area's at 512 px and some of another's.)
-static BAKES: std::sync::Mutex<Kept> = std::sync::Mutex::new(Kept::new(256 << 20));
-
-/// Files made in an export, kept for the next by a digest of what they were made from, up to `max` bytes; the least recently used
-/// go first.
-struct Kept {
-    /// (key, file, when last used).
-    entries: Vec<([u8; 20], Vec<u8>, u64)>,
-    bytes: usize,
-    max: usize,
-    clock: u64,
-}
-
-impl Kept {
-    const fn new(max: usize) -> Kept {
-        Kept { entries: Vec::new(), bytes: 0, max, clock: 0 }
-    }
-
-    fn get(&mut self, key: &[u8; 20]) -> Option<Vec<u8>> {
-        self.clock += 1;
-        let e = self.entries.iter_mut().find(|e| e.0 == *key)?;
-        e.2 = self.clock;
-        Some(e.1.clone())
-    }
-
-    fn put(&mut self, key: [u8; 20], file: &[u8]) {
-        if file.len() > self.max || self.entries.iter().any(|e| e.0 == key) {
-            return;
-        }
-        self.clock += 1;
-        self.bytes += file.len();
-        self.entries.push((key, file.to_vec(), self.clock));
-        while self.bytes > self.max {
-            let oldest = (0..self.entries.len()).min_by_key(|&i| self.entries[i].2).expect("over the limit, so not empty");
-            self.bytes -= self.entries.swap_remove(oldest).1.len();
-        }
-    }
-}
+/// The baked textures of past exports, by [`Painter::bake_key`]: 256 MB in memory (a 32 by 32 area's at 512 px and some of
+/// another's), and on disk a few areas' worth (lsforest's 256 tiles take 44 MB).
+static BAKES: kept::Store = kept::Store::new("bakes", 256 << 20, if cfg!(target_family = "wasm") { 96 << 20 } else { 1 << 30 });
 
 /// Pixels a side of a tile's baked texture (LS_BAKE overrides).
 pub(super) fn bake_size() -> u32 {
@@ -474,8 +440,8 @@ pub(super) const SHADOW_MAP: u32 = 64;
 pub(super) const SHADOW_MAP_FINE: u32 = 128;
 
 /// The baked objects that may shade tile (tx, ty): their shadows towards the ground from as high as they stand over the area's
-/// lowest ground, the sky they hide around them. Their placements (`Placed::what`), in the scene's order.
-fn shading(scene: &objects::Scene, tx: usize, ty: usize) -> Vec<&str> {
+/// lowest ground, the sky they hide around them, in the scene's order.
+fn shading(scene: &objects::Scene, tx: usize, ty: usize) -> Vec<&objects::Placed> {
     let lowest = scene.lowest;
     let (x0, y0, x1, y1) = (tx as f32 * TILE, ty as f32 * TILE, (tx + 1) as f32 * TILE, (ty + 1) as f32 * TILE);
     // (The sun is towards (4000, 4500, 7000): a point h over the ground shades it 4/7 h west and 4.5/7 h south of itself.)
@@ -488,7 +454,6 @@ fn shading(scene: &objects::Scene, tx: usize, ty: usize) -> Vec<&str> {
             let h = (o.max[2] - lowest).max(0.0) + 1.0;
             o.min[0] - h * 4.0 / 7.0 - reach < x1 && o.max[0] + reach > x0 && o.min[1] - h * 4.5 / 7.0 - reach < y1 && o.max[1] + reach > y0
         })
-        .map(|o| o.what.as_str())
         .collect()
 }
 
@@ -504,21 +469,21 @@ pub(super) fn shadow_size(tx: usize, ty: usize) -> u32 {
 /// last export's when the ground it is cast from hasn't changed.
 pub(super) fn shadow_map(tx: usize, ty: usize, strength: f32) -> mg_image::Rgba {
     let Some(key) = shadow_key(tx, ty, strength) else { return draw_shadow_map(tx, ty, strength) };
-    if let Some(data) = SHADOWS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
-        let size = shadow_size(tx, ty);
+    let size = shadow_size(tx, ty);
+    if let Some(data) = SHADOWS.get(&key).filter(|d| d.len() == (size * size * 4) as usize) {
         return mg_image::Rgba { width: size, height: size, data };
     }
     let map = draw_shadow_map(tx, ty, strength);
-    SHADOWS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).put(key, &map.data);
+    SHADOWS.put(key, &map.data);
     map
 }
 
-/// The shadow maps of the last exports, by [`shadow_key`].
-static SHADOWS: std::sync::Mutex<Kept> = std::sync::Mutex::new(Kept::new(32 << 20));
+/// The shadow maps of past exports, by [`shadow_key`] (64 KB a tile at the finer size).
+static SHADOWS: kept::Store = kept::Store::new("shadows", 32 << 20, if cfg!(target_family = "wasm") { 16 << 20 } else { 128 << 20 });
 
 /// A digest of everything tile (tx, ty)'s shadow map is cast from: the ground's heights as far as [`shade::shade_lit`] looks (13 m
-/// around, 80 m towards the sun), the baked objects that shade it, the entrances and the strength. None when it can't be kept: no
-/// painted terrain, or a debugging picture.
+/// around, 80 m towards the sun), the baked objects that shade it (where they stand, their models' triangles and how their
+/// textures stop light), the entrances and the strength. None when it can't be kept: no painted terrain, or a debugging picture.
 fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
     use sha1::Digest;
     if std::env::var_os("LS_SHADOW_DEBUG").is_some() {
@@ -547,9 +512,14 @@ fn shadow_key(tx: usize, ty: usize, strength: f32) -> Option<[u8; 20]> {
         }
     }
     if let Some(scene) = objects::scene() {
-        for what in shading(&scene, tx, ty) {
-            h.update(what.as_bytes());
+        let occluders = scene.occluders();
+        for o in shading(&scene, tx, ty) {
+            h.update(o.what.as_bytes());
             h.update([0]);
+            h.update(o.model);
+            for (texture, ..) in &o.groups {
+                h.update(occluders.and_then(|c| c.stops_digest(texture)).unwrap_or_default());
+            }
         }
     }
     h.update(format!("{:?}", hm.entrances).as_bytes());
@@ -820,18 +790,57 @@ mod tests {
         assert!(lm.contains("customshaderfs ls_lm_fs\n") && !lm.contains("texture7") && !lm.contains("lsMetres"), "{lm}");
     }
 
+    /// A painter of a 2 x 1 tile area, 2.5 m between samples, its west tile grass and its east tile dirt, both textures 8 x 8
+    /// pictures; `change` first changes the area or the textures.
+    fn painter(change: impl FnOnce(&mut heightmap::Heightmap, &mut Vec<paint::Texture>)) -> Painter {
+        let (w, h) = (9, 5);
+        let mut hm = heightmap::Heightmap {
+            tiles: 2,
+            spacing: 2.5,
+            width: w,
+            height: h,
+            data: (0..w * h).map(|k| (k % 7) as f32 * 0.3).collect(),
+            materials: (0..w * h).map(|k| u8::from(k % w > 4)).collect(),
+            palette: vec!["grass".into(), "dirt".into()],
+            ..heightmap::plain()
+        };
+        let texture = |c: [f32; 3]| {
+            let image = paint::picture(8, 8, |x, y| if (x + y) % 2 == 0 { c } else { [0.5; 3] });
+            paint::Texture {
+                image,
+                smaller: std::sync::Arc::new(Vec::new()),
+                mean: c,
+                surface: 0,
+                edge: paint::Edge::Broken,
+                tiles: None,
+                metres: 4.0,
+                vary: 0.0,
+            }
+        };
+        let mut textures = vec![texture([0.2, 0.6, 0.2]), texture([0.5, 0.4, 0.3])];
+        change(&mut hm, &mut textures);
+        let looks = hm.palette.iter().zip(&textures).map(|(id, t)| look(id, t)).collect();
+        let digests = hm.palette.iter().map(|_| std::sync::OnceLock::new()).collect();
+        let soft = soft::Soft::new(&hm);
+        Painter { hm: std::sync::Arc::new(hm), textures, decals: HashMap::new(), digests, soft, looks }
+    }
+
     #[test]
-    fn kept_files_go_least_recently_used_first_once_over_the_limit() {
-        let mut kept = Kept::new(10);
-        kept.put([1; 20], &[1; 4]);
-        kept.put([2; 20], &[2; 4]);
-        // (Using the first makes the second the oldest.)
-        assert_eq!(kept.get(&[1; 20]), Some(vec![1; 4]));
-        kept.put([3; 20], &[3; 4]);
-        assert_eq!((kept.get(&[2; 20]), kept.get(&[1; 20]), kept.get(&[3; 20])), (None, Some(vec![1; 4]), Some(vec![3; 4])));
-        assert_eq!(kept.bytes, 8);
-        // Too big to keep at all: nothing else goes.
-        kept.put([4; 20], &[4; 11]);
-        assert_eq!((kept.get(&[4; 20]), kept.bytes), (None, 8));
+    fn a_bake_is_kept_by_everything_it_is_made_from() {
+        let key = |p: &Painter| p.bake_key(0, 0, 512);
+        let base = key(&painter(|_, _| {}));
+        assert_eq!(base, key(&painter(|_, _| {})), "the same ground: a hit");
+        // (Samples 0 to 4 across are the west tile's; its key reads two beyond, so sample 8 is too far to change it.)
+        assert_eq!(base, key(&painter(|hm, _| hm.data[8] += 1.0)), "a height too far east to show");
+        assert_ne!(base, key(&painter(|hm, _| hm.data[9 + 2] += 0.1)), "a height in the tile");
+        assert_ne!(base, key(&painter(|hm, _| hm.data[9 + 6] += 0.1)), "a height its slopes read, past its edge");
+        assert_ne!(base, key(&painter(|hm, _| hm.materials[9 + 2] = 1)), "paint in the tile");
+        assert_ne!(base, key(&painter(|_, t| t[0].image.data[0] ^= 1)), "a pixel of its texture");
+        assert_ne!(base, key(&painter(|_, t| t[0].metres = 8.0)), "how far its texture repeats");
+        assert_ne!(base, key(&painter(|_, t| t[0].vary = 1.5)), "its texture's repeat varied");
+        assert_ne!(base, key(&painter(|_, t| t[0].edge = paint::Edge::Crisp)), "its texture's edge");
+        assert_ne!(base, key(&painter(|hm, _| hm.palette[0] = "moss".into())), "its texture's id, which seeds the edge's noise");
+        assert_ne!(base, painter(|_, _| {}).bake_key(0, 0, 256), "LS_BAKE");
+        assert_ne!(base, painter(|_, _| {}).bake_key(1, 0, 512), "another tile");
     }
 }

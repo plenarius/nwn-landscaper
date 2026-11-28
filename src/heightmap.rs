@@ -976,6 +976,9 @@ impl Heightmap {
 }
 
 #[cfg(test)]
+pub(crate) use tests::plain;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1280,7 +1283,7 @@ mod tests {
     }
 
     /// A flat 3 x 3 terrain of nothing else, for tests to change.
-    fn plain() -> Heightmap {
+    pub(crate) fn plain() -> Heightmap {
         Heightmap {
             name: "t".into(),
             tiles: 1,

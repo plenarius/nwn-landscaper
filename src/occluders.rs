@@ -16,6 +16,8 @@ pub struct Occluders {
     tris: Vec<Tri>,
     nodes: Vec<Node>,
     masks: Vec<Mask>,
+    /// By texture name: a digest of how it stops light ([`Stops`]), for the shadow cache.
+    stops: HashMap<String, [u8; 20]>,
 }
 
 /// A triangle: a corner, its two edges from it, the same for its texture coordinates, and its cut-out (`NONE`: solid).
@@ -79,6 +81,25 @@ enum Stops {
     Alpha(Mask),
 }
 
+impl Stops {
+    /// A digest of how it stops light: which kind, and a mask's size and opacity.
+    fn digest(&self) -> [u8; 20] {
+        use sha1::Digest;
+        let mut h = sha1::Sha1::new();
+        match self {
+            Stops::Nothing => h.update([0]),
+            Stops::All => h.update([1]),
+            Stops::Alpha(m) => {
+                h.update([2]);
+                h.update((m.w as u64).to_le_bytes());
+                h.update((m.h as u64).to_le_bytes());
+                h.update(&m.a);
+            }
+        }
+        h.finalize().into()
+    }
+}
+
 /// What texture `name` does to light, as the game draws it: an environment map's alpha is its reflection mask, not transparency;
 /// punch-through cuts out at half alpha.
 fn stops(game: &mg_rules::GameData, name: &str) -> Stops {
@@ -122,6 +143,7 @@ impl Occluders {
     pub fn build(objects: &[Placed]) -> Option<Occluders> {
         let game = crate::models::game().ok();
         let mut by_name: HashMap<String, Option<u32>> = HashMap::new();
+        let mut stops_of: HashMap<String, [u8; 20]> = HashMap::new();
         let mut masks = Vec::new();
         let mut tris = Vec::new();
         for p in objects.iter().filter(|p| p.baked) {
@@ -129,7 +151,9 @@ impl Occluders {
                 let mask = match by_name.get(texture) {
                     Some(m) => *m,
                     None => {
-                        let m = match game.map_or(Stops::All, |g| stops(g, texture)) {
+                        let s = game.map_or(Stops::All, |g| stops(g, texture));
+                        stops_of.insert(texture.clone(), s.digest());
+                        let m = match s {
                             Stops::Nothing => None,
                             Stops::All => Some(NONE),
                             Stops::Alpha(m) => {
@@ -164,11 +188,16 @@ impl Occluders {
         if tris.is_empty() {
             return None;
         }
-        let mut o = Occluders { tris, nodes: Vec::new(), masks };
+        let mut o = Occluders { tris, nodes: Vec::new(), masks, stops: stops_of };
         o.nodes.push(Node { lo: [0.0; 3], hi: [0.0; 3], start: 0, count: 0 });
         let n = o.tris.len();
         o.split(0, 0, n, 0);
         Some(o)
+    }
+
+    /// A digest of how texture `name` stops light, for the shadow cache; None for a texture no baked object has.
+    pub fn stops_digest(&self, name: &str) -> Option<[u8; 20]> {
+        self.stops.get(name).copied()
     }
 
     fn bounds(&self, from: usize, to: usize) -> ([f32; 3], [f32; 3]) {
@@ -396,6 +425,7 @@ mod tests {
             baked: true,
             halo: false,
             what: String::new(),
+            model: [0; 20],
             positions,
         }
     }
