@@ -17,6 +17,7 @@ mod atomic;
 mod audit;
 mod blueprints;
 mod canvas;
+mod canvas_publish;
 mod cli;
 mod config;
 mod cut;

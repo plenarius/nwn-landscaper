@@ -1,7 +1,7 @@
 # Design: cut into pieces
 
-Status: design; steps 1 to 4 are built (see each step's "as built" note). Written 2026-11-25 for the maintainer's review before
-any code.
+Status: design; steps 1 to 4 and step 7's engine side are built (see each step's "as built" note). Written 2026-11-25 for the
+maintainer's review before any code.
 
 A builder sets up one big canvas (100 by 100 tiles, say), sculpts and paints it as one landscape, then cuts it into rectangles.
 Each rectangle, a *piece*, becomes its own NWN area of at most 32 by 32 tiles, the game's limit. Players walk from piece to piece
@@ -511,6 +511,23 @@ What changes on the engine for this:
 - **Dev trial** takes the whole canvas, through the same `publish-module` form.
 
 What the review service gets is unchanged: a list of areas with their files. No change to the review service is needed.
+
+**Step 7 as built (engine, 2026-11-28).** Changes are found by summing each piece's area files in parts (SHA-256): its own
+samples with its palette and water, its halo's samples with the objects on it, what stands in it, its crossings (one sum for
+each neighbour, read from the triggers' `To <piece>` and waypoints' `From <piece>`), and the rest of its header. A publish keeps
+the sums of what it sent in the canvas's folder (`published.json`, with each piece's id, rectangle and export id), and
+`GET /api/canvas-changes` compares the canvas cut now with them: a neighbour's changed ground shows as an `edge` reason naming
+the neighbour, a moved corner as `moved`, a piece whose id is still there under another name as renamed. Comparing the cut now,
+not the export, ticks what the builder changed; the export's own sums mark a piece `stale` when it is older than the canvas,
+and a real publish or a trial refuses a stale piece (a dry run warns). `POST /api/canvas-publish` sends the ticked pieces
+(or those named) as one `publish-module` request through the existing publish path, and names the neighbours whose live
+crossings with them differ (`send_too`); Package and Try on dev take every piece unless told. Exporting some pieces cuts the
+neighbours they share crossings with and compares each one's crossings with them against its last export; any that differ
+(or were never exported into the canvas's module) stop the export with 409 and `exportFirst`, and a check lists them as
+warnings. A canvas export also runs as the builder's export job (`/api/canvas-export/job`), its label naming the piece
+under way. Nothing changes for the review service. Tried against a stand-in service on the step-4 trial canvas; not tried on
+Layonara's review service or dev server. Not yet: a package download doesn't record a publish, so a team without a review
+service always sees every piece as never published.
 
 ### 10. Import
 

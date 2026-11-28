@@ -285,7 +285,7 @@ pub fn open_browser(url: &str) {
 /// Checks or exports a canvas of the workspace, as `POST /api/canvas-export` does (the command line's `canvas-export`).
 pub(crate) fn canvas_export(name: &str, pieces: &[String], check: bool) -> Result<serde_json::Value> {
     let _job = job();
-    canvases::export(name, pieces, check)
+    canvases::export(name, pieces, check, &|_| {})
 }
 
 fn job() -> std::sync::MutexGuard<'static, ()> {
