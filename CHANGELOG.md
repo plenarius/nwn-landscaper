@@ -6,6 +6,48 @@ All notable changes to the Landscaper engine; the editor's are in
 and the editor, or the files it writes. [nwn-bake](https://github.com/plenarius/nwn-bake) has its own changelog. Changes not
 released yet wait in `changelog.d/`, a file each, until the release puts them in its section.
 
+## 0.7.4
+
+- **The app updates itself.** At start it looks for a newer release; when there is one, the editor's version menu offers
+  **Update to X.Y.Z** with what is new, and on a yes the app downloads it, checks its signature against the key built into the
+  app, installs it and starts again (the installer on Windows, the app on macOS, the AppImage on Linux). An app installed from
+  the `.deb` is told to install the new `.deb`. Each release now carries `latest.json`, the update files' `.sig` signatures and
+  the macOS app as a `.app.tar.gz`. See the install pages: [Windows](docs/handbook/install-windows.md#update-or-remove-it),
+  [macOS](docs/handbook/install-macos.md#update-or-remove-it), [Linux](docs/handbook/install-linux.md).
+- **The handbook covers scenery past the edge.** [Terrain](docs/handbook/terrain.md#the-band-round-the-area),
+  [Scatter and Place](docs/handbook/scatter.md#past-the-edge) and [Export](docs/handbook/export.md#past-the-edge-in-the-game)
+  say how the mix brush, Scatter, Place and *Carry the scenery outward* work on the band round the area, and how the band's
+  first fill now eases out from the edge. The engine already drew baked objects on the band; nothing in it changed.
+- **The forest showcase's band no longer steps.** Its band past the edge ran out row by row into steps up to 3 m high; it is
+  eased along and across the edge, keeping its hills and the stream's bed.
+- **Handbook: the path check's markers start hidden, Walkable is in the top bar, and Show > Scenery hides Place's and
+  Scatter's models in the view** (nwn-landscaper-web's matching change).
+- **The handbook, showcase and browser page moved to <https://landscaper.layonara.com/>.** The old address redirects there.
+- **Preset skies 1.0.1 installs in one step: `landscaper skies get preset-skies`.** The pack, a sky for each Sky & fog preset with
+  pictures from Savant1974's Real Skies, is in the Landscaper's list of packs ([Preset skies](docs/PRESET-SKIES.md)).
+- **The browser page has the Preset skies pack and the game's skies.** Each preset shows its sky there, the Sky row lists the
+  seven as installed, and an area with one of them, such as the swamp showcase, exports with `ls_skies.hak`. `landscaper
+  demo-stock` also writes the game's `skyboxes.2da` and its skies' models.
+- **Baked trees now fade their crowns** like the stock rural tiles' trees: on a model taller than 4 m, what stands more than 4 m
+  above its base fades, cut flat, and the trunk stays. In the game the crowns fade out about the player, and the toolset's Fade
+  Geometry hides them so you can work on the ground under a canopy. Bushes, boulders and rocks stay solid.
+- **The browser page keeps its stock models.** The page build adds the stock bundle's SHA-256 to `try/site.json`
+  (`stockSha256`), so the page keeps the models it fetched in the browser's Cache Storage until the bundle changes. The
+  handbook's [Try it in your browser](docs/handbook/try.md) says where areas are kept, and that areas saved at the old
+  address stay there.
+- **An interior's walls stand upright.** A room's wall rose across one heightmap sample, so the game drew it leaning about 6°:
+  a door in it stood clear of the wall at the top and sank into its foot. The tiles now draw each interior wall straight up on
+  the room's edge, its paint as before. A door pushed a little into a wall goes onto the wall's line, and any other thing there
+  stands on the floor at its foot, not up the wall. Caves and outdoor areas are unchanged. See
+  [Caves and interiors](docs/handbook/caves.md#cut-rooms).
+- **Exported natural ground no longer has dark dots every metre or so.** Since 0.7.3 the tiles' shader drew a small dark
+  triangle in the middle of each of the cells that hide a natural texture's repeat. The next export rebuilds the shared
+  `ls_textures` hak with the fix, for every area.
+- **An interior's walls take their own paint down to the floor.** Since walls stand upright, the lower half of each wall took
+  the floor's paint (planks under stone). Each wall now takes the paint of the rock above it from its foot to its top, and the
+  floor keeps its own paint up to the wall's foot, on a straight line. A drop between two floors of an interior takes the upper
+  floor's paint the same way. Caves and outdoor areas are unchanged.
+
 ## 0.7.3
 
 - **The game's grass, per area.** An area can turn on the game's own animated grass (off by default, so areas exported again
