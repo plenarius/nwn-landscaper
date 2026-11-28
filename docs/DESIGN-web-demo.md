@@ -162,8 +162,8 @@ other file. Step 6 runs it in the docs workflow. The page holds no file of the g
   is kept: the visitor opens theirs, or the link's under a free name. `try/site.json`'s `areaLinks` says the page can.
 - **File:** Download area (the area's JSON) and Open area from a file (asks before replacing an area of its name). Export
   downloads `<area>.zip`: `modules/<module>.mod`, the haks of `hak/`, and a README on where they go and why the area draws
-  wrong in the game until it is exported with the game's shaders. The files are stored, not compressed: compressing 15 MB took
-  1 s and the zip never leaves the machine.
+  wrong in the game until it is exported with the game's shaders. Each file is deflated with the browser's
+  `CompressionStream` (stored when that isn't smaller): the swamp showcase's 691 MB of files zip to 236 MB in about 17 s.
 - **Texts:** where the desktop names `landscaper serve`, a path on disk or the modules list, the page says what it does instead
   (the export's report names the zip; the "No engine" line says the engine couldn't start in this browser). Help has the
   engine's source at its tag. Texture packs (the engine can't reach the Internet yet) and Publish (a package for a team) are

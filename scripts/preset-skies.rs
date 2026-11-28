@@ -171,7 +171,7 @@ fn pack_list(files: &[String]) -> serde_json::Value {
         .collect();
     json!({
         "id": "preset-skies",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "name": "Preset skies",
         "description": "A sky for each Sky & fog preset that shows one. Golden haze, Dusk, Overcast, Starry night and Dawn haze \
             re-use the pictures of Savant1974's Real Skies; Thick mist and Swamp are painted from their presets' colours.",

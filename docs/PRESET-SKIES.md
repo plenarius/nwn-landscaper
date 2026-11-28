@@ -16,8 +16,9 @@ landscaper skies get preset-skies
 Its seven skies take the first free rows of the module's `skyboxes.2da` from 32 up. The browser page at
 [/try/](https://landscaper.layonara.com/try/) has it installed.
 
-The list offers 1.0.1, which is 1.0.0 with only its description reworded: the same skies, pictures and models. A Landscaper with
-1.0.0 installed keeps it, and lists 1.0.1 as available; `skies get preset-skies` then replaces it, each sky keeping its row.
+The list offers 1.0.2: the same skies, pictures and models as 1.0.0, its description reworded in 1.0.1, and its pictures
+compressed in the zip in 1.0.2 (26 MB to download instead of 62 MB). A Landscaper with an earlier version installed keeps it,
+and lists 1.0.2 as available; `skies get preset-skies` then replaces it, each sky keeping its row.
 
 ## The skies
 
@@ -44,7 +45,7 @@ re-used skies keep Real Skies' band mesh and its pictures at 8,192 by 1,024, as 
   horizon to a cap overhead. The colours are copied from the editor's presets (`js/atmosphere.js` in nwn-landscaper-web) into
   `scripts/preset-skies.rs`: change them together.
 
-The pack has 34 files, 60 MB: 11 pictures of 5.6 MB, 6 small gradients and 17 models.
+The pack has 34 files, 60 MB (a 26 MB download): 11 pictures of 5.6 MB, 6 small gradients and 17 models.
 
 ## Making it
 
@@ -61,7 +62,7 @@ For maintainers: how the published pack is made, for a new version.
 
    The first argument is `Real_Skies.hak` or the folder it was unpacked into; the second, the folder to write. `--jobs` sets how
    many pictures are re-encoded at once (default 4, about 150 MB of memory each).
-3. Try it before publishing: `landscaper skies get dist/preset-skies-1.0.1.zip`.
+3. Try it before publishing: `landscaper skies get dist/preset-skies-1.0.2.zip`.
 4. Publish it as an asset of the `texture-packs` release with its entry in that release's `index.json` (`skies pack --index`
    writes the entry), as [texture packs](TEXTURE-PACKS.md) are.
 

@@ -82,7 +82,8 @@ The stock placeables come from the `demo-stock` release's `demo-stock.zip`, whic
 with the game (the workflow has none): each model, its walkmesh and its textures as the game has them, `placeables.2da`,
 `surfacemat.2da`, `skyboxes.2da` and the game's skies, the three shaders, and the Place panel's lists. Without that release
 (or `NWN_ROOT`, when the script runs on a computer with the game) the page is built without them, draws every placeable as a
-box, and asks for the game folder at Export for the shaders.
+box, and asks for the game folder at Export for the shaders. The TGA textures go up as `<name>.tga.bin`, which GitHub Pages
+sends compressed (it doesn't compress a `.tga`): a sky's 3.1 MB picture downloads as about 1.4 MB.
 
 The sky packs are those the `texture-packs` release's `index.json` lists, each zip checked against it and put in `try/skies/`;
 the page installs them into its engine on the first visit, as `landscaper skies get` does. They need the stock files'
