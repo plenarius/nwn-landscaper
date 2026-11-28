@@ -10,6 +10,8 @@
 //! - Only one copy runs: a second start brings the first one's window forward.
 //! - What the engine prints goes to `landscaper.log` in the data folder ([`log`]).
 //! - Links to anything but the engine open in the default browser; downloads go to the Downloads folder ([`place`]).
+//! - At start it asks whether a newer version is out; the editor's version menu offers it, and the app installs it and starts
+//!   again (`GET` and `POST /api/app/update`, [`update`]).
 //! - On Linux, WebKitGTK's renderer is switched for NVIDIA's driver ([`webview`]).
 
 // A window program on Windows: no console beside it.
@@ -17,6 +19,7 @@
 
 mod log;
 mod place;
+mod update;
 mod webview;
 
 use std::path::PathBuf;
@@ -49,6 +52,7 @@ struct App {
     handle: tauri::AppHandle,
     /// Whether the engine has been started (it reads the game's folders once).
     started: AtomicBool,
+    updates: Arc<update::Updates>,
 }
 
 type Shared = Arc<App>;
@@ -126,9 +130,13 @@ fn start_engine(app: Shared) {
     std::thread::spawn(move || {
         // (`landscaper serve` finds the editor beside the program, or a checkout beside the working folder, when it isn't bundled.)
         let web = webview::bundled_web();
-        let asked = serving.clone();
-        let open: landscaper::AppOpen = Box::new(move |what| app_open(&asked, what));
-        if let Err(e) = landscaper::serve_local(port, web.as_deref(), open) {
+        let (asked, updating, installing) = (serving.clone(), serving.updates.clone(), serving.clone());
+        let routes = landscaper::AppRoutes {
+            open: Box::new(move |what| app_open(&asked, what)),
+            update: Box::new(move || serde_json::to_value(updating.state()).unwrap_or_default()),
+            install: Box::new(move || update::install(&installing.handle, &installing.updates)),
+        };
+        if let Err(e) = landscaper::serve_local(port, web.as_deref(), routes) {
             eprintln!("error: {e:#}");
             set(&serving, Phase::Failed { message: format!("{e:#}") });
         }
@@ -161,9 +169,11 @@ fn begin(handle: tauri::AppHandle) -> Shared {
         phase: Mutex::new(Phase::Starting),
         port,
         log: log.as_ref().map(|l| l.path.clone()),
-        handle,
+        handle: handle.clone(),
         started: AtomicBool::new(false),
+        updates: Arc::new(update::Updates::new()),
     });
+    update::check(handle, app.updates.clone());
     // The log is written until the program ends.
     std::mem::forget(log);
     match &root {
@@ -196,6 +206,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![status, pick_folder, use_folders])
         .setup(move |tauri_app| {
             let app = begin(tauri_app.handle().clone());

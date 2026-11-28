@@ -29,5 +29,12 @@
     "macOS": {
       "minimumSystemVersion": "11.0"
     }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/plenarius/nwn-landscaper/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgyN0QzNEU0QTg2MzI4Q0MKUldUTUtHT281RFI5Z3JyQ1JERU51ZWo0RHB4NEU3bnVXcWpEUlU3bmF3c3FSUXZWamFVSWVyMnAK",
+      "requireSignedVersion": true
+    }
   }
 }

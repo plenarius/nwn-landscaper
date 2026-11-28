@@ -30,6 +30,9 @@ Only one copy runs: starting it again brings its window forward. Quit it (Cmd+Q)
 
 ## Update or remove it
 
-- **Update:** drag the new release's app onto Applications and replace the old one. The data folder stays as it is.
+- **Update:** the app does it. When a new release is out, a dot shows beside the version next to the title, and its menu
+  offers **Update to X.Y.Z** with what is new. Click it and say yes: the app downloads the new app, checks its signature,
+  replaces itself and starts again. The data folder stays as it is. An app from 0.7.3 or before doesn't look for updates: drag
+  the new release's app onto Applications once, replacing the old one, and it updates itself from then on.
 - **Remove:** drag **NWN Landscaper** from Applications to the Trash. The data folder stays; delete `~/.local/share/landscaper`
   yourself to remove your areas too.

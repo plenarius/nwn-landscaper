@@ -4,7 +4,7 @@
 #
 # Checks an installer of the desktop app (.github/workflows/release.yml): installs it as a person would, starts the installed app,
 # and waits for its window to load the editor at /?app from the engine inside the app. Then checks that the engine answers (its
-# /healthz, the editor's page, the app's own route), that a second start only brings the first one forward, and that the engine
+# /healthz, the editor's page, the app's own routes), that a second start only brings the first one forward, and that the engine
 # stops with the app. Uninstalls and removes what it wrote, whether the check passes or not.
 #
 #   scripts/app-smoke.sh <installer: the NSIS .exe, the .dmg, the .deb or the .AppImage> [seconds to wait] [screenshot.png]
@@ -137,6 +137,9 @@ grep -q 'type="importmap"' <<<"$page" || { echo "app-smoke: /?app is not the edi
 route=$(curl -sS -X POST -H "X-Landscaper: 1" -H "Content-Type: application/json" -d '{"what":"smoke"}' \
     -w ' %{http_code}' "$url/api/app/open")
 case "$route" in *"data, log or folders"*" 400") ;; *) echo "app-smoke: the app's route answered: $route" >&2; exit 1 ;; esac
+# The updater's answer for the version menu (no newer release here: nothing to offer, or still asking).
+update=$(curl -fsS -H "X-Landscaper: 1" "$url/api/app/update")
+case "$update" in *'"state":"'*) echo "app-smoke: the updater says $update" ;; *) echo "app-smoke: /api/app/update answered: $update" >&2; exit 1 ;; esac
 
 if [ -n "$shot" ]; then
     # Time for the view to draw, then the screen, for a person to look at (the check doesn't read it).

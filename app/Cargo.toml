@@ -20,6 +20,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 # What the engine prints goes to the log file: the app has no terminal (on Windows not even a console).
 stdio-override = "0.2"
 serde = { version = "1", features = ["derive"] }

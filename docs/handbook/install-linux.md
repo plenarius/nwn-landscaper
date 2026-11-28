@@ -19,7 +19,10 @@ Two downloads for 64-bit Linux, both with the same app: an AppImage that runs on
 If it says it can't mount itself (no FUSE on the system), start it with `APPIMAGE_EXTRACT_AND_RUN=1` in front: it unpacks itself
 and runs from there.
 
-To update, download the new release's AppImage and use it in place of the old one.
+The AppImage updates itself. When a new release is out, a dot shows beside the version next to the title, and its menu offers
+**Update to X.Y.Z** with what is new. Click it and say yes: the app downloads the new AppImage, checks its signature, puts it in
+place of the old file (same name, same folder, so keep it in a folder you can write to) and starts again. An AppImage of 0.7.3
+or before doesn't look for updates: download the new one yourself once.
 
 ## The .deb
 
@@ -27,8 +30,12 @@ To update, download the new release's AppImage and use it in place of the old on
 sudo apt install ./nwn-landscaper_0.7.0_amd64.deb
 ```
 
-Start **NWN Landscaper** from your applications menu, or `nwn-landscaper` from a terminal. To update, install the new release's
-`.deb` the same way; to remove it, `sudo apt remove nwn-landscaper`.
+Start **NWN Landscaper** from your applications menu, or `nwn-landscaper` from a terminal. To remove it,
+`sudo apt remove nwn-landscaper`.
+
+**To update, install the new release's `.deb` the same way.** The app can't do it for you, as installing a `.deb` needs an
+administrator, but it tells you: when a new release is out, a dot shows beside the version next to the title, and its menu offers
+**Download X.Y.Z's .deb**, which opens the release's page.
 
 ## Start it
 
